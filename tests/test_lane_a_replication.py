@@ -7,7 +7,8 @@ import pandas as pd
 import pytest
 
 from secom.config import SelectorName
-from secom.pipeline import run_01_data_contract_and_split, run_02_lane_a_replication
+from secom.workflows.lane_a import run_lane_a_replication
+from secom.workflows.split_contract import run_split_contract
 
 
 FAST_SELECTORS = [SelectorName.S2N, SelectorName.F_TEST]
@@ -16,22 +17,22 @@ FAST_SELECTORS = [SelectorName.S2N, SelectorName.F_TEST]
 @pytest.fixture(autouse=True)
 def _fast_lane_a_tuning(monkeypatch) -> None:
     # Keep tests focused on wiring/contract checks, not exhaustive sweep cost.
-    import secom.pipeline as pipeline
+    import secom.selection.tuning as tuning
 
-    monkeypatch.setattr(pipeline, "LANE_A_KRR_BALANCED_ALPHA_GRID", [1.0], raising=False)
-    monkeypatch.setattr(pipeline, "LANE_A_KRR_BALANCED_GAMMA_GRID", [None], raising=False)
-    monkeypatch.setattr(pipeline, "LANE_A_LOGREG_C_GRID", [1.0], raising=False)
-    monkeypatch.setattr(pipeline, "LANE_A_MRMR_LAMBDA_GRID", [1.0], raising=False)
-    monkeypatch.setattr(pipeline, "LANE_A_MUTUAL_INFO_N_NEIGHBORS_GRID", [3], raising=False)
-    monkeypatch.setattr(pipeline, "LANE_A_L1_SELECTOR_C_GRID", [1.0], raising=False)
-    monkeypatch.setattr(pipeline, "LANE_A_KRR_BALANCED_INNER_SPLITS", 2, raising=False)
+    monkeypatch.setattr(tuning, "LANE_A_KRR_BALANCED_ALPHA_GRID", [1.0], raising=False)
+    monkeypatch.setattr(tuning, "LANE_A_KRR_BALANCED_GAMMA_GRID", [None], raising=False)
+    monkeypatch.setattr(tuning, "LANE_A_LOGREG_C_GRID", [1.0], raising=False)
+    monkeypatch.setattr(tuning, "LANE_A_MRMR_LAMBDA_GRID", [1.0], raising=False)
+    monkeypatch.setattr(tuning, "LANE_A_MUTUAL_INFO_N_NEIGHBORS_GRID", [3], raising=False)
+    monkeypatch.setattr(tuning, "LANE_A_L1_SELECTOR_C_GRID", [1.0], raising=False)
+    monkeypatch.setattr(tuning, "LANE_A_KRR_BALANCED_INNER_SPLITS", 2, raising=False)
 
 
 def test_lane_a_artifacts_and_pairing(synthetic_input_dir, workspace_tmp_dir) -> None:
     out_dir = workspace_tmp_dir / "out_lane_a"
     project_root = Path(__file__).resolve().parents[1]
-    bundle = run_01_data_contract_and_split(synthetic_input_dir, out_dir, project_root)
-    run_02_lane_a_replication(bundle=bundle, output_dir=out_dir, selectors_run=FAST_SELECTORS)
+    bundle = run_split_contract(synthetic_input_dir, out_dir, project_root)
+    run_lane_a_replication(bundle=bundle, output_dir=out_dir, selectors_run=FAST_SELECTORS)
 
     strict = pd.read_csv(out_dir / "reports" / "baseline_replication_strict.csv")
     mi = pd.read_csv(out_dir / "reports" / "baseline_replication_with_missing_indicators.csv")
@@ -104,8 +105,8 @@ def test_lane_a_artifacts_and_pairing(synthetic_input_dir, workspace_tmp_dir) ->
 def test_lane_a_notebook_classifier_mode_runs(synthetic_input_dir, workspace_tmp_dir) -> None:
     out_dir = workspace_tmp_dir / "out_lane_a_logreg"
     project_root = Path(__file__).resolve().parents[1]
-    bundle = run_01_data_contract_and_split(synthetic_input_dir, out_dir, project_root)
-    run_02_lane_a_replication(
+    bundle = run_split_contract(synthetic_input_dir, out_dir, project_root)
+    run_lane_a_replication(
         bundle=bundle,
         output_dir=out_dir,
         lane_a_classifier="logreg",
@@ -132,8 +133,8 @@ def test_lane_a_notebook_classifier_mode_runs(synthetic_input_dir, workspace_tmp
 def test_lane_a_krr_balanced_mode_runs(synthetic_input_dir, workspace_tmp_dir) -> None:
     out_dir = workspace_tmp_dir / "out_lane_a_krr_balanced"
     project_root = Path(__file__).resolve().parents[1]
-    bundle = run_01_data_contract_and_split(synthetic_input_dir, out_dir, project_root)
-    run_02_lane_a_replication(
+    bundle = run_split_contract(synthetic_input_dir, out_dir, project_root)
+    run_lane_a_replication(
         bundle=bundle,
         output_dir=out_dir,
         lane_a_classifier="krr_balanced",
@@ -163,8 +164,8 @@ def test_lane_a_krr_strict_mode_runs_with_empty_tuning_trace(
 ) -> None:
     out_dir = workspace_tmp_dir / "out_lane_a_krr_strict"
     project_root = Path(__file__).resolve().parents[1]
-    bundle = run_01_data_contract_and_split(synthetic_input_dir, out_dir, project_root)
-    run_02_lane_a_replication(
+    bundle = run_split_contract(synthetic_input_dir, out_dir, project_root)
+    run_lane_a_replication(
         bundle=bundle,
         output_dir=out_dir,
         lane_a_classifier="krr_strict",
@@ -183,9 +184,9 @@ def test_lane_a_can_skip_relieff_for_faster_experiments(
 ) -> None:
     out_dir = workspace_tmp_dir / "out_lane_a_no_relieff"
     project_root = Path(__file__).resolve().parents[1]
-    bundle = run_01_data_contract_and_split(synthetic_input_dir, out_dir, project_root)
+    bundle = run_split_contract(synthetic_input_dir, out_dir, project_root)
     selectors = [s for s in FAST_SELECTORS if s != SelectorName.RELIEFF]
-    run_02_lane_a_replication(
+    run_lane_a_replication(
         bundle=bundle,
         output_dir=out_dir,
         selectors_run=selectors,
@@ -209,3 +210,4 @@ def test_lane_a_can_skip_relieff_for_faster_experiments(
     assert len(ablation) == n_selectors * 3
     assert len(summary) == n_selectors * 3 * 2
     assert len(tuning) == n_selectors * 2 * 2 * 10
+

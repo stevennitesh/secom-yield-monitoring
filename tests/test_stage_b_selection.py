@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from secom.config import ScalerName
-from secom.pipeline import _select_best_inner_config
+from secom.selection.tuning import select_best_inner_config
 
 
 def test_stage_b_inner_selection_tiebreak_chain() -> None:
@@ -33,8 +33,7 @@ def test_stage_b_inner_selection_tiebreak_chain() -> None:
             "mean_inner_BER": 0.29,
         },
     ]
-    best = _select_best_inner_config(rows)
+    best = select_best_inner_config(rows)
     # Within 0.01 AUC window, lower BER row should win first.
     assert best["k"] == 10
     assert np.isclose(best["C"], 0.1)
-

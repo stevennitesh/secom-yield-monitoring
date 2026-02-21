@@ -9,7 +9,7 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from secom.pipeline import run_05_artifact_and_claim_audit
+from secom.workflows.audit import run_artifact_audit
 
 
 def main() -> None:
@@ -19,7 +19,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _ = args.strict
-    result = run_05_artifact_and_claim_audit(output_dir=args.output_dir)
+    result = run_artifact_audit(output_dir=args.output_dir)
     if not result.ok:
         for err in result.errors:
             print(f"ERROR: {err}")
@@ -29,3 +29,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
