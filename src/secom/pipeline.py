@@ -36,7 +36,10 @@ from secom.config import (
     LANE_A_KRR_BALANCED_ALPHA_GRID,
     LANE_A_KRR_BALANCED_GAMMA_GRID,
     LANE_A_KRR_BALANCED_INNER_SPLITS,
+    LANE_A_L1_SELECTOR_C_GRID,
     LANE_A_LOGREG_C_GRID,
+    LANE_A_MRMR_LAMBDA_GRID,
+    LANE_A_MUTUAL_INFO_N_NEIGHBORS_GRID,
     LOCKBOX_FRAC,
     MIN_TEST_FAILS,
     ModelScope,
@@ -190,9 +193,27 @@ def _selector_pick(
     y_train: np.ndarray,
     k: int,
     n_neighbors: int | None = None,
+    mrmr_lambda: float = 1.0,
+    mutual_info_n_neighbors: int = 3,
+    l1_selector_c: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
-    if method in {SelectorName.S2N, SelectorName.WELCH_T, SelectorName.F_TEST, SelectorName.PEARSON}:
-        order, scores = rank_features(method, x_train, y_train)
+    if method in {
+        SelectorName.S2N,
+        SelectorName.WELCH_T,
+        SelectorName.F_TEST,
+        SelectorName.PEARSON,
+        SelectorName.MUTUAL_INFO,
+        SelectorName.MRMR,
+        SelectorName.L1_LOGREG,
+    }:
+        order, scores = rank_features(
+            method,
+            x_train,
+            y_train,
+            mrmr_lambda=float(mrmr_lambda),
+            mutual_info_n_neighbors=int(mutual_info_n_neighbors),
+            l1_selector_c=float(l1_selector_c),
+        )
         selected = order[: min(k, order.shape[0])]
         return selected, scores
     if method == SelectorName.RELIEFF:
@@ -218,6 +239,9 @@ def _fit_selector_pipeline(
     scaler_name: str,
     add_indicator: bool,
     n_neighbors: int | None,
+    mrmr_lambda: float = 1.0,
+    mutual_info_n_neighbors: int = 3,
+    l1_selector_c: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, list[Any], np.ndarray, Any, Any]:
     imputer = make_imputer(add_indicator=add_indicator)
     x_train_imp = imputer.fit_transform(x_train_raw)
@@ -232,6 +256,9 @@ def _fit_selector_pipeline(
         y_train=y_train,
         k=int(k),
         n_neighbors=n_neighbors,
+        mrmr_lambda=float(mrmr_lambda),
+        mutual_info_n_neighbors=int(mutual_info_n_neighbors),
+        l1_selector_c=float(l1_selector_c),
     )
     feature_meta = transformed_feature_metadata_from_imputer(
         imputer=imputer, raw_feature_count=x_train_raw.shape[1]
@@ -386,7 +413,7 @@ def _gamma_sort_key(gamma: float | None) -> float:
 def _select_krr_balanced_config_with_inner_cv(
     x_train_sel: np.ndarray,
     y_train: np.ndarray,
-) -> tuple[float, float | None, Any, float]:
+) -> tuple[float, float | None, Any, float, float]:
     y_train = np.asarray(y_train, dtype=int)
     n_fail = int(np.sum(y_train == 1))
     n_pass = int(np.sum(y_train == 0))
@@ -406,7 +433,7 @@ def _select_krr_balanced_config_with_inner_cv(
         )
         fallback_train_scores = np.asarray(fallback_clf.predict(x_train_sel), dtype=float)
         fallback_threshold, _ = find_ber_optimal_threshold(y_train, fallback_train_scores)
-        return fallback_alpha, fallback_gamma, fallback_clf, float(fallback_threshold)
+        return fallback_alpha, fallback_gamma, fallback_clf, float(fallback_threshold), np.inf
 
     inner_cv = StratifiedKFold(
         n_splits=n_splits,
@@ -466,13 +493,13 @@ def _select_krr_balanced_config_with_inner_cv(
     )
     final_train_scores = np.asarray(final_clf.predict(x_train_sel), dtype=float)
     final_threshold, _ = find_ber_optimal_threshold(y_train, final_train_scores)
-    return float(best_alpha), best_gamma, final_clf, float(final_threshold)
+    return float(best_alpha), best_gamma, final_clf, float(final_threshold), float(best_inner_ber)
 
 
 def _select_logreg_config_with_inner_cv(
     x_train_sel: np.ndarray,
     y_train: np.ndarray,
-) -> tuple[float, Any, float]:
+) -> tuple[float, Any, float, float]:
     y_train = np.asarray(y_train, dtype=int)
     n_fail = int(np.sum(y_train == 1))
     n_pass = int(np.sum(y_train == 0))
@@ -486,7 +513,7 @@ def _select_logreg_config_with_inner_cv(
         fallback_clf.fit(x_train_sel, y_train)
         fallback_train_scores = np.asarray(fallback_clf.predict_proba(x_train_sel)[:, 1], dtype=float)
         fallback_threshold, _ = find_ber_optimal_threshold(y_train, fallback_train_scores)
-        return fallback_c, fallback_clf, float(fallback_threshold)
+        return fallback_c, fallback_clf, float(fallback_threshold), np.inf
 
     inner_cv = StratifiedKFold(
         n_splits=n_splits,
@@ -532,7 +559,143 @@ def _select_logreg_config_with_inner_cv(
     final_clf.fit(x_train_sel, y_train)
     final_train_scores = np.asarray(final_clf.predict_proba(x_train_sel)[:, 1], dtype=float)
     final_threshold, _ = find_ber_optimal_threshold(y_train, final_train_scores)
-    return float(best_c), final_clf, float(final_threshold)
+    return float(best_c), final_clf, float(final_threshold), float(best_inner_ber)
+
+
+def _inner_cv_ber_krr_strict(x_train_sel: np.ndarray, y_train: np.ndarray) -> float:
+    y_train = np.asarray(y_train, dtype=int)
+    n_fail = int(np.sum(y_train == 1))
+    n_pass = int(np.sum(y_train == 0))
+    min_class = min(n_fail, n_pass)
+    n_splits = min(int(LANE_A_KRR_BALANCED_INNER_SPLITS), min_class)
+    if n_splits < 2:
+        clf = make_lane_a_classifier(alpha=1.0, gamma=None)
+        y_train_krr = 2 * y_train - 1
+        clf.fit(x_train_sel, y_train_krr)
+        train_scores = np.asarray(clf.predict(x_train_sel), dtype=float)
+        threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
+        m = binary_metrics_at_threshold(y_train, train_scores, threshold=float(threshold))
+        return float(m["BER"])
+
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=SEED_LANE_A)
+    fold_bers: list[float] = []
+    for inner_train_idx, inner_val_idx in skf.split(x_train_sel, y_train):
+        x_inner_train = x_train_sel[inner_train_idx]
+        y_inner_train = y_train[inner_train_idx]
+        x_inner_val = x_train_sel[inner_val_idx]
+        y_inner_val = y_train[inner_val_idx]
+        clf = make_lane_a_classifier(alpha=1.0, gamma=None)
+        y_inner_train_krr = 2 * y_inner_train - 1
+        clf.fit(x_inner_train, y_inner_train_krr)
+        inner_train_scores = np.asarray(clf.predict(x_inner_train), dtype=float)
+        threshold, _ = find_ber_optimal_threshold(y_inner_train, inner_train_scores)
+        inner_val_scores = np.asarray(clf.predict(x_inner_val), dtype=float)
+        m = binary_metrics_at_threshold(
+            y_inner_val,
+            inner_val_scores,
+            threshold=float(threshold),
+        )
+        fold_bers.append(float(m["BER"]))
+    return float(np.mean(fold_bers))
+
+
+def _tune_classifier_for_selected_features(
+    x_train_sel: np.ndarray,
+    y_train: np.ndarray,
+    classifier: str,
+) -> tuple[float, dict[str, Any]]:
+    if classifier == LaneAClassifier.KRR_BALANCED:
+        alpha, gamma, clf, threshold, inner_ber = _select_krr_balanced_config_with_inner_cv(
+            x_train_sel=x_train_sel,
+            y_train=y_train,
+        )
+        return float(inner_ber), {
+            "chosen_alpha": float(alpha),
+            "chosen_gamma": gamma,
+            "chosen_C": None,
+            "model": clf,
+            "threshold": float(threshold),
+        }
+    if classifier == LaneAClassifier.LOGREG:
+        c_value, clf, threshold, inner_ber = _select_logreg_config_with_inner_cv(
+            x_train_sel=x_train_sel,
+            y_train=y_train,
+        )
+        return float(inner_ber), {
+            "chosen_alpha": None,
+            "chosen_gamma": None,
+            "chosen_C": float(c_value),
+            "model": clf,
+            "threshold": float(threshold),
+        }
+    if classifier == LaneAClassifier.KRR_STRICT:
+        inner_ber = _inner_cv_ber_krr_strict(x_train_sel=x_train_sel, y_train=y_train)
+        return float(inner_ber), {
+            "chosen_alpha": None,
+            "chosen_gamma": None,
+            "chosen_C": None,
+            "model": None,
+            "threshold": None,
+        }
+    raise ValueError(f"Unknown Lane A classifier mode: {classifier}")
+
+
+def _select_selector_param_for_fold(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    classifier: str,
+    selector_method: str,
+    param_values: list[float | int],
+    param_name: str,
+    k: int = 40,
+) -> tuple[float | int, np.ndarray, dict[str, Any]]:
+    best_value: float | int | None = None
+    best_selected_local: np.ndarray | None = None
+    best_criterion = np.inf
+    best_payload: dict[str, Any] = {}
+
+    for value in param_values:
+        selector_kwargs: dict[str, Any] = {
+            "method": selector_method,
+            "x_train": x_train,
+            "y_train": y_train,
+            "k": k,
+        }
+        if param_name == "mrmr_lambda":
+            selector_kwargs["mrmr_lambda"] = float(value)
+        elif param_name == "mutual_info_n_neighbors":
+            selector_kwargs["mutual_info_n_neighbors"] = int(value)
+        elif param_name == "l1_selector_c":
+            selector_kwargs["l1_selector_c"] = float(value)
+        else:
+            raise ValueError(f"Unsupported selector param_name={param_name}")
+
+        selected_local, _ = _selector_pick(
+            **selector_kwargs,
+        )
+        x_train_sel = x_train[:, selected_local]
+        criterion, payload = _tune_classifier_for_selected_features(
+            x_train_sel=x_train_sel,
+            y_train=y_train,
+            classifier=classifier,
+        )
+
+        if criterion < best_criterion - 1e-12:
+            best_criterion = criterion
+            best_value = value
+            best_selected_local = selected_local
+            best_payload = payload
+        elif np.isclose(criterion, best_criterion):
+            if best_value is None or value < best_value:
+                best_value = value
+                best_selected_local = selected_local
+                best_payload = payload
+
+    if best_value is None or best_selected_local is None:
+        raise RuntimeError(
+            f"{selector_method} selector tuning failed for param {param_name}"
+        )
+    return best_value, best_selected_local, best_payload
 
 
 def _lane_a_run_mode(
@@ -562,13 +725,56 @@ def _lane_a_run_mode(
         x_train = scaler.fit_transform(x_train_imp)
         x_test = scaler.transform(x_test_imp)
 
-        selected_local, _ = _selector_pick(
-            method=selector,
-            x_train=x_train,
-            y_train=y_train,
-            k=40,
-            n_neighbors=10 if selector == SelectorName.RELIEFF else None,
-        )
+        chosen_mrmr_lambda: float | None = None
+        chosen_mi_n_neighbors: int | None = None
+        chosen_l1_selector_c: float | None = None
+        cached_model: Any | None = None
+        cached_threshold: float | None = None
+        tuned_payload: dict[str, Any] | None = None
+        if selector == SelectorName.MRMR:
+            chosen_mrmr_lambda, selected_local, tuned_payload = _select_selector_param_for_fold(
+                x_train=x_train,
+                y_train=y_train,
+                classifier=classifier,
+                selector_method=SelectorName.MRMR,
+                param_values=sorted(float(v) for v in LANE_A_MRMR_LAMBDA_GRID),
+                param_name="mrmr_lambda",
+                k=40,
+            )
+            cached_model = tuned_payload.get("model")
+            cached_threshold = tuned_payload.get("threshold")
+        elif selector == SelectorName.MUTUAL_INFO:
+            chosen_mi_n_neighbors, selected_local, tuned_payload = _select_selector_param_for_fold(
+                x_train=x_train,
+                y_train=y_train,
+                classifier=classifier,
+                selector_method=SelectorName.MUTUAL_INFO,
+                param_values=sorted(int(v) for v in LANE_A_MUTUAL_INFO_N_NEIGHBORS_GRID),
+                param_name="mutual_info_n_neighbors",
+                k=40,
+            )
+            cached_model = tuned_payload.get("model")
+            cached_threshold = tuned_payload.get("threshold")
+        elif selector == SelectorName.L1_LOGREG:
+            chosen_l1_selector_c, selected_local, tuned_payload = _select_selector_param_for_fold(
+                x_train=x_train,
+                y_train=y_train,
+                classifier=classifier,
+                selector_method=SelectorName.L1_LOGREG,
+                param_values=sorted(float(v) for v in LANE_A_L1_SELECTOR_C_GRID),
+                param_name="l1_selector_c",
+                k=40,
+            )
+            cached_model = tuned_payload.get("model")
+            cached_threshold = tuned_payload.get("threshold")
+        else:
+            selected_local, _ = _selector_pick(
+                method=selector,
+                x_train=x_train,
+                y_train=y_train,
+                k=40,
+                n_neighbors=10 if selector == SelectorName.RELIEFF else None,
+            )
 
         x_train_sel = x_train[:, selected_local]
         x_test_sel = x_test[:, selected_local]
@@ -587,10 +793,18 @@ def _lane_a_run_mode(
             threshold, _ = find_ber_optimal_threshold(y_train, strict_train_scores)
             scores = np.asarray(strict_clf.predict(x_test_sel), dtype=float)
         elif classifier == LaneAClassifier.KRR_BALANCED:
-            chosen_alpha, chosen_gamma, best_clf, threshold = _select_krr_balanced_config_with_inner_cv(
-                x_train_sel=x_train_sel,
-                y_train=y_train,
-            )
+            if cached_model is not None and cached_threshold is not None:
+                best_clf = cached_model
+                threshold = float(cached_threshold)
+                if tuned_payload is None:
+                    raise RuntimeError("Missing tuned payload for cached model")
+                chosen_alpha = float(tuned_payload["chosen_alpha"]) if tuned_payload.get("chosen_alpha") is not None else None
+                chosen_gamma = tuned_payload.get("chosen_gamma")
+            else:
+                chosen_alpha, chosen_gamma, best_clf, threshold, _ = _select_krr_balanced_config_with_inner_cv(
+                    x_train_sel=x_train_sel,
+                    y_train=y_train,
+                )
             scores = np.asarray(best_clf.predict(x_test_sel), dtype=float)
             tuning_rows.append(
                 {
@@ -601,15 +815,29 @@ def _lane_a_run_mode(
                     "chosen_alpha": chosen_alpha,
                     "chosen_gamma": np.nan if chosen_gamma is None else float(chosen_gamma),
                     "chosen_C": np.nan,
+                    "chosen_mrmr_lambda": np.nan if chosen_mrmr_lambda is None else float(chosen_mrmr_lambda),
+                    "chosen_mutual_info_n_neighbors": np.nan
+                    if chosen_mi_n_neighbors is None
+                    else int(chosen_mi_n_neighbors),
+                    "chosen_l1_selector_c": np.nan
+                    if chosen_l1_selector_c is None
+                    else float(chosen_l1_selector_c),
                     "threshold": float(threshold),
                     "selector_tuning_scope": "outer_train_fixed",
                 }
             )
         elif classifier == LaneAClassifier.LOGREG:
-            chosen_c, best_clf, threshold = _select_logreg_config_with_inner_cv(
-                x_train_sel=x_train_sel,
-                y_train=y_train,
-            )
+            if cached_model is not None and cached_threshold is not None:
+                best_clf = cached_model
+                threshold = float(cached_threshold)
+                if tuned_payload is None:
+                    raise RuntimeError("Missing tuned payload for cached model")
+                chosen_c = float(tuned_payload["chosen_C"]) if tuned_payload.get("chosen_C") is not None else None
+            else:
+                chosen_c, best_clf, threshold, _ = _select_logreg_config_with_inner_cv(
+                    x_train_sel=x_train_sel,
+                    y_train=y_train,
+                )
             scores = np.asarray(best_clf.predict_proba(x_test_sel)[:, 1], dtype=float)
             tuning_rows.append(
                 {
@@ -620,6 +848,13 @@ def _lane_a_run_mode(
                     "chosen_alpha": np.nan,
                     "chosen_gamma": np.nan,
                     "chosen_C": chosen_c,
+                    "chosen_mrmr_lambda": np.nan if chosen_mrmr_lambda is None else float(chosen_mrmr_lambda),
+                    "chosen_mutual_info_n_neighbors": np.nan
+                    if chosen_mi_n_neighbors is None
+                    else int(chosen_mi_n_neighbors),
+                    "chosen_l1_selector_c": np.nan
+                    if chosen_l1_selector_c is None
+                    else float(chosen_l1_selector_c),
                     "threshold": float(threshold),
                     "selector_tuning_scope": "outer_train_fixed",
                 }
@@ -649,6 +884,7 @@ def run_02_lane_a_replication(
     bundle: DataBundle,
     output_dir: Path,
     lane_a_classifier: str | None = None,
+    selectors_run: list[str] | None = None,
 ) -> None:
     reports = ensure_reports_dir(output_dir)
     classifiers_run = (
@@ -657,12 +893,16 @@ def run_02_lane_a_replication(
     bad = set(classifiers_run) - set(LaneAClassifier.ALL)
     if bad:
         raise ValueError(f"Unknown Lane A classifier(s): {sorted(bad)}")
+    selectors_run = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
+    bad_selectors = set(selectors_run) - set(SelectorName.ALL)
+    if bad_selectors:
+        raise ValueError(f"Unknown Lane A selector(s): {sorted(bad_selectors)}")
 
     strict_rows: list[pd.DataFrame] = []
     mi_rows: list[pd.DataFrame] = []
     tuning_rows: list[pd.DataFrame] = []
     for classifier in classifiers_run:
-        for selector in SelectorName.ALL:
+        for selector in selectors_run:
             strict_frame, strict_tuning = _lane_a_run_mode(
                 df=bundle.all_data,
                 feature_cols=bundle.feature_columns,
@@ -700,6 +940,9 @@ def run_02_lane_a_replication(
                 "chosen_alpha",
                 "chosen_gamma",
                 "chosen_C",
+                "chosen_mrmr_lambda",
+                "chosen_mutual_info_n_neighbors",
+                "chosen_l1_selector_c",
                 "threshold",
                 "selector_tuning_scope",
             ]
@@ -710,7 +953,7 @@ def run_02_lane_a_replication(
     ablation_rows = []
     summary_rows = []
     for classifier in classifiers_run:
-        for selector in SelectorName.ALL:
+        for selector in selectors_run:
             s = strict_df.loc[
                 (strict_df["selector"] == selector) & (strict_df["classifier"] == classifier)
             ].sort_values("fold")
@@ -779,6 +1022,7 @@ def run_02_lane_a_replication(
         mi_df=mi_df,
         tuning_trace_df=tuning_trace_df,
         classifiers_run=classifiers_run,
+        selectors_run=selectors_run,
     )
 
 
@@ -791,7 +1035,7 @@ def _stage_a_configs() -> list[dict[str, Any]]:
             "scaler": ScalerName.ROBUST,
             "n_neighbors": 10 if s == SelectorName.RELIEFF else None,
         }
-        for s in SelectorName.ALL
+        for s in SelectorName.ACTIVE
     ]
 
 
@@ -1732,6 +1976,11 @@ def run_05_artifact_and_claim_audit(output_dir: Path) -> ValidationResult:
             if "classifier" in summary_df.columns
             else []
         )
+        selectors_run = (
+            sorted(summary_df["selector"].dropna().astype(str).unique().tolist())
+            if "selector" in summary_df.columns
+            else []
+        )
         try:
             validate_lane_a_artifacts(
                 summary_df=summary_df,
@@ -1740,6 +1989,7 @@ def run_05_artifact_and_claim_audit(output_dir: Path) -> ValidationResult:
                 mi_df=mi_df,
                 tuning_trace_df=tuning_trace_df,
                 classifiers_run=classifiers_run,
+                selectors_run=selectors_run,
             )
         except ValueError as exc:
             errors.append(str(exc))
