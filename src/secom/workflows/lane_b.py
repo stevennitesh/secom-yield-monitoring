@@ -332,7 +332,7 @@ def run_lane_b_stage_ab(bundle: DataBundle, output_dir: Path) -> dict[str, Any]:
             row["selector"],
         )
 
-    ranked = sorted(model_sel.to_dict("records"), key=_selector_rank_key)
+    ranked = sorted(model_sel.to_dict("records"), key=_selector_rank_key) # type: ignore
     primary = ranked[0]["selector"]
     eligible = [r for r in ranked[1:] if r["mean_BER"] <= 0.40]
     challenger_available = len(eligible) > 0

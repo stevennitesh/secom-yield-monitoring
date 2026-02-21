@@ -5,7 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pandas as pd
 
 from secom.workflows.split_contract import run_split_contract
 

@@ -9,9 +9,9 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from secom.config import SelectorName
-from secom.workflows.lane_a import run_lane_a_replication
-from secom.workflows.split_contract import run_split_contract
+from secom.config import SelectorName  # noqa: E402
+from secom.workflows.lane_a import run_lane_a_replication  # noqa: E402
+from secom.workflows.split_contract import run_split_contract  # noqa: E402
 
 
 def main() -> None:

@@ -232,7 +232,7 @@ def _drift_gate_for_role(
     lock_fail_rate = float(np.mean(y_lock == 1))
     abs_prev = abs(lock_fail_rate - dev_fail_rate)
 
-    ks_p = float(ks_2samp(model.dev_scores, lock_scores, alternative="two-sided", mode="auto").pvalue)
+    ks_p = float(ks_2samp(model.dev_scores, lock_scores, alternative="two-sided", mode="auto").pvalue) # type: ignore
 
     coef_abs = np.abs(model.clf.coef_[0])
     sel_meta = [model.feature_meta[int(i)] for i in model.selected_local_idx.tolist()]

@@ -92,5 +92,5 @@ def fit_selector_pipeline(
         imputer=imputer, raw_feature_count=x_train_raw.shape[1]
     )
     x_train_sel = x_train_scaled[:, selected_local]
-    x_eval_sel = x_eval_scaled[:, selected_local]
+    x_eval_sel = x_eval_scaled[:, selected_local] # type: ignore
     return x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler

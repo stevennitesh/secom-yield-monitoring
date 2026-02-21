@@ -77,7 +77,7 @@ def test_lane_a_artifacts_and_pairing(synthetic_input_dir, workspace_tmp_dir) ->
                     (strict["selector"] == selector) & (strict["classifier"] == classifier),
                     "fold",
                 ]
-                .sort_values()
+                .sort_values() # type: ignore
                 .tolist()
             )
             m_folds = (
@@ -85,7 +85,7 @@ def test_lane_a_artifacts_and_pairing(synthetic_input_dir, workspace_tmp_dir) ->
                     (mi["selector"] == selector) & (mi["classifier"] == classifier),
                     "fold",
                 ]
-                .sort_values()
+                .sort_values() # type: ignore
                 .tolist()
             )
             assert s_folds == m_folds
