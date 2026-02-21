@@ -20,6 +20,9 @@ COST_RATIOS: Final[list[int]] = [1, 2, 5, 10, 20]
 LANE_A_KRR_BALANCED_ALPHA_GRID: Final[list[float]] = [0.1, 1.0, 10.0]
 LANE_A_KRR_BALANCED_GAMMA_GRID: Final[list[float | None]] = [None, 0.01, 0.1, 1.0]
 LANE_A_LOGREG_C_GRID: Final[list[float]] = [0.01, 0.1, 1.0, 10.0]
+LANE_A_MRMR_LAMBDA_GRID: Final[list[float]] = [0.5, 1.0, 2.0]
+LANE_A_MUTUAL_INFO_N_NEIGHBORS_GRID: Final[list[int]] = [3, 5, 10]
+LANE_A_L1_SELECTOR_C_GRID: Final[list[float]] = [0.01, 0.1, 1.0, 10.0]
 LANE_A_KRR_BALANCED_INNER_SPLITS: Final[int] = 3
 
 
@@ -30,8 +33,14 @@ class SelectorName:
     PEARSON = "Pearson"
     RELIEFF = "ReliefF"
     GRAM_SCHMIDT = "Gram-Schmidt"
+    MUTUAL_INFO = "MutualInfo"
+    MRMR = "mRMR"
+    L1_LOGREG = "L1-LogReg"
 
-    ALL = [S2N, WELCH_T, F_TEST, PEARSON, RELIEFF, GRAM_SCHMIDT]
+    CORE = [S2N, WELCH_T, F_TEST, PEARSON, RELIEFF, GRAM_SCHMIDT]
+    EXPERIMENTAL = [MUTUAL_INFO, MRMR, L1_LOGREG]
+    ALL = CORE + EXPERIMENTAL
+    ACTIVE = CORE
     STAGE_B = [S2N, WELCH_T, F_TEST, RELIEFF, GRAM_SCHMIDT]
 
 

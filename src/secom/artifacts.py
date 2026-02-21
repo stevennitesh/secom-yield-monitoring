@@ -211,6 +211,9 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             "chosen_alpha",
             "chosen_gamma",
             "chosen_C",
+            "chosen_mrmr_lambda",
+            "chosen_mutual_info_n_neighbors",
+            "chosen_l1_selector_c",
             "threshold",
             "selector_tuning_scope",
         ]:

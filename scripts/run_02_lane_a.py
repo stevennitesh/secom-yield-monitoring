@@ -10,6 +10,7 @@ if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
 from secom.pipeline import run_01_data_contract_and_split, run_02_lane_a_replication
+from secom.config import SelectorName
 
 
 def main() -> None:
@@ -23,16 +24,28 @@ def main() -> None:
         default="all",
         help="Lane A classifier mode: run all three by default, or a single classifier for fast iteration.",
     )
+    parser.add_argument(
+        "--skip-relieff",
+        action="store_true",
+        help="Exclude ReliefF from Lane A runs to speed up experimentation.",
+    )
     args = parser.parse_args()
 
     _ = args.strict
     bundle = run_01_data_contract_and_split(
         input_dir=args.input_dir, output_dir=args.output_dir, project_root=PROJECT_ROOT
     )
+    lane_a_selectors = (
+        [s for s in SelectorName.ACTIVE if s != SelectorName.RELIEFF]
+        if args.skip_relieff
+        else list(SelectorName.ACTIVE)
+    )
+
     run_02_lane_a_replication(
         bundle=bundle,
         output_dir=args.output_dir,
         lane_a_classifier=None if args.lane_a_classifier == "all" else args.lane_a_classifier,
+        selectors_run=lane_a_selectors,
     )
 
 
