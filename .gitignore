@@ -3,6 +3,7 @@
 
 # Data directories
 data/
+runs/
 
 # Python bytecode and caches
 __pycache__/
@@ -20,3 +21,7 @@ __pycache__/
 tmp/
 temp/
 *.tmp
+.test_tmp/
+.run_check/
+pytest_tmp/
+pytest_tmp*/
