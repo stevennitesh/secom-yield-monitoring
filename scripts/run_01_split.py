@@ -9,7 +9,7 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from secom.pipeline import run_01_data_contract_and_split
+from secom.workflows.split_contract import run_split_contract
 
 
 def main() -> None:
@@ -20,7 +20,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _ = args.strict
-    run_01_data_contract_and_split(
+    run_split_contract(
         input_dir=args.input_dir,
         output_dir=args.output_dir,
         project_root=PROJECT_ROOT,
@@ -29,3 +29,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

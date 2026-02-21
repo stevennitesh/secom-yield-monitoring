@@ -9,8 +9,9 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from secom.pipeline import run_01_data_contract_and_split, run_02_lane_a_replication
 from secom.config import SelectorName
+from secom.workflows.lane_a import run_lane_a_replication
+from secom.workflows.split_contract import run_split_contract
 
 
 def main() -> None:
@@ -32,7 +33,7 @@ def main() -> None:
     args = parser.parse_args()
 
     _ = args.strict
-    bundle = run_01_data_contract_and_split(
+    bundle = run_split_contract(
         input_dir=args.input_dir, output_dir=args.output_dir, project_root=PROJECT_ROOT
     )
     lane_a_selectors = (
@@ -41,7 +42,7 @@ def main() -> None:
         else list(SelectorName.ACTIVE)
     )
 
-    run_02_lane_a_replication(
+    run_lane_a_replication(
         bundle=bundle,
         output_dir=args.output_dir,
         lane_a_classifier=None if args.lane_a_classifier == "all" else args.lane_a_classifier,
@@ -51,3 +52,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
