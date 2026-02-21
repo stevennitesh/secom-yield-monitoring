@@ -9,7 +9,7 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from secom.workflows.split_contract import run_split_contract
+from secom.workflows.split_contract import run_split_contract  # noqa: E402
 
 
 def main() -> None:

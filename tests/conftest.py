@@ -32,11 +32,11 @@ def _make_synthetic_secom(n_rows: int = 260, n_features: int = 12, seed: int = 7
 
 
 @pytest.fixture()
-def workspace_tmp_dir() -> Path:
+def workspace_tmp_dir() -> Path: # type: ignore
     root = Path(".test_tmp") / str(uuid4())
     root.mkdir(parents=True, exist_ok=True)
     try:
-        yield root
+        yield root # type: ignore
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

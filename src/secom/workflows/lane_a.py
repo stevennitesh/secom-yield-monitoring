@@ -79,7 +79,7 @@ def _lane_a_run_mode(
                 ),
                 param_name="mutual_info_n_neighbors",
                 k=40,
-            )
+            ) # type: ignore
             cached_model = tuned_payload.get("model")
             cached_threshold = tuned_payload.get("threshold")
         elif selector == SelectorName.L1_LOGREG:
@@ -104,7 +104,7 @@ def _lane_a_run_mode(
             )
 
         x_train_sel = x_train[:, selected_local]
-        x_test_sel = x_test[:, selected_local]
+        x_test_sel = x_test[:, selected_local] # type: ignore
 
         chosen_alpha: float | None = None
         chosen_gamma: float | None = None
