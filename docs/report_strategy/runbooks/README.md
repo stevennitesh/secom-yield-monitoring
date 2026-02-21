@@ -17,3 +17,15 @@ Runbook sequence:
 4. `04_phase2_phase3_freeze_lockbox.md`
 5. `05_artifacts_and_claim_checks.md`
 
+## API Migration Note
+
+Workflow entrypoints were renamed to domain-oriented symbols and the legacy
+pipeline compatibility module was removed.
+
+Legacy -> Current:
+
+1. Runbook 01 entrypoint -> `run_split_contract`
+2. Runbook 02 entrypoint -> `run_lane_a_replication`
+3. Runbook 03 entrypoint -> `run_lane_b_stage_ab`
+4. Runbook 04 entrypoint -> `run_freeze_lockbox`
+5. Runbook 05 entrypoint -> `run_artifact_audit`
