@@ -95,13 +95,21 @@ Protocol:
 5. Imputer: `SimpleImputer(strategy='median', keep_empty_features=True)` with `add_indicator` set per ablation mode.
 6. Scaler: `StandardScaler(with_mean=True, with_std=True)`.
 7. Pipeline order: imputer -> scaler -> selector -> classifier.
-8. Classifier: `KernelRidge(kernel='rbf', alpha=1.0, gamma=None)`.
+8. Official classifiers: `krr` (Kernel Ridge with tuned `alpha/gamma`) and `logreg` (Logistic Regression with tuned `C`).
+   Optional benchmark-only mode: `krr_strict` (`KernelRidge(kernel='rbf', alpha=1.0, gamma=None)`).
 9. Label encoding for Kernel Ridge: `y_krr = 2*y_bin - 1` in `{-1,+1}`.
    Selector scoring uses `y_bin` (0/1) labels.
-10. Decision threshold (Lane A strict): derive BER-optimal threshold on each fold's training split only (using that fold's KRR training scores), then apply that fixed threshold unchanged to the corresponding fold test split.
-11. Lane A thresholding is fold-train-only (no use of fold test labels for threshold selection).
-12. Metrics: BER, True+, True-.
-13. ReliefF settings (Lane A): `n_neighbors=10`.
+10. Lane A config search is global-OOF per `(selector, classifier, replication_mode)`:
+   1. evaluate each candidate config across all 10 folds and stack OOF predictions,
+   2. derive `threshold_oof_global` from pooled OOF `(y_bin, score)` for that config,
+   3. score configs by pooled OOF BER at that threshold.
+11. Choose exactly one best config per `(selector, classifier, replication_mode)` using deterministic tie-breaks:
+   1. minimum pooled OOF BER,
+   2. ascending parameter tuple,
+   3. for KRR, `gamma=None` sorts before numeric `gamma`.
+12. Fold-level reporting uses only the selected config and its fixed `threshold_oof_global`.
+13. Metrics: BER, True+, True-.
+14. ReliefF settings (Lane A): `n_neighbors=10`.
 
 Replication ablation (mandatory):
 
@@ -116,8 +124,9 @@ Replication ablation (mandatory):
 
 Interpretation:
 
-1. `Replication-Strict` is the benchmark-faithful comparison.
+1. `Replication-Strict` is the benchmark-faithful comparison mode.
 2. `Replication+MI` isolates value from missing indicators.
+3. Official reporting defaults to classifiers `krr` and `logreg`; `krr_strict` is optional benchmark-only.
 
 ## 4.2 Lane B: Deployment-realistic selection and freeze
 
@@ -338,6 +347,12 @@ No-eligible-challenger fallback:
 
 Thresholds are finalized after Phase 2 freeze and Phase 3 full-DEV refit.
 
+Lane A-specific threshold policy:
+
+1. For Lane A config selection/reporting, use `threshold_oof_global` derived from pooled OOF predictions/labels of the selected config.
+2. Lane A full-data threshold (`threshold_full_dataset`) is diagnostic/deployment-reference only and is not used for Lane A tuning claims.
+3. Lane B threshold rules in this section remain unchanged (`inner-train`, `outer-train`, and post-freeze full-DEV rules as specified).
+
 Scoring and classification rule (supervised models):
 
 - Score is predicted fail probability `p_hat = Pr(y_bin=1)` from the frozen pipeline.
@@ -433,7 +448,7 @@ Lockbox MSPC companion evaluation:
 Lane A reporting:
 
 1. BER, True+, True-.
-2. Mean, std, and 95% CI across folds.
+2. Mean, std, and 95% CI across folds computed from `lane_a_global_fold_metrics.csv` under one selected global-OOF config per `(selector, classifier, replication_mode)`.
 3. Lane A CI method is fixed: 95% percentile bootstrap CI for the mean metric across folds (`n_boot=1000`, seed `42`):
    1. bootstrap resample the 10 fold indices with replacement,
    2. recompute the unweighted mean metric across the resampled folds,
@@ -553,52 +568,65 @@ Index conventions for all fold-based artifacts:
 
 Required artifact set:
 
-1. `reports/baseline_replication_strict.csv`
-2. `reports/baseline_replication_with_missing_indicators.csv`
-3. `reports/baseline_missing_indicator_ablation.csv`
-4. `reports/baseline_replication_summary.csv`
-5. `reports/timeaware_selector_screening.csv`
-6. `reports/splitwise_timeaware_results.csv`
-7. `reports/stage_b_inner_cv_results.csv`
-8. `reports/timeaware_model_selection.csv`
-9. `reports/seed_stability_summary.csv`
-10. `reports/feature_stability_by_seed.csv`
-11. `reports/hyperparameter_freeze_results.csv`
-12. `reports/final_lockbox_result.csv`
-13. `reports/mspc_baseline.csv`
-14. `reports/operational_cost_curves.csv`
-15. `reports/feature_report.csv`
-16. `reports/drift_gate_summary.csv`
-17. `reports/run_manifest.json`
+1. `reports/lane_a_global_sweep.csv`
+2. `reports/lane_a_global_best_config.csv`
+3. `reports/lane_a_global_fold_metrics.csv`
+4. `reports/lane_a_global_summary.csv`
+5. `reports/lane_a_global_ablation.csv`
+6. `reports/lane_a_global_full_fit_summary.csv`
+7. `reports/timeaware_selector_screening.csv`
+8. `reports/splitwise_timeaware_results.csv`
+9. `reports/stage_b_inner_cv_results.csv`
+10. `reports/timeaware_model_selection.csv`
+11. `reports/seed_stability_summary.csv`
+12. `reports/feature_stability_by_seed.csv`
+13. `reports/hyperparameter_freeze_results.csv`
+14. `reports/final_lockbox_result.csv`
+15. `reports/mspc_baseline.csv`
+16. `reports/operational_cost_curves.csv`
+17. `reports/feature_report.csv`
+18. `reports/drift_gate_summary.csv`
+19. `reports/run_manifest.json`
 
 Lane B infeasible artifact policy (if Section 4.2 infeasibility rules trigger: outer-test fail minimum or inner-CV feasibility gate):
 
 1. Required outputs become:
-   1. Lane A artifacts only: items 1-4,
+   1. Lane A artifacts only: items 1-6,
    2. `reports/run_manifest.json` with `lane_b_feasible=false` and reason.
-2. Lane B artifacts (items 5-16) are not required in this case.
+2. Lane B artifacts (items 7-18) are not required in this case.
 3. If emitted, Lane B artifacts must be clearly marked `LANE_B_INFEASIBLE` with metric fields set to `NA`.
 
 Minimum schema requirements:
 
-1. `reports/baseline_replication_strict.csv` and `reports/baseline_replication_with_missing_indicators.csv`:
-   1. `selector`, `fold`, `BER`, `True+`, `True-`, `n_train`, `n_test`, `n_test_fails`.
-2. `reports/baseline_missing_indicator_ablation.csv`:
-   1. `selector`, `BER_strict`, `BER_MI`, `delta_BER`, `CI_lower`, `CI_upper`, `n_boot`.
+1. `reports/lane_a_global_sweep.csv`:
+   1. one row per evaluated `(selector, classifier, replication_mode, config_tuple)`,
+   2. required columns include `selector`, `classifier`, `replication_mode`, config fields, `threshold_oof_global`, `mean_BER_oof`, `mean_True+_oof`, `mean_True-_oof`, and selected-feature summaries.
+2. `reports/lane_a_global_best_config.csv`:
+   1. exactly one row per `(selector, classifier, replication_mode)`,
+   2. includes selected config fields and `threshold_oof_global`.
+3. `reports/lane_a_global_fold_metrics.csv`:
+   1. one row per `(selector, classifier, replication_mode, fold)` for the selected best config,
+   2. required columns include `BER`, `True+`, `True-`, `n_train`, `n_test`, `n_test_fails`, `threshold_oof_global`.
+4. `reports/lane_a_global_ablation.csv`:
+   1. `selector`, `classifier`, `BER_strict`, `BER_MI`, `delta_BER`, `CI_lower`, `CI_upper`, `n_boot`.
    2. sign convention is fixed: `delta_BER = BER_strict - BER_MI` (positive means missing indicators improved BER).
    3. `CI_lower` and `CI_upper` correspond to the same signed delta definition.
    4. `CI_lower` and `CI_upper` are the 95% percentile paired bootstrap CI for the mean `delta_BER` across folds (`n_boot=1000`, seed `42`):
       resample fold indices with replacement, recompute the unweighted mean `delta_BER` over resampled folds, then take the 2.5th and 97.5th percentiles.
-3. `reports/baseline_replication_summary.csv`:
-   1. one row per `(selector, replication_mode)` where `replication_mode in {'strict','with_missing_indicators'}`,
-   2. `selector`, `replication_mode`, `n_folds`, `n_boot`, `boot_seed`,
+5. `reports/lane_a_global_summary.csv`:
+   1. one row per `(selector, classifier, replication_mode)` where `replication_mode in {'strict','with_missing_indicators'}`,
+   2. `selector`, `classifier`, `replication_mode`, `n_folds`, `n_boot`, `boot_seed`,
    3. `mean_BER`, `std_BER`, `CI_lower_BER`, `CI_upper_BER`,
    4. `mean_True+`, `std_True+`, `CI_lower_True+`, `CI_upper_True+`,
    5. `mean_True-`, `std_True-`, `CI_lower_True-`, `CI_upper_True-`,
    6. CI method is fixed: 95% percentile bootstrap CI for the mean metric across folds (`n_boot=1000`, seed `42`), consistent with the Lane A CI rule in Section 8.
-4. `reports/timeaware_selector_screening.csv`:
+6. `reports/lane_a_global_full_fit_summary.csv`:
+   1. one row per `(selector, classifier, replication_mode)`,
+   2. includes `threshold_full_dataset`, `BER_full_dataset`, `True+_full_dataset`, `True-_full_dataset`,
+   3. `threshold_full_dataset_role` must be `diagnostic_only`.
+7. `reports/timeaware_selector_screening.csv`:
    1. `selector`, `n_splits`, `mean_BER`, `std_BER`, `mean_True+`, `mean_True-`, `min_test_fails`.
-5. `reports/splitwise_timeaware_results.csv`:
+8. `reports/splitwise_timeaware_results.csv`:
      1. one row per `(selector, outer_fold, seed)`,
      2. `selector`, `outer_fold`, `seed`, `train_window`, `test_window`, `k`, `C`, `scaler`, `n_neighbors` (nullable for non-ReliefF selectors),
      3. `threshold_policy`, `outer_threshold`, `test_fails`, `BER`, `True+`, `True-`.
@@ -770,8 +798,8 @@ Can claim:
 4. Supervised advantage over MSPC only if, on the lockbox slice, the supervised model's `TPR_at_TNR90` (from `reports/final_lockbox_result.csv`) exceeds MSPC's `best_MSPC_TPR_at_TNR90` (from the `eval_scope='lockbox'` row in `reports/mspc_baseline.csv`) and that model's drift gate is not `HIGH_SHIFT`.
 5. If Lane B BER is worse than Lane A BER, describe this as expected under stricter temporal validation.
 6. If MSPC matches or exceeds supervised at `TNR=90%`, report this as a valid finding.
-7. Benchmark-improvement claim versus `33.5%` BER is allowed only when the `Replication-Strict F-test` mean BER 95% CI upper bound is below `0.335` (CI from `reports/baseline_replication_summary.csv` using percentile bootstrap on Lane A fold BER; `n_boot=1000`, seed `42`).
-8. Primary head-to-head benchmark claim versus `33.5%` must use `Replication-Strict F-test` BER (matched selector to McCann & Johnston 2008); other selectors are supportive evidence only.
+7. Benchmark-improvement claim versus `33.5%` BER is allowed only when the `classifier='krr', selector='F-test', replication_mode='strict'` mean BER 95% CI upper bound is below `0.335` (CI from `reports/lane_a_global_summary.csv` using percentile bootstrap on Lane A fold BER; `n_boot=1000`, seed `42`), and both anchor rows `(F-test,krr,strict)` and `(F-test,krr,with_missing_indicators)` exist.
+8. Primary head-to-head benchmark claim versus `33.5%` must use `classifier='krr', selector='F-test', replication_mode='strict'` BER; other selectors/classifiers are supportive evidence only.
 
 Cannot claim:
 
@@ -805,13 +833,13 @@ Cannot claim:
 18. `run_manifest.json` deterministic hash policy and required keys.
 19. ReliefF implementation determinism: use `skrebate.ReliefF` (no `random_state`); only CV split assignment depends on seeds.
 20. Multi-seed feature-stability aggregation rule over `(outer_fold, seed)` tuple units.
-21. Benchmark-claim lock rule: `33.5%` head-to-head claim uses `Replication-Strict F-test` with pre-registered CI criterion.
+21. Benchmark-claim lock rule: `33.5%` head-to-head claim uses `classifier='krr', selector='F-test', replication_mode='strict'` with pre-registered CI criterion.
 22. Deterministic threshold tie-break rules for scientific, operational-cap, and `TNR=90%` extraction points.
 23. Label contract (pass/fail mapping, `y_bin` positive class, and `True+`/`True-` conventions).
 24. Lane B transformed feature identity contract (value `X{j}` and missing indicator `M{j}` indexing, and missing-only indicator accounting rule).
 25. PSI computation rule (quantile edges on DEV, duplicate-edge collapse, open-ended extreme bins, missing-bin handling, bin fractions over all samples, `eps`, and formula).
 26. Supervised thresholding score/inequality and candidate rule (`p_hat=Pr(y_bin=1)`, predict fail iff `p_hat >= threshold`, unique-score candidates plus sentinels).
-27. Lane A replication scope, pairing, and thresholding: full dataset (`DEV+LOCKBOX`) with paired folds across `Replication-Strict` and `Replication+MI`, and fold-train-only BER-optimal threshold derivation for strict KRR scoring.
+27. Lane A replication scope, pairing, and thresholding: full dataset (`DEV+LOCKBOX`) with paired folds across `Replication-Strict` and `Replication+MI`, official classifiers `krr` and `logreg`, optional benchmark-only `krr_strict`, global OOF config selection per `(selector,classifier,replication_mode)`, `threshold_oof_global` definition, and deterministic tie-break chain.
 28. Feature clustering rule: Pearson correlation using the Phase-3 frozen primary's imputer (fit on full DEV) applied to DEV value features only (exclude missing indicators and all lockbox rows).
 29. Timestamp parsing contract (day-first format `DD/MM/YYYY HH:MM:SS`, `errors='coerce'`, UTC-naive no-conversion).
 30. Selector implementation contract (definitions for S2N/Welch-t/F-test/Pearson/ReliefF/Gram-Schmidt, undefined-score handling, and feature-level tie-break).

@@ -21,27 +21,14 @@ def select_features(
     y_train: np.ndarray,
     k: int,
     n_neighbors: int | None = None,
-    mrmr_lambda: float = 1.0,
-    mutual_info_n_neighbors: int = 3,
-    l1_selector_c: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     if method in {
         SelectorName.S2N,
         SelectorName.WELCH_T,
         SelectorName.F_TEST,
         SelectorName.PEARSON,
-        SelectorName.MUTUAL_INFO,
-        SelectorName.MRMR,
-        SelectorName.L1_LOGREG,
     }:
-        order, scores = rank_features(
-            method,
-            x_train,
-            y_train,
-            mrmr_lambda=float(mrmr_lambda),
-            mutual_info_n_neighbors=int(mutual_info_n_neighbors),
-            l1_selector_c=float(l1_selector_c),
-        )
+        order, scores = rank_features(method, x_train, y_train)
         selected = order[: min(k, order.shape[0])]
         return selected, scores
     if method == SelectorName.RELIEFF:
@@ -67,9 +54,6 @@ def fit_selector_pipeline(
     scaler_name: str,
     add_indicator: bool,
     n_neighbors: int | None,
-    mrmr_lambda: float = 1.0,
-    mutual_info_n_neighbors: int = 3,
-    l1_selector_c: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, list[Any], np.ndarray, Any, Any]:
     imputer = make_imputer(add_indicator=add_indicator)
     x_train_imp = imputer.fit_transform(x_train_raw)
@@ -84,13 +68,10 @@ def fit_selector_pipeline(
         y_train=y_train,
         k=int(k),
         n_neighbors=n_neighbors,
-        mrmr_lambda=float(mrmr_lambda),
-        mutual_info_n_neighbors=int(mutual_info_n_neighbors),
-        l1_selector_c=float(l1_selector_c),
     )
     feature_meta = transformed_feature_metadata_from_imputer(
         imputer=imputer, raw_feature_count=x_train_raw.shape[1]
     )
     x_train_sel = x_train_scaled[:, selected_local]
-    x_eval_sel = x_eval_scaled[:, selected_local] # type: ignore
+    x_eval_sel = x_eval_scaled[:, selected_local]  # type: ignore
     return x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler

@@ -1,0 +1,2 @@
+N_total_after_NaT_drop,N_dev,N_lockbox,lockbox_rule,outer_fold_plan_used,lane_b_feasible,lane_b_infeasible_reason
+1567,1332,235,"last floor(0.15*N) rows after stable sort by (timestamp, raw_row_id)",fallback_3fold,True,

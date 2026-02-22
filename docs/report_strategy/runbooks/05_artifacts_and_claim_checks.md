@@ -19,8 +19,8 @@ Validate artifact completeness, schema correctness, and claim eligibility before
 ## Artifact QA Sequence
 
 1. Confirm required artifact set for the current feasibility mode:
-   1. Lane B feasible: full set (1-17)
-   2. Lane B infeasible: Lane A artifacts + manifest rules only
+   1. Lane B feasible: full set (Lane A global artifacts + Lane B artifacts + manifest)
+   2. Lane B infeasible: Lane A global artifacts + manifest rules only
    3. If `challenger_available=false`, enforce fallback artifact behavior:
       1. no challenger rows in row-grain artifacts
       2. challenger columns allowed only where canonical spec says write `NA`.
@@ -28,6 +28,10 @@ Validate artifact completeness, schema correctness, and claim eligibility before
    1. selected config uniqueness in Stage B
    2. frozen config uniqueness in Phase 2
    3. in `final_lockbox_result.csv`, for each role, verify `threshold_at_TNR90`, `TNR_at_TNR90`, and `TPR_at_TNR90` are identical across the `scientific` and `operational` rows.
+   4. Lane A global uniqueness:
+      1. exactly one row per `(selector, classifier, replication_mode)` in `lane_a_global_best_config.csv`
+      2. exactly one row per `(selector, classifier, replication_mode)` in `lane_a_global_summary.csv`
+      3. exactly 10 rows per `(selector, classifier, replication_mode)` in `lane_a_global_fold_metrics.csv`.
 3. Validate schema-level type/value constraints:
    1. enums (`selector`, `scaler`, `threshold_policy`, `eval_scope`, `model_scope`, `replication_mode`, `feature_type`)
    2. nullable rules (`n_neighbors` for non-ReliefF)
@@ -59,8 +63,9 @@ Validate artifact completeness, schema correctness, and claim eligibility before
 ## Claim Gate Sequence
 
 1. Benchmark claim (`33.5%`) gate:
-   1. only `Replication-Strict F-test`
-   2. CI upper bound < 0.335
+   1. use `lane_a_global_summary.csv`
+   2. require anchor rows for both `(classifier='krr', selector='F-test', replication_mode='strict')` and `(classifier='krr', selector='F-test', replication_mode='with_missing_indicators')`
+   3. apply CI criterion to strict anchor row: `CI_upper_BER < 0.335`
 2. Lockbox superiority gate:
    1. drift status not `HIGH_SHIFT` for that model
    2. supervised `TPR_at_TNR90` (lockbox) > MSPC `best_MSPC_TPR_at_TNR90` (lockbox)

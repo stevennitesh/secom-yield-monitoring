@@ -18,7 +18,7 @@ def test_artifact_audit_lane_a_only_mode(synthetic_input_dir: Path, workspace_tm
     run_lane_a_replication(
         bundle,
         out_dir,
-        lane_a_classifier="krr_strict",
+        lane_a_classifier="krr",
         selectors_run=[SelectorName.F_TEST, SelectorName.S2N],
     )
 
@@ -39,7 +39,7 @@ def test_artifact_audit_catches_delta_sign_error(synthetic_input_dir: Path, work
     run_lane_a_replication(
         bundle,
         out_dir,
-        lane_a_classifier="krr_strict",
+        lane_a_classifier="krr",
         selectors_run=[SelectorName.F_TEST, SelectorName.S2N],
     )
 
@@ -49,9 +49,9 @@ def test_artifact_audit_catches_delta_sign_error(synthetic_input_dir: Path, work
     manifest["lane_b_infeasible_reason"] = "min_class_count_lt_5_for_inner_cv"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
 
-    ab = pd.read_csv(out_dir / "reports" / "baseline_missing_indicator_ablation.csv")
+    ab = pd.read_csv(out_dir / "reports" / "lane_a_global_ablation.csv")
     ab.loc[:, "delta_BER"] = 999.0
-    ab.to_csv(out_dir / "reports" / "baseline_missing_indicator_ablation.csv", index=False)
+    ab.to_csv(out_dir / "reports" / "lane_a_global_ablation.csv", index=False)
 
     result = run_artifact_audit(out_dir)
     assert not result.ok

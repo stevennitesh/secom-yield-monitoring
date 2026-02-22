@@ -4,7 +4,7 @@ Canonical source: `docs/final_end_to_end_report_strategy_merged.md` (Sections 4.
 
 ## Objective
 
-Produce benchmark-comparable replication results with and without missing indicators, using paired folds and fixed settings.
+Produce benchmark-comparable replication results with and without missing indicators using a global OOF configuration-and-threshold protocol.
 
 ## Inputs
 
@@ -13,47 +13,57 @@ Produce benchmark-comparable replication results with and without missing indica
 
 ## Outputs
 
-1. `reports/baseline_replication_strict.csv`
-2. `reports/baseline_replication_with_missing_indicators.csv`
-3. `reports/baseline_missing_indicator_ablation.csv`
-4. `reports/baseline_replication_summary.csv`
+1. `reports/lane_a_global_sweep.csv`
+2. `reports/lane_a_global_best_config.csv`
+3. `reports/lane_a_global_fold_metrics.csv`
+4. `reports/lane_a_global_summary.csv`
+5. `reports/lane_a_global_ablation.csv`
+6. `reports/lane_a_global_full_fit_summary.csv`
 
 ## Fixed Protocol
 
 1. 10-fold `StratifiedKFold(shuffle=True, random_state=42)`.
-2. Same folds for both runs (paired ablation).
+2. Same folds for strict and +MI runs (paired ablation).
 3. `k=40`.
 4. Imputer:
    1. strict: `SimpleImputer(strategy='median', keep_empty_features=True, add_indicator=False)`
    2. +MI: `SimpleImputer(strategy='median', keep_empty_features=True, add_indicator=True)`
 5. Scaler: `StandardScaler(with_mean=True, with_std=True)`.
-6. Classifier: `KernelRidge(kernel='rbf', alpha=1.0, gamma=None)`.
-7. Label transform for KRR target: `y_krr = 2*y_bin - 1`.
-8. Decision threshold (strict KRR): derive BER-optimal threshold on the fold-train predictions only; apply unchanged to that fold test split.
-9. Lane A thresholding must be train-only within each fold (never use fold-test labels to pick threshold).
+6. Official classifiers: `krr` (tuned Kernel Ridge) and `logreg` (tuned Logistic Regression).
+7. Optional benchmark-only classifier: `krr_strict` (`KernelRidge(kernel='rbf', alpha=1.0, gamma=None)`).
+8. Label transform for KRR target: `y_krr = 2*y_bin - 1`.
+9. Lane A tuning/thresholding protocol:
+   1. evaluate each candidate config by pooled OOF BER,
+   2. derive BER-optimal `threshold_oof_global` from pooled OOF predictions/labels for that config,
+   3. pick one best config per `(selector, classifier, replication_mode)` via min OOF BER,
+   4. tie-break deterministically by ascending parameter tuple (for KRR, `gamma=None` sorts before numeric gamma),
+   5. compute fold metrics at the selected config's `threshold_oof_global`.
 10. ReliefF parameter is fixed: `n_neighbors=10`.
-11. Selector behavior (formulas, eps constants, undefined-score handling, deterministic tie-breaks) must follow canonical Section 4.3.
+11. Full-data threshold in `lane_a_global_full_fit_summary.csv` is diagnostic-only and not used for Lane A tuning claims.
+12. Selector behavior (formulas, eps constants, undefined-score handling, deterministic tie-breaks) must follow canonical Section 4.3.
 
 ## Procedure
 
-1. Run strict mode for all 6 selectors across 10 folds.
-2. Run +MI mode for all 6 selectors across the exact same 10 folds.
-3. Compute fold-level `BER`, `True+`, `True-`, plus `n_train`, `n_test`, `n_test_fails`.
-4. Compute paired ablation:
-   1. per-fold `delta_BER = BER_strict - BER_MI`
-   2. 95% paired bootstrap CI for mean delta (`n_boot=1000`, seed 42)
-5. Compute summary table per `(selector, replication_mode)`:
+1. For each classifier and replication mode, enumerate deterministic config grids over selector and classifier parameters.
+2. For each config, run all 10 folds, stack OOF scores, calibrate `threshold_oof_global`, and compute pooled OOF BER.
+3. Select the best config per `(selector, classifier, replication_mode)` using objective+tie-break rules.
+4. Write per-fold metrics for each selected best config to `lane_a_global_fold_metrics.csv`.
+5. Build summary per `(selector, classifier, replication_mode)` from selected-config fold metrics:
    1. mean/std (`std` uses `ddof=1`)
-   2. 95% CI for mean metrics via fold bootstrap (`n_boot=1000`, seed 42).
+   2. 95% CI for mean metrics via fold bootstrap (`n_boot=1000`, seed `42`).
+6. Build strict-vs-MI ablation per `(selector, classifier)`:
+   1. per-fold `delta_BER = BER_strict - BER_MI`
+   2. 95% paired bootstrap CI for mean delta (`n_boot=1000`, seed 42).
+7. Refit selected best configs on full Lane A data and write diagnostic full-data thresholds/metrics to `lane_a_global_full_fit_summary.csv`.
 
 ## Exit Criteria
 
-1. Both modes exist for every selector.
-2. Fold IDs are identical between strict and +MI.
+1. Exactly one best config row exists per `(selector, classifier, replication_mode)`.
+2. Exactly 10 fold rows exist per selected triplet in `lane_a_global_fold_metrics.csv`.
 3. CI methodology is exactly the pre-registered bootstrap method.
-4. For strict KRR, threshold is derived on fold-train only and then applied unchanged to fold-test.
+4. Full-data threshold rows are marked diagnostic-only.
 
 ## Claim-Linked Checks
 
-1. Benchmark claim uses only `Replication-Strict F-test`.
-2. 33.5% claim gate uses 95% CI upper bound from `baseline_replication_summary.csv`.
+1. Benchmark claim uses only `classifier='krr', selector='F-test', replication_mode='strict'`.
+2. 33.5% claim gate uses the 95% CI upper bound from `lane_a_global_summary.csv` for that anchored row.

@@ -67,7 +67,26 @@ def candidate_thresholds(scores: np.ndarray) -> np.ndarray:
     return np.concatenate((np.array([-np.inf]), uniq, np.array([np.inf])))
 
 
-def find_ber_optimal_threshold(
+def _is_better_threshold(
+    ber: float,
+    tpr: float,
+    threshold: float,
+    best_ber: float,
+    best_tpr: float,
+    best_threshold: float | None,
+) -> bool:
+    if ber < best_ber:
+        return True
+    if np.isclose(ber, best_ber):
+        if tpr > best_tpr:
+            return True
+        if np.isclose(tpr, best_tpr):
+            if best_threshold is None or float(threshold) < float(best_threshold):
+                return True
+    return False
+
+
+def _find_ber_optimal_threshold_bruteforce(
     y_true: np.ndarray,
     scores: np.ndarray,
 ) -> tuple[float, dict[str, float]]:
@@ -80,28 +99,109 @@ def find_ber_optimal_threshold(
         counts = confusion_counts(y_true, y_pred)
         ber = ber_from_counts(counts)
         tpr = true_pos_rate(counts)
-
-        is_better = False
-        if ber < best_ber:
-            is_better = True
-        elif np.isclose(ber, best_ber):
-            if tpr > best_tpr:
-                is_better = True
-            elif np.isclose(tpr, best_tpr):
-                if best_threshold is None or float(threshold) < float(best_threshold):
-                    is_better = True
-        if is_better:
+        if _is_better_threshold(
+            ber=float(ber),
+            tpr=float(tpr),
+            threshold=float(threshold),
+            best_ber=float(best_ber),
+            best_tpr=float(best_tpr),
+            best_threshold=best_threshold,
+        ):
             best_threshold = float(threshold)
             best_ber = float(ber)
             best_tpr = float(tpr)
 
-    assert best_threshold is not None
+    if best_threshold is None:
+        raise RuntimeError("Failed to find BER-optimal threshold")
     y_best = predict_from_threshold(scores, best_threshold)
     counts_best = confusion_counts(y_true, y_best)
     return best_threshold, {
         "BER": ber_from_counts(counts_best),
         "True+": true_pos_rate(counts_best),
         "True-": true_neg_rate(counts_best),
+    }
+
+
+def find_ber_optimal_threshold(
+    y_true: np.ndarray,
+    scores: np.ndarray,
+) -> tuple[float, dict[str, float]]:
+    y_arr = np.asarray(y_true, dtype=int)
+    scores_arr = np.asarray(scores, dtype=float)
+    if y_arr.size != scores_arr.size:
+        raise ValueError("y_true and scores must have identical length")
+    if y_arr.size == 0:
+        raise ValueError("Cannot optimize threshold on empty arrays")
+    if not np.all(np.isfinite(scores_arr)):
+        return _find_ber_optimal_threshold_bruteforce(y_arr, scores_arr)
+
+    order = np.argsort(scores_arr, kind="mergesort")[::-1]
+    sorted_scores = scores_arr[order]
+    sorted_y = y_arr[order]
+
+    n_pos_total = int(np.sum(sorted_y == 1))
+    n_neg_total = int(sorted_y.size - n_pos_total)
+    tp = 0
+    fp = 0
+    fn = n_pos_total
+    tn = n_neg_total
+
+    best_threshold: float | None = None
+    best_ber = np.inf
+    best_tpr = -np.inf
+    best_counts: BinaryCounts | None = None
+
+    # threshold = +inf (predict all negatives)
+    tpr = 0.0 if (tp + fn) == 0 else float(tp / (tp + fn))
+    tnr = 0.0 if (tn + fp) == 0 else float(tn / (tn + fp))
+    ber = float(1.0 - 0.5 * (tpr + tnr))
+    if _is_better_threshold(ber, tpr, float(np.inf), best_ber, best_tpr, best_threshold):
+        best_threshold = float(np.inf)
+        best_ber = ber
+        best_tpr = tpr
+        best_counts = BinaryCounts(tn=tn, fp=fp, fn=fn, tp=tp)
+
+    i = 0
+    n = int(sorted_scores.size)
+    while i < n:
+        score_value = float(sorted_scores[i])
+        j = i
+        group_pos = 0
+        while j < n and float(sorted_scores[j]) == score_value:
+            group_pos += int(sorted_y[j] == 1)
+            j += 1
+        group_size = j - i
+        group_neg = group_size - group_pos
+
+        tp += group_pos
+        fp += group_neg
+        fn -= group_pos
+        tn -= group_neg
+
+        tpr = 0.0 if (tp + fn) == 0 else float(tp / (tp + fn))
+        tnr = 0.0 if (tn + fp) == 0 else float(tn / (tn + fp))
+        ber = float(1.0 - 0.5 * (tpr + tnr))
+        if _is_better_threshold(ber, tpr, score_value, best_ber, best_tpr, best_threshold):
+            best_threshold = score_value
+            best_ber = ber
+            best_tpr = tpr
+            best_counts = BinaryCounts(tn=tn, fp=fp, fn=fn, tp=tp)
+        i = j
+
+    # threshold = -inf (predict all positives), ties break to smallest threshold
+    tpr = 0.0 if (tp + fn) == 0 else float(tp / (tp + fn))
+    tnr = 0.0 if (tn + fp) == 0 else float(tn / (tn + fp))
+    ber = float(1.0 - 0.5 * (tpr + tnr))
+    if _is_better_threshold(ber, tpr, float(-np.inf), best_ber, best_tpr, best_threshold):
+        best_threshold = float(-np.inf)
+        best_counts = BinaryCounts(tn=tn, fp=fp, fn=fn, tp=tp)
+
+    if best_threshold is None or best_counts is None:
+        raise RuntimeError("Failed to find BER-optimal threshold")
+    return best_threshold, {
+        "BER": ber_from_counts(best_counts),
+        "True+": true_pos_rate(best_counts),
+        "True-": true_neg_rate(best_counts),
     }
 
 
@@ -204,4 +304,3 @@ def expected_cost_per_wafer(fp: float, fn: float, n: float, cost_ratio: float) -
     c_fp = 1.0
     c_fn = float(cost_ratio)
     return float((c_fp * fp + c_fn * fn) / n)
-
