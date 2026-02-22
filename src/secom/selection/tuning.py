@@ -8,32 +8,26 @@ import numpy as np
 from sklearn.model_selection import StratifiedKFold
 
 from secom.config import (
-    LANE_A_KRR_BALANCED_ALPHA_GRID,
-    LANE_A_KRR_BALANCED_GAMMA_GRID,
-    LANE_A_KRR_BALANCED_INNER_SPLITS,
+    LANE_A_KRR_ALPHA_GRID,
+    LANE_A_KRR_GAMMA_GRID,
+    LANE_A_KRR_INNER_SPLITS,
     LANE_A_LOGREG_C_GRID,
-    LANE_A_L1_SELECTOR_C_GRID,
-    LANE_A_MRMR_LAMBDA_GRID,
-    LANE_A_MUTUAL_INFO_N_NEIGHBORS_GRID,
-    LaneAClassifier,
     ScalerName,
     SEED_LANE_A,
-    SelectorName,
 )
 from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold
 from secom.models import (
-    fit_lane_a_balanced_classifier,
+    fit_lane_a_krr_classifier,
     make_lane_a_classifier,
     make_lane_a_logreg_tuned_classifier,
 )
-from secom.selection.engine import select_features
 
 
 def gamma_sort_key(gamma: float | None) -> float:
     return -1.0 if gamma is None else float(gamma)
 
 
-def select_krr_balanced_config_with_inner_cv(
+def select_krr_config_with_inner_cv(
     x_train_sel: np.ndarray,
     y_train: np.ndarray,
 ) -> tuple[float, float | None, Any, float, float]:
@@ -41,17 +35,17 @@ def select_krr_balanced_config_with_inner_cv(
     n_fail = int(np.sum(y_train == 1))
     n_pass = int(np.sum(y_train == 0))
     min_class = min(n_fail, n_pass)
-    n_splits = min(int(LANE_A_KRR_BALANCED_INNER_SPLITS), min_class)
-    sorted_alphas = sorted(float(a) for a in LANE_A_KRR_BALANCED_ALPHA_GRID)
+    n_splits = min(int(LANE_A_KRR_INNER_SPLITS), min_class)
+    sorted_alphas = sorted(float(a) for a in LANE_A_KRR_ALPHA_GRID)
     sorted_gammas = sorted(
-        (None if g is None else float(g) for g in LANE_A_KRR_BALANCED_GAMMA_GRID),
+        (None if g is None else float(g) for g in LANE_A_KRR_GAMMA_GRID),
         key=gamma_sort_key,
     )
 
     if n_splits < 2:
         fallback_alpha = float(sorted_alphas[0])
         fallback_gamma = sorted_gammas[0]
-        fallback_clf = fit_lane_a_balanced_classifier(
+        fallback_clf = fit_lane_a_krr_classifier(
             x_train_sel,
             y_train,
             alpha=fallback_alpha,
@@ -78,7 +72,7 @@ def select_krr_balanced_config_with_inner_cv(
             x_inner_val = x_train_sel[inner_val_idx]
             y_inner_val = y_train[inner_val_idx]
 
-            clf_inner = fit_lane_a_balanced_classifier(
+            clf_inner = fit_lane_a_krr_classifier(
                 x_inner_train,
                 y_inner_train,
                 alpha=alpha,
@@ -108,9 +102,9 @@ def select_krr_balanced_config_with_inner_cv(
                     best_gamma = gamma
 
     if best_alpha is None:
-        raise RuntimeError("krr_balanced: failed to choose (alpha, gamma) from inner CV")
+        raise RuntimeError("krr: failed to choose (alpha, gamma) from inner CV")
 
-    final_clf = fit_lane_a_balanced_classifier(
+    final_clf = fit_lane_a_krr_classifier(
         x_train_sel,
         y_train,
         alpha=float(best_alpha),
@@ -129,7 +123,7 @@ def select_logreg_config_with_inner_cv(
     n_fail = int(np.sum(y_train == 1))
     n_pass = int(np.sum(y_train == 0))
     min_class = min(n_fail, n_pass)
-    n_splits = min(int(LANE_A_KRR_BALANCED_INNER_SPLITS), min_class)
+    n_splits = min(int(LANE_A_KRR_INNER_SPLITS), min_class)
     sorted_c_values = sorted(float(c) for c in LANE_A_LOGREG_C_GRID)
 
     if n_splits < 2:
@@ -191,7 +185,7 @@ def inner_cv_ber_krr_strict(x_train_sel: np.ndarray, y_train: np.ndarray) -> flo
     n_fail = int(np.sum(y_train == 1))
     n_pass = int(np.sum(y_train == 0))
     min_class = min(n_fail, n_pass)
-    n_splits = min(int(LANE_A_KRR_BALANCED_INNER_SPLITS), min_class)
+    n_splits = min(int(LANE_A_KRR_INNER_SPLITS), min_class)
     if n_splits < 2:
         clf = make_lane_a_classifier(alpha=1.0, gamma=None)
         y_train_krr = 2 * y_train - 1
@@ -223,103 +217,6 @@ def inner_cv_ber_krr_strict(x_train_sel: np.ndarray, y_train: np.ndarray) -> flo
     return float(np.mean(fold_bers))
 
 
-def tune_classifier_for_selected_features(
-    x_train_sel: np.ndarray,
-    y_train: np.ndarray,
-    classifier: str,
-) -> tuple[float, dict[str, Any]]:
-    if classifier == LaneAClassifier.KRR_BALANCED:
-        alpha, gamma, clf, threshold, inner_ber = select_krr_balanced_config_with_inner_cv(
-            x_train_sel=x_train_sel,
-            y_train=y_train,
-        )
-        return float(inner_ber), {
-            "chosen_alpha": float(alpha),
-            "chosen_gamma": gamma,
-            "chosen_C": None,
-            "model": clf,
-            "threshold": float(threshold),
-        }
-    if classifier == LaneAClassifier.LOGREG:
-        c_value, clf, threshold, inner_ber = select_logreg_config_with_inner_cv(
-            x_train_sel=x_train_sel,
-            y_train=y_train,
-        )
-        return float(inner_ber), {
-            "chosen_alpha": None,
-            "chosen_gamma": None,
-            "chosen_C": float(c_value),
-            "model": clf,
-            "threshold": float(threshold),
-        }
-    if classifier == LaneAClassifier.KRR_STRICT:
-        inner_ber = inner_cv_ber_krr_strict(x_train_sel=x_train_sel, y_train=y_train)
-        return float(inner_ber), {
-            "chosen_alpha": None,
-            "chosen_gamma": None,
-            "chosen_C": None,
-            "model": None,
-            "threshold": None,
-        }
-    raise ValueError(f"Unknown Lane A classifier mode: {classifier}")
-
-
-def select_selector_param_for_fold(
-    x_train: np.ndarray,
-    y_train: np.ndarray,
-    classifier: str,
-    selector_method: str,
-    param_values: list[float | int],
-    param_name: str,
-    k: int = 40,
-) -> tuple[float | int, np.ndarray, dict[str, Any]]:
-    best_value: float | int | None = None
-    best_selected_local: np.ndarray | None = None
-    best_criterion = np.inf
-    best_payload: dict[str, Any] = {}
-
-    for value in param_values:
-        selector_kwargs: dict[str, Any] = {
-            "method": selector_method,
-            "x_train": x_train,
-            "y_train": y_train,
-            "k": k,
-        }
-        if param_name == "mrmr_lambda":
-            selector_kwargs["mrmr_lambda"] = float(value)
-        elif param_name == "mutual_info_n_neighbors":
-            selector_kwargs["mutual_info_n_neighbors"] = int(value)
-        elif param_name == "l1_selector_c":
-            selector_kwargs["l1_selector_c"] = float(value)
-        else:
-            raise ValueError(f"Unsupported selector param_name={param_name}")
-
-        selected_local, _ = select_features(**selector_kwargs)
-        x_train_sel = x_train[:, selected_local]
-        criterion, payload = tune_classifier_for_selected_features(
-            x_train_sel=x_train_sel,
-            y_train=y_train,
-            classifier=classifier,
-        )
-
-        if criterion < best_criterion - 1e-12:
-            best_criterion = criterion
-            best_value = value
-            best_selected_local = selected_local
-            best_payload = payload
-        elif np.isclose(criterion, best_criterion):
-            if best_value is None or value < best_value:
-                best_value = value
-                best_selected_local = selected_local
-                best_payload = payload
-
-    if best_value is None or best_selected_local is None:
-        raise RuntimeError(
-            f"{selector_method} selector tuning failed for param {param_name}"
-        )
-    return best_value, best_selected_local, best_payload
-
-
 def select_best_inner_config(config_rows: list[dict[str, Any]]) -> dict[str, Any]:
     if not config_rows:
         raise ValueError("No configs to select")
@@ -340,12 +237,3 @@ def select_best_inner_config(config_rows: list[dict[str, Any]]) -> dict[str, Any
 
     return sorted(tied, key=key)[0]
 
-
-def lane_a_param_grid_for_selector(selector: str, param_name: str) -> list[float | int]:
-    if selector == SelectorName.MRMR and param_name == "mrmr_lambda":
-        return sorted(float(v) for v in LANE_A_MRMR_LAMBDA_GRID)
-    if selector == SelectorName.MUTUAL_INFO and param_name == "mutual_info_n_neighbors":
-        return sorted(int(v) for v in LANE_A_MUTUAL_INFO_N_NEIGHBORS_GRID)
-    if selector == SelectorName.L1_LOGREG and param_name == "l1_selector_c":
-        return sorted(float(v) for v in LANE_A_L1_SELECTOR_C_GRID)
-    raise ValueError(f"Unsupported selector/param pair: {selector}/{param_name}")

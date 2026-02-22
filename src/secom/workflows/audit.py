@@ -7,7 +7,7 @@ import pandas as pd
 
 from secom.artifacts import ValidationResult, validate_required_artifacts, validate_schema_and_logic
 from secom.config import ArtifactName, LaneAClassifier, ModelScope, ReplicationMode, SelectorName, ThresholdPolicy
-from secom.qa import validate_lane_a_artifacts
+from secom.qa import validate_lane_a_global_artifacts
 
 
 def run_artifact_audit(output_dir: Path) -> ValidationResult:
@@ -20,23 +20,26 @@ def run_artifact_audit(output_dir: Path) -> ValidationResult:
     schema = validate_schema_and_logic(output_dir=output_dir)
     errors.extend(schema.errors)
 
-    strict_path = reports / ArtifactName.BASELINE_STRICT
-    mi_path = reports / ArtifactName.BASELINE_MI
-    ablation_path = reports / ArtifactName.BASELINE_ABLATION
-    summary_path = reports / ArtifactName.BASELINE_SUMMARY
-    tuning_trace_path = reports / ArtifactName.BASELINE_TUNING_TRACE
+    sweep_path = reports / ArtifactName.LANE_A_GLOBAL_SWEEP
+    best_path = reports / ArtifactName.LANE_A_GLOBAL_BEST_CONFIG
+    fold_metrics_path = reports / ArtifactName.LANE_A_GLOBAL_FOLD_METRICS
+    summary_path = reports / ArtifactName.LANE_A_GLOBAL_SUMMARY
+    ablation_path = reports / ArtifactName.LANE_A_GLOBAL_ABLATION
+    full_fit_path = reports / ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY
     if (
-        strict_path.exists()
-        and mi_path.exists()
+        sweep_path.exists()
+        and best_path.exists()
+        and fold_metrics_path.exists()
         and ablation_path.exists()
         and summary_path.exists()
-        and tuning_trace_path.exists()
+        and full_fit_path.exists()
     ):
-        strict_df = pd.read_csv(strict_path)
-        mi_df = pd.read_csv(mi_path)
+        sweep_df = pd.read_csv(sweep_path)
+        best_df = pd.read_csv(best_path)
+        fold_metrics_df = pd.read_csv(fold_metrics_path)
         ablation_df = pd.read_csv(ablation_path)
         summary_df = pd.read_csv(summary_path)
-        tuning_trace_df = pd.read_csv(tuning_trace_path)
+        full_fit_df = pd.read_csv(full_fit_path)
         classifiers_run = (
             sorted(summary_df["classifier"].dropna().astype(str).unique().tolist())
             if "classifier" in summary_df.columns
@@ -48,28 +51,39 @@ def run_artifact_audit(output_dir: Path) -> ValidationResult:
             else []
         )
         try:
-            validate_lane_a_artifacts(
+            validate_lane_a_global_artifacts(
+                sweep_df=sweep_df,
+                best_df=best_df,
+                fold_metrics_df=fold_metrics_df,
                 summary_df=summary_df,
                 ablation_df=ablation_df,
-                strict_df=strict_df,
-                mi_df=mi_df,
-                tuning_trace_df=tuning_trace_df,
+                full_fit_df=full_fit_df,
                 classifiers_run=classifiers_run,
                 selectors_run=selectors_run,
             )
         except ValueError as exc:
             errors.append(str(exc))
 
-        if LaneAClassifier.KRR_STRICT in classifiers_run:
+        if LaneAClassifier.KRR in classifiers_run:
             f_strict = summary_df[
-                (summary_df["classifier"] == LaneAClassifier.KRR_STRICT)
+                (summary_df["classifier"] == LaneAClassifier.KRR)
                 & (summary_df["selector"] == SelectorName.F_TEST)
                 & (summary_df["replication_mode"] == ReplicationMode.STRICT)
+            ]
+            f_mi = summary_df[
+                (summary_df["classifier"] == LaneAClassifier.KRR)
+                & (summary_df["selector"] == SelectorName.F_TEST)
+                & (summary_df["replication_mode"] == ReplicationMode.WITH_MISSING_INDICATORS)
             ]
             if len(f_strict) != 1:
                 errors.append(
                     "benchmark claim gate requires exactly one row for "
-                    "classifier=krr_strict, selector=F-test, replication_mode=strict"
+                    "classifier=krr, selector=F-test, replication_mode=strict"
+                )
+            if len(f_mi) != 1:
+                errors.append(
+                    "benchmark claim gate requires exactly one row for "
+                    "classifier=krr, selector=F-test, replication_mode=with_missing_indicators"
                 )
 
     if lane_b_feasible and (reports / ArtifactName.FINAL_LOCKBOX).exists():

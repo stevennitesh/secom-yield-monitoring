@@ -1,0 +1,89 @@
+{
+  "challenger_available": null,
+  "challenger_unavailable_reason": null,
+  "dev_lockbox_split": {
+    "N_dev": 1332,
+    "N_lockbox": 235,
+    "N_total_after_NaT_drop": 1567,
+    "lockbox_rule": "last floor(0.15*N) rows after stable sort by (timestamp, raw_row_id)"
+  },
+  "drift_gate_results": null,
+  "empirical_ARL0_nan_reason": null,
+  "frozen_challenger": null,
+  "frozen_primary": null,
+  "frozen_thresholds": null,
+  "git_commit": "73cb88230af1661b9c500b73e99debd321f81476",
+  "git_dirty": 1,
+  "lane_b_feasible": 1,
+  "lane_b_infeasible_reason": null,
+  "library_versions": {
+    "numpy": "2.4.2",
+    "pandas": "2.3.3",
+    "python": "3.12.12",
+    "scipy": "1.16.3",
+    "sklearn": "1.8.0",
+    "skrebate": "UNAVAILABLE"
+  },
+  "manifest_version": "1.0",
+  "outer_fold_plan_used": "fallback_3fold",
+  "outer_fold_week_ranges": [
+    {
+      "outer_fold": 1,
+      "test_weeks": [
+        5,
+        12
+      ],
+      "train_weeks": [
+        1,
+        4
+      ]
+    },
+    {
+      "outer_fold": 2,
+      "test_weeks": [
+        7,
+        12
+      ],
+      "train_weeks": [
+        1,
+        6
+      ]
+    },
+    {
+      "outer_fold": 3,
+      "test_weeks": [
+        9,
+        12
+      ],
+      "train_weeks": [
+        1,
+        8
+      ]
+    }
+  ],
+  "python_executable": "C:\\Users\\steve\\miniforge3\\python.exe",
+  "seed_policy": {
+    "lane_a": [
+      42
+    ],
+    "phase_2": [
+      42,
+      11,
+      23,
+      37,
+      59
+    ],
+    "phase_3": [
+      42
+    ],
+    "stage_b": [
+      42,
+      11,
+      23,
+      37,
+      59
+    ]
+  },
+  "strategy_doc_path": "docs/final_end_to_end_report_strategy_merged.md",
+  "strategy_doc_sha256": "e17b1ac2a34e0c725ea7054c93d98fd02a40263cac4f175ad76f14f4c8c99ad2"
+}

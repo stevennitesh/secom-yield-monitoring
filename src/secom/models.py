@@ -69,7 +69,7 @@ def _balanced_sample_weight(y_train_bin: np.ndarray) -> np.ndarray:
     return np.where(y == 1, w_pos, w_neg).astype(float)
 
 
-def fit_lane_a_balanced_classifier(
+def fit_lane_a_krr_classifier(
     x_train: np.ndarray,
     y_train_bin: np.ndarray,
     alpha: float = 1.0,

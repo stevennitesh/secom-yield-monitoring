@@ -124,13 +124,89 @@ def _validate_enum_column(
 def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
     reports = output_dir / "reports"
     errors: list[str] = []
+    lane_a_classifier_values = set(LaneAClassifier.ALL + LaneAClassifier.OPTIONAL_BENCHMARK)
+    lane_a_param_cols = [
+        "alpha",
+        "gamma",
+        "C",
+        "n_neighbors",
+    ]
 
-    strict = _read_csv_if_exists(reports / ArtifactName.BASELINE_STRICT)
-    with_mi = _read_csv_if_exists(reports / ArtifactName.BASELINE_MI)
-    if strict is not None and with_mi is not None:
+    lane_a_sweep = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_SWEEP)
+    if lane_a_sweep is not None:
         for req in [
             "selector",
             "classifier",
+            "replication_mode",
+            *lane_a_param_cols,
+            "threshold_oof_global",
+            "mean_BER_oof",
+            "std_BER_fold",
+            "mean_True+_oof",
+            "mean_True-_oof",
+            "mean_n_selected_features",
+            "min_n_selected_features",
+            "max_n_selected_features",
+            "n_folds",
+        ]:
+            if req not in lane_a_sweep.columns:
+                errors.append(f"{ArtifactName.LANE_A_GLOBAL_SWEEP}: missing {req}")
+        _validate_enum_column(
+            lane_a_sweep,
+            "classifier",
+            lane_a_classifier_values,
+            errors,
+            ArtifactName.LANE_A_GLOBAL_SWEEP,
+        )
+        _validate_enum_column(
+            lane_a_sweep,
+            "replication_mode",
+            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
+            errors,
+            ArtifactName.LANE_A_GLOBAL_SWEEP,
+        )
+
+    lane_a_best = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_BEST_CONFIG)
+    if lane_a_best is not None:
+        for req in [
+            "selector",
+            "classifier",
+            "replication_mode",
+            *lane_a_param_cols,
+            "threshold_oof_global",
+            "mean_BER_oof",
+            "std_BER_fold",
+            "mean_True+_oof",
+            "mean_True-_oof",
+            "mean_n_selected_features",
+            "min_n_selected_features",
+            "max_n_selected_features",
+            "n_folds",
+            "n_configs_evaluated",
+        ]:
+            if req not in lane_a_best.columns:
+                errors.append(f"{ArtifactName.LANE_A_GLOBAL_BEST_CONFIG}: missing {req}")
+        _validate_enum_column(
+            lane_a_best,
+            "classifier",
+            lane_a_classifier_values,
+            errors,
+            ArtifactName.LANE_A_GLOBAL_BEST_CONFIG,
+        )
+        _validate_enum_column(
+            lane_a_best,
+            "replication_mode",
+            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
+            errors,
+            ArtifactName.LANE_A_GLOBAL_BEST_CONFIG,
+        )
+
+    lane_a_fold = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_FOLD_METRICS)
+    if lane_a_fold is not None:
+        for req in [
+            "selector",
+            "classifier",
+            "replication_mode",
             "fold",
             "BER",
             "True+",
@@ -138,28 +214,68 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             "n_train",
             "n_test",
             "n_test_fails",
+            "n_selected_features",
+            "threshold_oof_global",
+            *lane_a_param_cols,
         ]:
-            if req not in strict.columns:
-                errors.append(f"{ArtifactName.BASELINE_STRICT}: missing {req}")
-            if req not in with_mi.columns:
-                errors.append(f"{ArtifactName.BASELINE_MI}: missing {req}")
+            if req not in lane_a_fold.columns:
+                errors.append(f"{ArtifactName.LANE_A_GLOBAL_FOLD_METRICS}: missing {req}")
         _validate_enum_column(
-            strict,
+            lane_a_fold,
             "classifier",
-            set(LaneAClassifier.ALL),
+            lane_a_classifier_values,
             errors,
-            ArtifactName.BASELINE_STRICT,
+            ArtifactName.LANE_A_GLOBAL_FOLD_METRICS,
         )
         _validate_enum_column(
-            with_mi,
-            "classifier",
-            set(LaneAClassifier.ALL),
+            lane_a_fold,
+            "replication_mode",
+            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
             errors,
-            ArtifactName.BASELINE_MI,
+            ArtifactName.LANE_A_GLOBAL_FOLD_METRICS,
         )
 
-    ablation = _read_csv_if_exists(reports / ArtifactName.BASELINE_ABLATION)
-    if ablation is not None:
+    lane_a_summary = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_SUMMARY)
+    if lane_a_summary is not None:
+        for req in [
+            "selector",
+            "classifier",
+            "replication_mode",
+            "n_folds",
+            "n_boot",
+            "boot_seed",
+            "mean_BER",
+            "std_BER",
+            "CI_lower_BER",
+            "CI_upper_BER",
+            "mean_True+",
+            "std_True+",
+            "CI_lower_True+",
+            "CI_upper_True+",
+            "mean_True-",
+            "std_True-",
+            "CI_lower_True-",
+            "CI_upper_True-",
+        ]:
+            if req not in lane_a_summary.columns:
+                errors.append(f"{ArtifactName.LANE_A_GLOBAL_SUMMARY}: missing {req}")
+        _validate_enum_column(
+            lane_a_summary,
+            "classifier",
+            lane_a_classifier_values,
+            errors,
+            ArtifactName.LANE_A_GLOBAL_SUMMARY,
+        )
+        _validate_enum_column(
+            lane_a_summary,
+            "replication_mode",
+            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
+            errors,
+            ArtifactName.LANE_A_GLOBAL_SUMMARY,
+        )
+
+    lane_a_ablation = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_ABLATION)
+    if lane_a_ablation is not None:
         for req in [
             "selector",
             "classifier",
@@ -170,68 +286,52 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             "CI_upper",
             "n_boot",
         ]:
-            if req not in ablation.columns:
-                errors.append(f"{ArtifactName.BASELINE_ABLATION}: missing {req}")
+            if req not in lane_a_ablation.columns:
+                errors.append(f"{ArtifactName.LANE_A_GLOBAL_ABLATION}: missing {req}")
         _validate_enum_column(
-            ablation,
+            lane_a_ablation,
             "classifier",
-            set(LaneAClassifier.ALL),
+            lane_a_classifier_values,
             errors,
-            ArtifactName.BASELINE_ABLATION,
+            ArtifactName.LANE_A_GLOBAL_ABLATION,
         )
-        if {"BER_strict", "BER_MI", "delta_BER"}.issubset(ablation.columns):
-            diff = np.abs(ablation["delta_BER"] - (ablation["BER_strict"] - ablation["BER_MI"]))
+        if {"BER_strict", "BER_MI", "delta_BER"}.issubset(lane_a_ablation.columns):
+            diff = np.abs(lane_a_ablation["delta_BER"] - (lane_a_ablation["BER_strict"] - lane_a_ablation["BER_MI"]))
             if np.any(diff > 1e-9):
-                errors.append(f"{ArtifactName.BASELINE_ABLATION}: delta_BER sign mismatch")
+                errors.append(f"{ArtifactName.LANE_A_GLOBAL_ABLATION}: delta_BER sign mismatch")
 
-    summary = _read_csv_if_exists(reports / ArtifactName.BASELINE_SUMMARY)
-    if summary is not None:
-        _validate_enum_column(
-            summary,
-            "classifier",
-            set(LaneAClassifier.ALL),
-            errors,
-            ArtifactName.BASELINE_SUMMARY,
-        )
-        _validate_enum_column(
-            summary,
-            "replication_mode",
-            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
-            errors,
-            ArtifactName.BASELINE_SUMMARY,
-        )
-
-    tuning_trace = _read_csv_if_exists(reports / ArtifactName.BASELINE_TUNING_TRACE)
-    if tuning_trace is not None:
+    lane_a_full = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY)
+    if lane_a_full is not None:
         for req in [
             "selector",
             "classifier",
-            "fold",
             "replication_mode",
-            "chosen_alpha",
-            "chosen_gamma",
-            "chosen_C",
-            "chosen_mrmr_lambda",
-            "chosen_mutual_info_n_neighbors",
-            "chosen_l1_selector_c",
-            "threshold",
-            "selector_tuning_scope",
+            *lane_a_param_cols,
+            "threshold_oof_global",
+            "threshold_full_dataset",
+            "BER_full_dataset",
+            "True+_full_dataset",
+            "True-_full_dataset",
+            "n_samples_full_dataset",
+            "n_fails_full_dataset",
+            "n_selected_features_full_dataset",
+            "threshold_full_dataset_role",
         ]:
-            if req not in tuning_trace.columns:
-                errors.append(f"{ArtifactName.BASELINE_TUNING_TRACE}: missing {req}")
+            if req not in lane_a_full.columns:
+                errors.append(f"{ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY}: missing {req}")
         _validate_enum_column(
-            tuning_trace,
+            lane_a_full,
             "classifier",
-            {LaneAClassifier.KRR_BALANCED, LaneAClassifier.LOGREG},
+            lane_a_classifier_values,
             errors,
-            ArtifactName.BASELINE_TUNING_TRACE,
+            ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY,
         )
         _validate_enum_column(
-            tuning_trace,
+            lane_a_full,
             "replication_mode",
             {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
             errors,
-            ArtifactName.BASELINE_TUNING_TRACE,
+            ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY,
         )
 
     splitwise = _read_csv_if_exists(reports / ArtifactName.SPLITWISE)
