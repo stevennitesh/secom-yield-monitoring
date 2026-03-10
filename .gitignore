@@ -1,5 +1,6 @@
 # Local agent/tooling folders
 .claude/
+.serena/
 
 # Data directories
 data/
