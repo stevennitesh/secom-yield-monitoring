@@ -2,7 +2,8 @@
 
 Implementation of the merged report strategy under:
 
-- `docs/final_end_to_end_report_strategy_merged.md`
+- `docs/spec/README.md`
+- `docs/final_end_to_end_report_strategy_merged.md` (compatibility index)
 - `docs/report_strategy/runbooks/*.md`
 
 ## CLI Sequence
