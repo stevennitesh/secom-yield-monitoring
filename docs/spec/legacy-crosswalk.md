@@ -18,6 +18,7 @@ This table maps the retired monolithic section numbers to the modular canonical 
 | 3) Lane B Data Partition Contract | [03 Lane B Data Partition Contract](03-lane-b-data-partition-contract.md) |
 | 4) Two-Lane Plan | [04 Two-Lane Plan](04-two-lane-plan/README.md) |
 | 4.1 Lane A | [04.1 Lane A Replication](04-two-lane-plan/04.1-lane-a-replication.md) |
+| 4.2 Lane B selection and freeze | [04.2 Lane B Selection and Freeze Overview](04-two-lane-plan/04.2-lane-b-selection-and-freeze-overview.md) |
 | 4.2.1 Outer time-aware folds | [04.2.1 Outer Time-Aware Folds](04-two-lane-plan/04.2.1-outer-time-aware-folds.md) |
 | 4.2.2 Stage A | [04.2.2 Stage A Diagnostic](04-two-lane-plan/04.2.2-stage-a-diagnostic.md) |
 | 4.2.3 Stage B | [04.2.3 Stage B Method Selection](04-two-lane-plan/04.2.3-stage-b-method-selection.md) |

@@ -3,16 +3,10 @@ spec_id: "10"
 title: "Required Artifacts and Schemas"
 status: "canonical"
 legacy_source:
-  - "docs/final_end_to_end_report_strategy_merged.md §10"
+  - "docs/final_end_to_end_report_strategy_merged.md Section 10"
 applies_to:
   - "Lane A"
   - "Lane B"
-used_by_runbooks:
-  - "../../report_strategy/runbooks/01_data_contract_and_split.md"
-  - "../../report_strategy/runbooks/02_lane_a_replication.md"
-  - "../../report_strategy/runbooks/03_lane_b_stage_a_stage_b.md"
-  - "../../report_strategy/runbooks/04_phase2_phase3_freeze_lockbox.md"
-  - "../../report_strategy/runbooks/05_artifacts_and_claim_checks.md"
 keywords:
   - artifacts
   - schemas

@@ -3,12 +3,9 @@ spec_id: "09"
 title: "Runtime and Checkpointing"
 status: "canonical"
 legacy_source:
-  - "docs/final_end_to_end_report_strategy_merged.md §9"
+  - "docs/final_end_to_end_report_strategy_merged.md Section 9"
 applies_to:
   - "Lane B"
-used_by_runbooks:
-  - "../report_strategy/runbooks/03_lane_b_stage_a_stage_b.md"
-  - "../report_strategy/runbooks/04_phase2_phase3_freeze_lockbox.md"
 keywords:
   - runtime
   - checkpointing

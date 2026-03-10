@@ -3,11 +3,9 @@ spec_id: "11"
 title: "Manager-Facing Outputs"
 status: "canonical"
 legacy_source:
-  - "docs/final_end_to_end_report_strategy_merged.md §11"
+  - "docs/final_end_to_end_report_strategy_merged.md Section 11"
 applies_to:
   - "final report"
-used_by_runbooks:
-  - "../report_strategy/runbooks/05_artifacts_and_claim_checks.md"
 keywords:
   - report outputs
   - weekly flagged wafers

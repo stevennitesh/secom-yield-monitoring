@@ -3,13 +3,10 @@ spec_id: "02"
 title: "Non-Negotiable Validation and Freeze Rules"
 status: "canonical"
 legacy_source:
-  - "docs/final_end_to_end_report_strategy_merged.md §2"
+  - "docs/final_end_to_end_report_strategy_merged.md Section 2"
 applies_to:
   - "Lane A"
   - "Lane B"
-used_by_runbooks:
-  - "../report_strategy/runbooks/01_data_contract_and_split.md"
-  - "../report_strategy/runbooks/05_artifacts_and_claim_checks.md"
 keywords:
   - validation
   - freeze policy
