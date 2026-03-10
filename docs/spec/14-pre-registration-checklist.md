@@ -3,15 +3,9 @@ spec_id: "14"
 title: "Pre-Registration Checklist"
 status: "canonical"
 legacy_source:
-  - "docs/final_end_to_end_report_strategy_merged.md §14"
+  - "docs/final_end_to_end_report_strategy_merged.md Section 14"
 applies_to:
   - "all"
-used_by_runbooks:
-  - "../report_strategy/runbooks/01_data_contract_and_split.md"
-  - "../report_strategy/runbooks/02_lane_a_replication.md"
-  - "../report_strategy/runbooks/03_lane_b_stage_a_stage_b.md"
-  - "../report_strategy/runbooks/04_phase2_phase3_freeze_lockbox.md"
-  - "../report_strategy/runbooks/05_artifacts_and_claim_checks.md"
 keywords:
   - preregistration
   - checklist

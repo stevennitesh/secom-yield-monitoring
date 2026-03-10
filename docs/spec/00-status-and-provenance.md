@@ -3,10 +3,9 @@ spec_id: "00"
 title: "Status and Provenance"
 status: "canonical"
 legacy_source:
-  - "docs/final_end_to_end_report_strategy_merged.md §Status"
+  - "docs/final_end_to_end_report_strategy_merged.md Section Status"
 applies_to:
   - "all"
-used_by_runbooks: []
 keywords:
   - provenance
   - merged strategy

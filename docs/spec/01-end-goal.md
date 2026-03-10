@@ -3,10 +3,9 @@ spec_id: "01"
 title: "End Goal"
 status: "canonical"
 legacy_source:
-  - "docs/final_end_to_end_report_strategy_merged.md §1"
+  - "docs/final_end_to_end_report_strategy_merged.md Section 1"
 applies_to:
   - "all"
-used_by_runbooks: []
 keywords:
   - goals
   - report objective
