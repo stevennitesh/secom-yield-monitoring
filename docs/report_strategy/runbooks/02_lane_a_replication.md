@@ -1,6 +1,13 @@
 # Runbook 02: Lane A Replication
 
-Canonical source: `docs/final_end_to_end_report_strategy_merged.md` (Sections 4.1, 8, 10, 13, 14).
+Canonical sources:
+
+1. `docs/spec/04-two-lane-plan/04.1-lane-a-replication.md`
+2. `docs/spec/06-threshold-policy.md`
+3. `docs/spec/08-metrics-and-feature-identity/08.1-metric-definitions.md`
+4. `docs/spec/10-required-artifacts-and-schemas/10.2-lane-a-artifacts.md`
+5. `docs/spec/13-claim-policy.md`
+6. `docs/spec/14-pre-registration-checklist.md`
 
 ## Objective
 

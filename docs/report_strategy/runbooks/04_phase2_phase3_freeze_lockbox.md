@@ -1,6 +1,16 @@
 # Runbook 04: Phase 2 Freeze, Phase 3 Refit, Lockbox Evaluation
 
-Canonical source: `docs/final_end_to_end_report_strategy_merged.md` (Sections 4.2.4, 4.2.5, 6, 7, 8, 10, 13, 14).
+Canonical sources:
+
+1. `docs/spec/04-two-lane-plan/04.2.4-phase-2-hyperparameter-freeze.md`
+2. `docs/spec/04-two-lane-plan/04.2.5-phase-3-final-refit-and-thresholds.md`
+3. `docs/spec/06-threshold-policy.md`
+4. `docs/spec/07-lockbox-and-drift-gate.md`
+5. `docs/spec/08-metrics-and-feature-identity/08.1-metric-definitions.md`
+6. `docs/spec/10-required-artifacts-and-schemas/10.4-freeze-lockbox-and-mspc-artifacts.md`
+7. `docs/spec/10-required-artifacts-and-schemas/10.5-feature-drift-and-run-manifest.md`
+8. `docs/spec/13-claim-policy.md`
+9. `docs/spec/14-pre-registration-checklist.md`
 
 ## Objective
 

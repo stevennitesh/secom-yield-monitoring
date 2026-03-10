@@ -1,6 +1,16 @@
 # Runbook 03: Lane B Stage A and Stage B
 
-Canonical source: `docs/final_end_to_end_report_strategy_merged.md` (Sections 4.2.2, 4.2.3, 4.3, 5, 8, 9, 10, 14).
+Canonical sources:
+
+1. `docs/spec/04-two-lane-plan/04.2.2-stage-a-diagnostic.md`
+2. `docs/spec/04-two-lane-plan/04.2.3-stage-b-method-selection.md`
+3. `docs/spec/04-two-lane-plan/04.3-selector-implementation-contract.md`
+4. `docs/spec/05-stage-b-method-ranking-and-challenger.md`
+5. `docs/spec/08-metrics-and-feature-identity/08.1-metric-definitions.md`
+6. `docs/spec/08-metrics-and-feature-identity/08.2-feature-stability-and-identity.md`
+7. `docs/spec/09-runtime-and-checkpointing.md`
+8. `docs/spec/10-required-artifacts-and-schemas/10.3-stage-b-selection-artifacts.md`
+9. `docs/spec/14-pre-registration-checklist.md`
 
 ## Objective
 

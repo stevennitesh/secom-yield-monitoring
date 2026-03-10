@@ -1,6 +1,12 @@
 # Runbook 05: Artifact QA and Claim Gate Checks
 
-Canonical source: `docs/final_end_to_end_report_strategy_merged.md` (Sections 10, 11, 12, 13, 14).
+Canonical sources:
+
+1. `docs/spec/10-required-artifacts-and-schemas/README.md`
+2. `docs/spec/11-manager-facing-outputs.md`
+3. `docs/spec/12-final-report-outline.md`
+4. `docs/spec/13-claim-policy.md`
+5. `docs/spec/14-pre-registration-checklist.md`
 
 ## Objective
 

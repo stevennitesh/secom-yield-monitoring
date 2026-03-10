@@ -2,7 +2,8 @@
 
 These runbooks are execution checklists derived from the canonical strategy:
 
-- `docs/final_end_to_end_report_strategy_merged.md`
+- `docs/spec/README.md`
+- `docs/final_end_to_end_report_strategy_merged.md` (compatibility index only)
 
 Rule:
 

@@ -1,6 +1,12 @@
 # Runbook 01: Data Contract and DEV/LOCKBOX Split
 
-Canonical source: `docs/final_end_to_end_report_strategy_merged.md` (Sections 2, 3, 4.2.1, 10, 14).
+Canonical sources:
+
+1. `docs/spec/02-non-negotiable-validation-and-freeze-rules.md`
+2. `docs/spec/03-lane-b-data-partition-contract.md`
+3. `docs/spec/04-two-lane-plan/04.2.1-outer-time-aware-folds.md`
+4. `docs/spec/10-required-artifacts-and-schemas/10.1-common-artifact-conventions.md`
+5. `docs/spec/14-pre-registration-checklist.md`
 
 ## Objective
 
