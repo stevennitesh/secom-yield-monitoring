@@ -246,7 +246,12 @@ def run_lane_b_stage_ab(bundle: DataBundle, output_dir: Path) -> dict[str, Any]:
                         "n_neighbors": best.get("n_neighbors"),
                         "threshold_policy": ThresholdPolicy.OUTER_TRAIN_YOUDEN,
                         "outer_threshold": threshold,
+                        "n_test": int(metrics["lockbox_n"]),
                         "test_fails": int(np.sum(y_outer_test == 1)),
+                        "flagged_fraction": float(
+                            (float(metrics["FP"]) + (float(metrics["lockbox_fails"]) - float(metrics["FN"])))
+                            / max(float(metrics["lockbox_n"]), 1.0)
+                        ),
                         "BER": metrics["BER"],
                         "True+": metrics["True+"],
                         "True-": metrics["True-"],
@@ -407,4 +412,3 @@ def run_lane_b_stage_ab(bundle: DataBundle, output_dir: Path) -> dict[str, Any]:
         "splitwise": splitwise_df,
         "model_selection": model_sel_out,
     }
-
