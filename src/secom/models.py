@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import LogisticRegression
 
@@ -42,7 +45,9 @@ def fit_lane_b_classifier(
     x_train: np.ndarray, y_train_bin: np.ndarray, c_value: float
 ) -> LogisticRegression:
     clf = make_lane_b_classifier(c_value)
-    clf.fit(x_train, np.asarray(y_train_bin, dtype=int))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ConvergenceWarning)
+        clf.fit(x_train, np.asarray(y_train_bin, dtype=int))
     return clf
 
 
