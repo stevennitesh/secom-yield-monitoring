@@ -108,3 +108,46 @@ def test_stage_b_emits_splitwise_and_model_selection_contract(
 
     assert {"selector", "n_folds", "n_seeds", "is_primary", "is_challenger"}.issubset(model_selection.columns)
     assert model_selection["is_primary"].sum() == 1
+
+
+def test_stage_b_reuses_selector_pipeline_across_c_values(
+    synthetic_input_dir,
+    workspace_tmp_dir,
+    monkeypatch,
+) -> None:
+    out_dir = workspace_tmp_dir / "out_stage_b_cache"
+    project_root = __import__("pathlib").Path(__file__).resolve().parents[1]
+    bundle = run_split_contract(synthetic_input_dir, out_dir, project_root)
+
+    import secom.workflows.lane_b as lane_b
+
+    monkeypatch.setattr(lane_b, "SEEDS_STAGE_B", [42], raising=False)
+    monkeypatch.setattr(SelectorName, "STAGE_B", [SelectorName.S2N], raising=False)
+    monkeypatch.setattr(lane_b, "_stage_a_configs", lambda: [], raising=False)
+
+    def _small_grid(selector: str) -> list[dict[str, object]]:
+        return [
+            {
+                "selector": selector,
+                "k": 10,
+                "C": c_value,
+                "scaler": ScalerName.STANDARD,
+                "n_neighbors": None,
+            }
+            for c_value in [0.01, 0.1, 1.0, 10.0]
+        ]
+
+    real_fit = lane_b.fit_selector_pipeline
+    call_count = {"n": 0}
+
+    def counting_fit(*args, **kwargs):
+        call_count["n"] += 1
+        return real_fit(*args, **kwargs)
+
+    monkeypatch.setattr(lane_b, "build_stage_b_config_grid", _small_grid, raising=False)
+    monkeypatch.setattr(lane_b, "fit_selector_pipeline", counting_fit, raising=False)
+
+    run_lane_b_stage_ab(bundle=bundle, output_dir=out_dir)
+
+    expected_calls = len(bundle.fold_plan.folds) * 5 + len(bundle.fold_plan.folds)
+    assert call_count["n"] == expected_calls

@@ -122,25 +122,17 @@ def _prepare_lane_a_cv(
     return x, y, folds
 
 
-def _evaluate_lane_a_config_over_folds(
+def _prepare_lane_a_selector_views(
     x: np.ndarray,
     y: np.ndarray,
     folds: list[tuple[np.ndarray, np.ndarray]],
     selector: str,
-    classifier: str,
     add_indicator: bool,
-    replication_mode: str,
     selector_config: dict[str, Any],
-    classifier_config: dict[str, Any],
-    threshold_mode: str,
     k: int = 40,
 ) -> dict[str, Any]:
-    fold_scores: list[np.ndarray] = []
-    fold_labels: list[np.ndarray] = []
-    fold_rows: list[dict[str, Any]] = []
-    fold_train_thresholds: list[float] = []
-    n_selected_per_fold: list[int] = []
     selector_kwargs = _lane_a_selector_kwargs(selector=selector, selector_config=selector_config)
+    fold_views: list[dict[str, Any]] = []
 
     for fold_i, (train_idx, test_idx) in enumerate(folds, start=1):
         x_train_raw = x[train_idx]
@@ -164,47 +156,124 @@ def _evaluate_lane_a_config_over_folds(
         )
         if selected_local.size <= 0:
             raise RuntimeError("Lane A config produced zero selected features")
-        n_selected_per_fold.append(int(selected_local.size))
-        x_train_sel = x_train[:, selected_local]
-        x_test_sel = x_test[:, selected_local] # type: ignore
 
-        if classifier == LaneAClassifier.KRR:
-            clf = fit_lane_a_krr_classifier(
-                x_train_sel,
-                y_train,
-                alpha=float(classifier_config["alpha"]),
-                gamma=classifier_config.get("gamma"),
-            )
-            train_scores = np.asarray(clf.predict(x_train_sel), dtype=float)
-            scores = np.asarray(clf.predict(x_test_sel), dtype=float)
-        elif classifier == LaneAClassifier.LOGREG:
-            clf = make_lane_a_logreg_tuned_classifier(c_value=float(classifier_config["C"]))
-            clf.fit(x_train_sel, y_train)
-            train_scores = np.asarray(clf.predict_proba(x_train_sel)[:, 1], dtype=float)
-            scores = np.asarray(clf.predict_proba(x_test_sel)[:, 1], dtype=float)
-        elif classifier == LaneAClassifier.KRR_STRICT:
-            clf = make_lane_a_classifier(alpha=1.0, gamma=None)
-            y_train_krr = 2 * np.asarray(y_train, dtype=int) - 1
-            clf.fit(x_train_sel, y_train_krr)
-            train_scores = np.asarray(clf.predict(x_train_sel), dtype=float)
-            scores = np.asarray(clf.predict(x_test_sel), dtype=float)
+        fold_views.append(
+            {
+                "fold": int(fold_i),
+                "x_train_sel": x_train[:, selected_local],
+                "y_train": y_train,
+                "x_test_sel": x_test[:, selected_local],
+                "y_test": np.asarray(y_test, dtype=int),
+                "n_train": int(len(train_idx)),
+                "n_test": int(len(test_idx)),
+                "n_test_fails": int(np.sum(y_test == 1)),
+                "n_selected_features": int(selected_local.size),
+            }
+        )
+
+    imputer = make_imputer(add_indicator=add_indicator)
+    x_imp = imputer.fit_transform(x)
+    scaler = make_scaler(ScalerName.STANDARD)
+    x_scaled = scaler.fit_transform(x_imp)
+    selected_local, _ = select_features(
+        method=selector,
+        x_train=x_scaled,
+        y_train=y,
+        k=int(k),
+        **selector_kwargs,
+    )
+    if selected_local.size <= 0:
+        raise RuntimeError("Lane A full-data fit produced zero selected features")
+
+    return {
+        "fold_views": fold_views,
+        "full_view": {
+            "x_sel": x_scaled[:, selected_local],
+            "y": y,
+            "n_samples_full_dataset": int(y.size),
+            "n_fails_full_dataset": int(np.sum(y == 1)),
+            "n_selected_features_full_dataset": int(selected_local.size),
+        },
+    }
+
+
+def _fit_lane_a_classifier_scores(
+    classifier: str,
+    x_train_sel: np.ndarray,
+    y_train: np.ndarray,
+    x_eval_sel: np.ndarray,
+    classifier_config: dict[str, Any],
+) -> tuple[np.ndarray, np.ndarray]:
+    if classifier == LaneAClassifier.KRR:
+        clf = fit_lane_a_krr_classifier(
+            x_train_sel,
+            y_train,
+            alpha=float(classifier_config["alpha"]),
+            gamma=classifier_config.get("gamma"),
+        )
+        train_scores = np.asarray(clf.predict(x_train_sel), dtype=float)
+        eval_scores = np.asarray(clf.predict(x_eval_sel), dtype=float)
+    elif classifier == LaneAClassifier.LOGREG:
+        clf = make_lane_a_logreg_tuned_classifier(c_value=float(classifier_config["C"]))
+        clf.fit(x_train_sel, y_train)
+        train_scores = np.asarray(clf.predict_proba(x_train_sel)[:, 1], dtype=float)
+        eval_scores = np.asarray(clf.predict_proba(x_eval_sel)[:, 1], dtype=float)
+    elif classifier == LaneAClassifier.KRR_STRICT:
+        clf = make_lane_a_classifier(alpha=1.0, gamma=None)
+        y_train_krr = 2 * np.asarray(y_train, dtype=int) - 1
+        clf.fit(x_train_sel, y_train_krr)
+        train_scores = np.asarray(clf.predict(x_train_sel), dtype=float)
+        eval_scores = np.asarray(clf.predict(x_eval_sel), dtype=float)
+    else:
+        raise ValueError(f"Unknown Lane A classifier mode: {classifier}")
+    return train_scores, eval_scores
+
+
+def _evaluate_lane_a_config_over_folds(
+    prepared_views: dict[str, Any],
+    selector: str,
+    classifier: str,
+    replication_mode: str,
+    classifier_config: dict[str, Any],
+    threshold_mode: str,
+) -> dict[str, Any]:
+    fold_scores: list[np.ndarray] = []
+    fold_labels: list[np.ndarray] = []
+    fold_rows: list[dict[str, Any]] = []
+    fold_train_thresholds: list[float] = []
+    n_selected_per_fold: list[int] = []
+    for fold_view in prepared_views["fold_views"]:
+        x_train_sel = fold_view["x_train_sel"]
+        y_train = fold_view["y_train"]
+        x_test_sel = fold_view["x_test_sel"]
+        y_test = fold_view["y_test"]
+
+        train_scores, scores = _fit_lane_a_classifier_scores(
+            classifier=classifier,
+            x_train_sel=x_train_sel,
+            y_train=y_train,
+            x_eval_sel=x_test_sel,
+            classifier_config=classifier_config,
+        )
+        if threshold_mode == LaneAThresholdMode.PER_FOLD_TRAIN:
+            train_threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
+            fold_train_thresholds.append(float(train_threshold))
         else:
-            raise ValueError(f"Unknown Lane A classifier mode: {classifier}")
-        train_threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
-        fold_train_thresholds.append(float(train_threshold))
+            fold_train_thresholds.append(float("nan"))
 
         fold_scores.append(scores)
         fold_labels.append(np.asarray(y_test, dtype=int))
+        n_selected_per_fold.append(int(fold_view["n_selected_features"]))
         fold_rows.append(
             {
                 "selector": selector,
                 "classifier": classifier,
                 "replication_mode": replication_mode,
-                "fold": int(fold_i),
-                "n_train": int(len(train_idx)),
-                "n_test": int(len(test_idx)),
-                "n_test_fails": int(np.sum(y_test == 1)),
-                "n_selected_features": int(selected_local.size),
+                "fold": int(fold_view["fold"]),
+                "n_train": int(fold_view["n_train"]),
+                "n_test": int(fold_view["n_test"]),
+                "n_test_fails": int(fold_view["n_test_fails"]),
+                "n_selected_features": int(fold_view["n_selected_features"]),
             }
         )
 
@@ -263,56 +332,25 @@ def _evaluate_lane_a_config_over_folds(
         "mean_n_selected_features": float(np.mean(np.asarray(n_selected_per_fold, dtype=float))),
         "min_n_selected_features": int(np.min(np.asarray(n_selected_per_fold, dtype=int))),
         "max_n_selected_features": int(np.max(np.asarray(n_selected_per_fold, dtype=int))),
-        "n_folds": int(len(folds)),
+        "n_folds": int(len(prepared_views["fold_views"])),
         "fold_rows": fold_rows,
     }
 
 
 def _fit_lane_a_full_dataset(
-    x: np.ndarray,
-    y: np.ndarray,
-    selector: str,
     classifier: str,
-    add_indicator: bool,
-    selector_config: dict[str, Any],
+    prepared_full: dict[str, Any],
     classifier_config: dict[str, Any],
-    k: int = 40,
 ) -> dict[str, Any]:
-    imputer = make_imputer(add_indicator=add_indicator)
-    x_imp = imputer.fit_transform(x)
-    scaler = make_scaler(ScalerName.STANDARD)
-    x_scaled = scaler.fit_transform(x_imp)
-    selector_kwargs = _lane_a_selector_kwargs(selector=selector, selector_config=selector_config)
-    selected_local, _ = select_features(
-        method=selector,
-        x_train=x_scaled,
+    x_sel = prepared_full["x_sel"]
+    y = prepared_full["y"]
+    _train_scores, scores = _fit_lane_a_classifier_scores(
+        classifier=classifier,
+        x_train_sel=x_sel,
         y_train=y,
-        k=int(k),
-        **selector_kwargs,
+        x_eval_sel=x_sel,
+        classifier_config=classifier_config,
     )
-    if selected_local.size <= 0:
-        raise RuntimeError("Lane A full-data fit produced zero selected features")
-    x_sel = x_scaled[:, selected_local]
-
-    if classifier == LaneAClassifier.KRR:
-        clf = fit_lane_a_krr_classifier(
-            x_sel,
-            y,
-            alpha=float(classifier_config["alpha"]),
-            gamma=classifier_config.get("gamma"),
-        )
-        scores = np.asarray(clf.predict(x_sel), dtype=float)
-    elif classifier == LaneAClassifier.LOGREG:
-        clf = make_lane_a_logreg_tuned_classifier(c_value=float(classifier_config["C"]))
-        clf.fit(x_sel, y)
-        scores = np.asarray(clf.predict_proba(x_sel)[:, 1], dtype=float)
-    elif classifier == LaneAClassifier.KRR_STRICT:
-        clf = make_lane_a_classifier(alpha=1.0, gamma=None)
-        y_krr = 2 * np.asarray(y, dtype=int) - 1
-        clf.fit(x_sel, y_krr)
-        scores = np.asarray(clf.predict(x_sel), dtype=float)
-    else:
-        raise ValueError(f"Unknown Lane A classifier mode: {classifier}")
 
     threshold_full, _ = find_ber_optimal_threshold(y, scores)
     metrics_full = binary_metrics_at_threshold(y_true=y, scores=scores, threshold=float(threshold_full))
@@ -321,9 +359,9 @@ def _fit_lane_a_full_dataset(
         "BER_full_dataset": float(metrics_full["BER"]),
         "True+_full_dataset": float(metrics_full["True+"]),
         "True-_full_dataset": float(metrics_full["True-"]),
-        "n_samples_full_dataset": int(y.size),
-        "n_fails_full_dataset": int(np.sum(y == 1)),
-        "n_selected_features_full_dataset": int(selected_local.size),
+        "n_samples_full_dataset": int(prepared_full["n_samples_full_dataset"]),
+        "n_fails_full_dataset": int(prepared_full["n_fails_full_dataset"]),
+        "n_selected_features_full_dataset": int(prepared_full["n_selected_features_full_dataset"]),
         "threshold_full_dataset_role": "diagnostic_only",
     }
 
@@ -360,34 +398,42 @@ def run_lane_a_replication(
     fold_metric_rows: list[dict[str, Any]] = []
     full_fit_rows: list[dict[str, Any]] = []
 
-    for classifier in classifiers_run:
-        classifier_grid = _lane_a_classifier_param_grid(classifier=classifier)
-        for selector in selectors_run:
-            selector_grid = _lane_a_selector_param_grid(selector=selector)
-            for replication_mode, add_indicator in (
-                (ReplicationMode.STRICT, False),
-                (ReplicationMode.WITH_MISSING_INDICATORS, True),
-            ):
-                best_payload: dict[str, Any] | None = None
-                best_selector_config: dict[str, Any] | None = None
-                best_classifier_config: dict[str, Any] | None = None
-                best_obj = np.inf
-                best_tie_key: tuple[Any, ...] | None = None
+    classifier_grids = {
+        classifier: _lane_a_classifier_param_grid(classifier=classifier)
+        for classifier in classifiers_run
+    }
 
-                for selector_config in selector_grid:
+    for selector in selectors_run:
+        selector_grid = _lane_a_selector_param_grid(selector=selector)
+        for replication_mode, add_indicator in (
+            (ReplicationMode.STRICT, False),
+            (ReplicationMode.WITH_MISSING_INDICATORS, True),
+        ):
+            for selector_config in selector_grid:
+                prepared_views = _prepare_lane_a_selector_views(
+                    x=x,
+                    y=y,
+                    folds=folds,
+                    selector=selector,
+                    add_indicator=add_indicator,
+                    selector_config=selector_config,
+                    k=40,
+                )
+                for classifier in classifiers_run:
+                    classifier_grid = classifier_grids[classifier]
+                    best_payload: dict[str, Any] | None = None
+                    best_classifier_config: dict[str, Any] | None = None
+                    best_obj = np.inf
+                    best_tie_key: tuple[Any, ...] | None = None
+
                     for classifier_config in classifier_grid:
                         payload = _evaluate_lane_a_config_over_folds(
-                            x=x,
-                            y=y,
-                            folds=folds,
+                            prepared_views=prepared_views,
                             selector=selector,
                             classifier=classifier,
-                            add_indicator=add_indicator,
                             replication_mode=replication_mode,
-                            selector_config=selector_config,
                             classifier_config=classifier_config,
                             threshold_mode=threshold_mode,
-                            k=40,
                         )
                         config_fields = _lane_a_config_fields(
                             selector_config=selector_config,
@@ -428,58 +474,52 @@ def run_lane_a_replication(
                             best_obj = objective
                             best_tie_key = tie_key
                             best_payload = payload
-                            best_selector_config = dict(selector_config)
                             best_classifier_config = dict(classifier_config)
 
-                if best_payload is None or best_selector_config is None or best_classifier_config is None:
-                    raise RuntimeError("Lane A global OOF search failed to select a best config")
+                    if best_payload is None or best_classifier_config is None:
+                        raise RuntimeError("Lane A global OOF search failed to select a best config")
 
-                best_fields = _lane_a_config_fields(
-                    selector_config=best_selector_config,
-                    classifier_config=best_classifier_config,
-                )
-                best_rows.append(
-                    {
-                        "selector": selector,
-                        "classifier": classifier,
-                        "replication_mode": replication_mode,
-                        **best_fields,
-                        "threshold_oof_global": float(best_payload["threshold_oof_global"]),
-                        "mean_BER_oof": float(best_payload["mean_BER_oof"]),
-                        "std_BER_fold": float(best_payload["std_BER_fold"]),
-                        "mean_True+_oof": float(best_payload["mean_True+_oof"]),
-                        "mean_True-_oof": float(best_payload["mean_True-_oof"]),
-                        "mean_n_selected_features": float(best_payload["mean_n_selected_features"]),
-                        "min_n_selected_features": int(best_payload["min_n_selected_features"]),
-                        "max_n_selected_features": int(best_payload["max_n_selected_features"]),
-                        "n_folds": int(best_payload["n_folds"]),
-                        "n_configs_evaluated": int(len(selector_grid) * len(classifier_grid)),
-                    }
-                )
+                    best_fields = _lane_a_config_fields(
+                        selector_config=selector_config,
+                        classifier_config=best_classifier_config,
+                    )
+                    best_rows.append(
+                        {
+                            "selector": selector,
+                            "classifier": classifier,
+                            "replication_mode": replication_mode,
+                            **best_fields,
+                            "threshold_oof_global": float(best_payload["threshold_oof_global"]),
+                            "mean_BER_oof": float(best_payload["mean_BER_oof"]),
+                            "std_BER_fold": float(best_payload["std_BER_fold"]),
+                            "mean_True+_oof": float(best_payload["mean_True+_oof"]),
+                            "mean_True-_oof": float(best_payload["mean_True-_oof"]),
+                            "mean_n_selected_features": float(best_payload["mean_n_selected_features"]),
+                            "min_n_selected_features": int(best_payload["min_n_selected_features"]),
+                            "max_n_selected_features": int(best_payload["max_n_selected_features"]),
+                            "n_folds": int(best_payload["n_folds"]),
+                            "n_configs_evaluated": int(len(selector_grid) * len(classifier_grid)),
+                        }
+                    )
 
-                for fold_row in best_payload["fold_rows"]:
-                    fold_metric_rows.append({**fold_row, **best_fields})
+                    for fold_row in best_payload["fold_rows"]:
+                        fold_metric_rows.append({**fold_row, **best_fields})
 
-                full_fit_payload = _fit_lane_a_full_dataset(
-                    x=x,
-                    y=y,
-                    selector=selector,
-                    classifier=classifier,
-                    add_indicator=add_indicator,
-                    selector_config=best_selector_config,
-                    classifier_config=best_classifier_config,
-                    k=40,
-                )
-                full_fit_rows.append(
-                    {
-                        "selector": selector,
-                        "classifier": classifier,
-                        "replication_mode": replication_mode,
-                        **best_fields,
-                        "threshold_oof_global": float(best_payload["threshold_oof_global"]),
-                        **full_fit_payload,
-                    }
-                )
+                    full_fit_payload = _fit_lane_a_full_dataset(
+                        classifier=classifier,
+                        prepared_full=prepared_views["full_view"],
+                        classifier_config=best_classifier_config,
+                    )
+                    full_fit_rows.append(
+                        {
+                            "selector": selector,
+                            "classifier": classifier,
+                            "replication_mode": replication_mode,
+                            **best_fields,
+                            "threshold_oof_global": float(best_payload["threshold_oof_global"]),
+                            **full_fit_payload,
+                        }
+                    )
 
     sweep_df = pd.DataFrame(sweep_rows)
     best_df = pd.DataFrame(best_rows)

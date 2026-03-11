@@ -102,9 +102,29 @@ def _inner_cv_scores(
     config: dict[str, Any],
     seed: int,
 ) -> tuple[float, float]:
+    prepared_folds = _prepare_inner_cv_views(
+        x_outer_train_raw=x_outer_train_raw,
+        y_outer_train=y_outer_train,
+        selector=str(config["selector"]),
+        k=int(config["k"]),
+        scaler_name=str(config["scaler"]),
+        n_neighbors=config.get("n_neighbors"),
+        seed=seed,
+    )
+    return _score_prepared_inner_cv(prepared_folds=prepared_folds, c_value=float(config["C"]))
+
+
+def _prepare_inner_cv_views(
+    x_outer_train_raw: np.ndarray,
+    y_outer_train: np.ndarray,
+    selector: str,
+    k: int,
+    scaler_name: str,
+    n_neighbors: int | None,
+    seed: int,
+) -> list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-    aucs: list[float] = []
-    bers: list[float] = []
+    prepared_folds: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
 
     for inner_train_idx, inner_val_idx in skf.split(x_outer_train_raw, y_outer_train):
         x_inner_train = x_outer_train_raw[inner_train_idx]
@@ -116,13 +136,24 @@ def _inner_cv_scores(
             x_train_raw=x_inner_train,
             y_train=y_inner_train,
             x_eval_raw=x_inner_val,
-            method=config["selector"],
-            k=config["k"],
-            scaler_name=config["scaler"],
+            method=selector,
+            k=k,
+            scaler_name=scaler_name,
             add_indicator=True,
-            n_neighbors=config.get("n_neighbors"),
+            n_neighbors=n_neighbors,
         )
-        clf = fit_lane_b_classifier(x_train_sel, y_inner_train, c_value=config["C"])
+        prepared_folds.append((x_train_sel, y_inner_train, x_val_sel, y_inner_val))
+    return prepared_folds
+
+
+def _score_prepared_inner_cv(
+    prepared_folds: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+    c_value: float,
+) -> tuple[float, float]:
+    aucs: list[float] = []
+    bers: list[float] = []
+    for x_train_sel, y_inner_train, x_val_sel, y_inner_val in prepared_folds:
+        clf = fit_lane_b_classifier(x_train_sel, y_inner_train, c_value=c_value)
         train_scores = clf.predict_proba(x_train_sel)[:, 1]
         val_scores = clf.predict_proba(x_val_sel)[:, 1]
         threshold, _ = find_ber_optimal_threshold(y_inner_train, train_scores)
@@ -187,6 +218,10 @@ def run_lane_b_stage_ab(bundle: DataBundle, output_dir: Path) -> dict[str, Any]:
 
     for selector in SelectorName.STAGE_B:
         configs = build_stage_b_config_grid(selector)
+        config_groups: dict[tuple[int, str, int | None], list[dict[str, Any]]] = {}
+        for cfg in configs:
+            key = (int(cfg["k"]), str(cfg["scaler"]), cfg.get("n_neighbors"))
+            config_groups.setdefault(key, []).append(cfg)
         for fold in bundle.fold_plan.folds:
             x_outer_train = x_dev[fold.train_index]
             y_outer_train = y_dev[fold.train_index]
@@ -195,20 +230,28 @@ def run_lane_b_stage_ab(bundle: DataBundle, output_dir: Path) -> dict[str, Any]:
 
             for seed in SEEDS_STAGE_B:
                 config_scores = []
-                for cfg in configs:
-                    mean_auc, mean_ber = _inner_cv_scores(
+                for (k_value, scaler_name, n_neighbors), cfg_group in config_groups.items():
+                    prepared_folds = _prepare_inner_cv_views(
                         x_outer_train_raw=x_outer_train,
                         y_outer_train=y_outer_train,
-                        config=cfg,
+                        selector=selector,
+                        k=k_value,
+                        scaler_name=scaler_name,
+                        n_neighbors=n_neighbors,
                         seed=seed,
                     )
-                    row = dict(cfg)
-                    row["selector"] = selector
-                    row["outer_fold"] = fold.outer_fold
-                    row["seed"] = seed
-                    row["mean_inner_ROC_AUC"] = mean_auc
-                    row["mean_inner_BER"] = mean_ber
-                    config_scores.append(row)
+                    for cfg in cfg_group:
+                        mean_auc, mean_ber = _score_prepared_inner_cv(
+                            prepared_folds=prepared_folds,
+                            c_value=float(cfg["C"]),
+                        )
+                        row = dict(cfg)
+                        row["selector"] = selector
+                        row["outer_fold"] = fold.outer_fold
+                        row["seed"] = seed
+                        row["mean_inner_ROC_AUC"] = mean_auc
+                        row["mean_inner_BER"] = mean_ber
+                        config_scores.append(row)
 
                 best = select_best_inner_config(config_scores)
                 for row in config_scores:
