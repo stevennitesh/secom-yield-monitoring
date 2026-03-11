@@ -166,6 +166,25 @@ def _build_manager_facing_outputs(
     return pd.DataFrame(rows)
 
 
+def _safe_value_corrcoef(value_x: np.ndarray) -> np.ndarray:
+    value_x = np.asarray(value_x, dtype=float)
+    p = value_x.shape[1]
+    corr = np.full((p, p), np.nan, dtype=float)
+    if p == 0:
+        return corr
+
+    np.fill_diagonal(corr, 1.0)
+    std = np.nanstd(value_x, axis=0)
+    non_constant = np.isfinite(std) & (std > 0.0)
+    idx = np.flatnonzero(non_constant)
+    if idx.size >= 2:
+        sub_corr = np.corrcoef(value_x[:, idx], rowvar=False)
+        corr[np.ix_(idx, idx)] = sub_corr
+    elif idx.size == 1:
+        corr[idx[0], idx[0]] = 1.0
+    return corr
+
+
 def _phase2_fold_metrics(y_true: np.ndarray, scores: np.ndarray, threshold: float) -> tuple[float, float]:
     y_true = np.asarray(y_true, dtype=int)
     scores = np.asarray(scores, dtype=float)
@@ -678,7 +697,7 @@ def run_freeze_lockbox(
 
     x_dev_imp = primary_model.imputer.transform(x_dev)
     value_x = x_dev_imp[:, : len(bundle.feature_columns)]
-    corr = np.corrcoef(value_x, rowvar=False)
+    corr = _safe_value_corrcoef(value_x)
     p = corr.shape[0]
     adj = {i: set() for i in range(p)}
     for i in range(p):
