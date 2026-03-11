@@ -1,15 +1,17 @@
-# SECOM Yield Monitoring
+# SECOM Study Reframe
 
-Implementation of the merged report strategy under:
+This repository is being refactored around a new study structure:
 
-- `docs/spec/README.md`
-- `docs/final_end_to_end_report_strategy_merged.md` (compatibility index)
-- `docs/report_strategy/runbooks/*.md`
+1. Benchmark replication as the primary scientific study
+2. Temporal robustness as a secondary stress-test study
+3. Industrialization gap analysis as an explicit deliverable
 
-## CLI Sequence
+The previous two-lane strategy has been archived under:
 
-1. `python scripts/run_01_split.py`
-2. `python scripts/run_02_lane_a.py`
-3. `python scripts/run_03_lane_b_stage_ab.py`
-4. `python scripts/run_04_freeze_lockbox.py`
-5. `python scripts/run_05_audit_claims.py`
+- `archive/legacy_two_lane_strategy/`
+
+Active spec work now lives under:
+
+- `docs/spec/`
+
+Active workflow, artifact, and audit layers are being rebuilt to match the new study design.
