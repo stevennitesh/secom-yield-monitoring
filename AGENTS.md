@@ -1,107 +1,73 @@
 # AGENTS.md
 
-Project-level operating contract for coding agents.
+## Mission
 
-Status: active.
+Refactor this repo toward the best study and reporting design for the actual goal, even if that requires replacing existing specs, contracts, workflows, artifacts, tests, and CLI structure.
 
-## 1) Scope
+Backward compatibility is not required unless the user explicitly asks for it.
 
-This file governs agent behavior, review discipline, and validation expectations.
-Project logic and scientific contracts remain canonical in code, tests, and runbooks.
+## Priorities
 
-## 2) Execution Gate
+Optimize for this order:
 
-- Default mode: analysis first.
-- Do not edit files unless the latest user message contains `APPROVE_IMPLEMENT`.
-- Without that token, read-only inspection, repo search, and non-mutating test/CLI runs are allowed.
-- If the request is ambiguous and editing would be risky, ask one concise clarifying question.
+1. correct study design
+2. clear and defensible claims
+3. clean architecture
+4. coherent artifacts and audits
+5. performance and implementation quality
 
-## 3) Response Rules
+Preserving outdated structure is not a goal.
 
-- Be precise, direct, and concise.
-- State assumptions, intended behavior changes, and decision criteria.
-- For analysis-only requests, provide:
-  - Findings
-  - Tradeoffs
-  - Recommendation
-  - Minimal Plan
-  - Approval Request
-- For implementation requests, provide:
-  - Solution
-  - Behavior Delta (Before -> After)
-  - Files Changed
-  - Validation Run Log (command, exit code, runtime, result)
-  - Risks / Limitations
-  - Next Options
-- When explaining code behavior, include file references with line numbers.
+## Execution
 
-## 4) Implementation Rules
-
-- Avoid hidden behavior changes.
-- Reuse existing code paths where practical; do not duplicate logic without reason.
-- If a function, method, or contract changes, check affected callers, imports, tests, and artifacts.
+- The agent may inspect, edit, refactor, rename, remove, and replace files across the repo without repeated approval.
+- A single user approval for the refactor thread is sufficient unless scope changes materially.
+- The agent should proactively steer the project toward the right design, not just preserve the current one.
+- The agent should not stop just because a change affects specs, artifacts, claim logic, validation rules, or workflow structure.
 - Do not commit unless the user explicitly asks.
 
-## 5) Validation Rules
+## Refactor Rules
 
-After changes, report:
+- Prefer replacing bad structure over layering compatibility on top of it.
+- Do not add compatibility shims unless they provide clear ongoing value.
+- If the corrected design requires breaking old contracts, break them cleanly and update all affected code, tests, specs, and docs.
+- Remove obsolete code, docs, tests, and runbooks when they no longer match the new design.
+- Keep naming, file layout, and workflow boundaries aligned with the new study structure, not the old one.
 
-- Exact commands run
-- Exit code for each command
-- Runtime for each command
-- What passed or failed
-- Residual risks
-- What was not tested and why
+## Validation
 
-Validation minimums:
+After changes, always report:
 
-- Small change: targeted tests
-- Medium change: targeted plus adjacent suite
-- Large change: full suite plus CLI help smoke checks
+- commands run
+- exit code
+- runtime
+- what passed or failed
+- residual risks
+- what was not tested
 
-Preferred test profiles:
+Validation should match the new design, not preserve the old one.
 
-- Fast:
-  - `python -m pytest tests/test_metrics_threshold_optimization.py tests/test_split_contract.py tests/test_stage_b_selection.py -q`
-- Lane A:
-  - `python -m pytest tests/test_lane_a_replication.py tests/test_artifact_schema_and_claim_gates.py -q`
-- Lane B:
-  - `python -m pytest tests/test_stage_b_selection.py tests/test_freeze_lockbox_drift_mspc.py -q`
-- Full:
-  - `python -m pytest tests -q`
+Minimums:
 
-CLI smoke:
+- small change: targeted tests
+- medium change: targeted plus adjacent suite
+- large refactor: full relevant suite plus any still-supported entrypoint smoke checks
 
-- `python scripts/run_01_split.py --help`
-- `python scripts/run_02_lane_a.py --help`
-- `python scripts/run_03_lane_b_stage_ab.py --help`
-- `python scripts/run_04_freeze_lockbox.py --help`
-- `python scripts/run_05_audit_claims.py --help`
+If old tests or CLI entrypoints encode obsolete behavior, update or remove them rather than preserving them by default.
 
-## 6) Canonical References
+## Canonical Sources
 
-If a requested change may affect contracts, check these first:
+During refactor, the canonical source of truth is:
 
-- Artifact names and required artifact sets: `src/secom/config.py`
-- Artifact/schema validation: `src/secom/artifacts.py`
-- QA and claim gates: `src/secom/qa.py`
-- Split policy and feasibility rules: `src/secom/cv.py`
-- Split workflow wiring: `src/secom/workflows/split_contract.py`
-- Audit workflow: `src/secom/workflows/audit.py`
-- Contract enforcement tests: `tests/test_split_contract.py`, `tests/test_artifact_schema_and_claim_gates.py`, `tests/test_lane_a_replication.py`, `tests/test_stage_b_selection.py`, `tests/test_freeze_lockbox_drift_mspc.py`
+1. the corrected study objective
+2. the updated spec
+3. the updated tests
+4. the updated code
 
-If `AGENTS.md` conflicts with code, tests, or runbooks, stop and ask before changing behavior.
+If old specs, runbooks, tests, or code conflict with the corrected design, replace them.
 
-## 7) Safety and Overrides
+## Safety
 
-- Never use destructive commands unless explicitly requested.
-- If unrelated changes appear, stop and ask how to proceed.
-- If a requested change affects artifact names, schema columns, claim gates, validation rules, or split policy, ask for explicit confirmation before editing.
-
-One-turn override format:
-
-- `OVERRIDE_POLICY: <rule and scope>`
-
-Example:
-
-- `OVERRIDE_POLICY: skip approval token for this turn; only modify AGENTS.md wording`
+- Never use destructive commands outside the repo scope unless explicitly requested.
+- If unrelated changes materially interfere with the refactor, stop and ask.
+- Do not commit unless the user explicitly asks.

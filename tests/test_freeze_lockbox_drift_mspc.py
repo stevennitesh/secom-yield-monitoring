@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -10,7 +11,7 @@ from secom.artifacts import validate_schema_and_logic
 from secom.common.drift import psi_for_feature
 from secom.common.thresholds import operational_threshold
 from secom.config import SelectorName
-from secom.workflows.freeze_lockbox import _manager_weekly_metrics
+from secom.workflows.freeze_lockbox import _manager_weekly_metrics, _safe_value_corrcoef
 from secom.workflows.freeze_lockbox import run_freeze_lockbox
 from secom.workflows.lane_b import run_lane_b_stage_ab
 from secom.workflows.split_contract import run_split_contract
@@ -54,6 +55,28 @@ def test_manager_weekly_metrics_aggregates_weekly_counts() -> None:
     assert np.isclose(metrics["mean_weekly_flagged_wafers"], 1.0)
     assert np.isclose(metrics["mean_weekly_fail_captures"], 2.0 / 3.0)
     assert np.isclose(metrics["mean_weekly_fail_misses"], 1.0 / 3.0)
+
+
+def test_safe_value_corrcoef_skips_constant_columns_without_runtime_warning() -> None:
+    x = np.array(
+        [
+            [1.0, 0.1, 2.0],
+            [1.0, 0.2, 1.5],
+            [1.0, 0.3, 1.0],
+            [1.0, 0.4, 0.5],
+        ],
+        dtype=float,
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("error", RuntimeWarning)
+        corr = _safe_value_corrcoef(x)
+
+    assert caught == []
+    assert corr.shape == (3, 3)
+    assert np.isnan(corr[0, 1])
+    assert np.isnan(corr[0, 2])
+    assert np.isfinite(corr[1, 2])
 
 
 def test_phase2_freeze_reuses_selector_pipeline_across_c_values(monkeypatch) -> None:
