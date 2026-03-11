@@ -6,7 +6,6 @@ This directory is the active canonical specification for the SECOM study reframe
 
 1. Files in `docs/spec/` are canonical for the rebuilt study.
 2. Active code and tests must be brought into alignment with these files.
-3. Legacy two-lane materials are reference-only and live under `archive/legacy_two_lane_strategy/`.
 
 ## Reading Order
 
@@ -18,9 +17,3 @@ This directory is the active canonical specification for the SECOM study reframe
 6. [06 Report Structure](06-report-structure.md)
 7. [07 Artifact Contracts](07-artifact-contracts.md)
 8. [08 Audit and Claim Semantics](08-audit-and-claim-semantics.md)
-
-## Archived Reference
-
-The previous canonical spec and runbooks have been archived under:
-
-- `archive/legacy_two_lane_strategy/docs/`

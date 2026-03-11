@@ -163,7 +163,7 @@ def check_inner_cv_feasible(
     return min(n_fail, n_pass) >= min_class_count
 
 
-def lane_b_feasibility_gate(
+def temporal_feasibility_gate(
     dev: pd.DataFrame,
     plan: OuterFoldPlanResult | None,
     min_class_count: int = INNER_MIN_CLASS,
@@ -194,4 +194,3 @@ def fold_plan_manifest_ranges(plan: OuterFoldPlanResult) -> list[dict[str, objec
 
 def to_time_window_string(start_ts: pd.Timestamp, end_ts: pd.Timestamp) -> str:
     return f"{start_ts.strftime('%Y-%m-%dT%H:%M:%S')}/{end_ts.strftime('%Y-%m-%dT%H:%M:%S')}"
-

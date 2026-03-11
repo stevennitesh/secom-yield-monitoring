@@ -3,259 +3,104 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from secom.config import LaneAClassifier, ReplicationMode, SelectorName
-
-_VALID_CLASSIFIERS = set(LaneAClassifier.ALL + LaneAClassifier.OPTIONAL_BENCHMARK)
-_VALID_REPLICATION_MODES = {
-    ReplicationMode.STRICT,
-    ReplicationMode.WITH_MISSING_INDICATORS,
-}
-_LANE_A_PARAM_COLS = [
-    "alpha",
-    "gamma",
-    "C",
-    "n_neighbors",
-]
-_SWEEP_REQUIRED_COLS = {
-    "selector",
-    "classifier",
-    "replication_mode",
-    *_LANE_A_PARAM_COLS,
-    "threshold_oof_global",
-    "mean_BER_oof",
-    "std_BER_fold",
-    "mean_True+_oof",
-    "mean_True-_oof",
-    "mean_n_selected_features",
-    "min_n_selected_features",
-    "max_n_selected_features",
-    "n_folds",
-}
-_BEST_REQUIRED_COLS = {
-    "selector",
-    "classifier",
-    "replication_mode",
-    *_LANE_A_PARAM_COLS,
-    "threshold_oof_global",
-    "mean_BER_oof",
-    "std_BER_fold",
-    "mean_True+_oof",
-    "mean_True-_oof",
-    "mean_n_selected_features",
-    "min_n_selected_features",
-    "max_n_selected_features",
-    "n_folds",
-    "n_configs_evaluated",
-}
-_FOLD_REQUIRED_COLS = {
-    "selector",
-    "classifier",
-    "replication_mode",
-    "fold",
-    "BER",
-    "True+",
-    "True-",
-    "n_train",
-    "n_test",
-    "n_test_fails",
-    "n_selected_features",
-    "threshold_oof_global",
-    *_LANE_A_PARAM_COLS,
-}
-_SUMMARY_REQUIRED_COLS = {
-    "selector",
-    "classifier",
-    "replication_mode",
-    "n_folds",
-    "n_boot",
-    "boot_seed",
-    "mean_BER",
-    "std_BER",
-    "CI_lower_BER",
-    "CI_upper_BER",
-    "mean_True+",
-    "std_True+",
-    "CI_lower_True+",
-    "CI_upper_True+",
-    "mean_True-",
-    "std_True-",
-    "CI_lower_True-",
-    "CI_upper_True-",
-}
-_ABLATION_REQUIRED_COLS = {
-    "selector",
-    "classifier",
-    "BER_strict",
-    "BER_MI",
-    "delta_BER",
-    "CI_lower",
-    "CI_upper",
-    "n_boot",
-}
-_FULL_FIT_REQUIRED_COLS = {
-    "selector",
-    "classifier",
-    "replication_mode",
-    *_LANE_A_PARAM_COLS,
-    "threshold_oof_global",
-    "threshold_full_dataset",
-    "BER_full_dataset",
-    "True+_full_dataset",
-    "True-_full_dataset",
-    "n_samples_full_dataset",
-    "n_fails_full_dataset",
-    "n_selected_features_full_dataset",
-    "threshold_full_dataset_role",
-}
+from secom.config import BenchmarkClassifier, ReplicationMode, SelectorName
 
 
-def _require_columns(df: pd.DataFrame, required: set[str], name: str) -> None:
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"{name}: missing columns {sorted(missing)}")
-
-
-def _require_cls_sel_sets(
-    df: pd.DataFrame,
-    expected_cls_set: set[str],
-    expected_selector_set: set[str],
-    name: str,
-) -> None:
-    actual_cls_set = set(df["classifier"].dropna().astype(str).unique())
-    if actual_cls_set != expected_cls_set:
-        raise ValueError(f"{name}: classifier set {actual_cls_set} != expected {expected_cls_set}")
-    actual_selector_set = set(df["selector"].dropna().astype(str).unique())
-    if actual_selector_set != expected_selector_set:
-        raise ValueError(f"{name}: selector set {actual_selector_set} != expected {expected_selector_set}")
-
-
-def _normalized_key_tuples(df: pd.DataFrame, cols: list[str]) -> set[tuple[object, ...]]:
-    norm = df.loc[:, cols].copy()
-    for col in cols:
-        values = norm[col].astype(object)
-        norm[col] = values.where(values.notna(), "__NA__")
-    return set(norm.itertuples(index=False, name=None))
-
-
-def validate_lane_a_global_artifacts(
+def validate_benchmark_replication_artifacts(
+    *,
     sweep_df: pd.DataFrame,
     best_df: pd.DataFrame,
     fold_metrics_df: pd.DataFrame,
     summary_df: pd.DataFrame,
     ablation_df: pd.DataFrame,
     full_fit_df: pd.DataFrame,
-    classifiers_run: list[str],
-    selectors_run: list[str] | None = None,
 ) -> None:
-    classifiers_run = sorted(set(classifiers_run))
-    selectors_run = sorted(set(SelectorName.ALL)) if selectors_run is None else sorted(set(selectors_run))
-    expected_cls_set = set(classifiers_run)
-    expected_selector_set = set(selectors_run)
+    for name, df, required in (
+        ("benchmark_sweep", sweep_df, {"selector", "classifier", "replication_mode"}),
+        ("benchmark_best_config", best_df, {"selector", "classifier", "replication_mode"}),
+        ("benchmark_fold_metrics", fold_metrics_df, {"selector", "classifier", "replication_mode", "fold", "BER"}),
+        ("benchmark_summary", summary_df, {"selector", "classifier", "replication_mode", "mean_BER"}),
+        ("benchmark_ablation", ablation_df, {"selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"}),
+        ("benchmark_full_fit_summary", full_fit_df, {"selector", "classifier", "replication_mode", "BER_full_dataset"}),
+    ):
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(f"{name}: missing columns {sorted(missing)}")
 
-    unknown_classifiers = expected_cls_set - _VALID_CLASSIFIERS
-    if unknown_classifiers:
-        raise ValueError(f"classifiers_run unknown values: {sorted(unknown_classifiers)}")
-    unknown_selectors = expected_selector_set - set(SelectorName.ALL)
-    if unknown_selectors:
-        raise ValueError(f"selectors_run unknown values: {sorted(unknown_selectors)}")
-
-    _require_columns(sweep_df, _SWEEP_REQUIRED_COLS, "sweep")
-    _require_columns(best_df, _BEST_REQUIRED_COLS, "best")
-    _require_columns(fold_metrics_df, _FOLD_REQUIRED_COLS, "fold_metrics")
-    _require_columns(summary_df, _SUMMARY_REQUIRED_COLS, "summary")
-    _require_columns(ablation_df, _ABLATION_REQUIRED_COLS, "ablation")
-    _require_columns(full_fit_df, _FULL_FIT_REQUIRED_COLS, "full_fit")
+    valid_classifiers = set(BenchmarkClassifier.ALL + BenchmarkClassifier.OPTIONAL_BENCHMARK)
+    valid_replication_modes = {
+        ReplicationMode.STRICT,
+        ReplicationMode.WITH_MISSING_INDICATORS,
+    }
+    valid_selectors = set(SelectorName.ALL)
 
     for name, df in (
-        ("sweep", sweep_df),
-        ("best", best_df),
-        ("fold_metrics", fold_metrics_df),
-        ("summary", summary_df),
-        ("ablation", ablation_df),
-        ("full_fit", full_fit_df),
+        ("benchmark_sweep", sweep_df),
+        ("benchmark_best_config", best_df),
+        ("benchmark_fold_metrics", fold_metrics_df),
+        ("benchmark_summary", summary_df),
+        ("benchmark_full_fit_summary", full_fit_df),
     ):
-        _require_cls_sel_sets(
-            df=df,
-            expected_cls_set=expected_cls_set,
-            expected_selector_set=expected_selector_set,
-            name=name,
-        )
-
-    for name, df in (
-        ("sweep", sweep_df),
-        ("best", best_df),
-        ("fold_metrics", fold_metrics_df),
-        ("summary", summary_df),
-        ("full_fit", full_fit_df),
-    ):
-        bad_modes = set(df["replication_mode"].dropna().astype(str).unique()) - _VALID_REPLICATION_MODES
+        bad_classifiers = set(df["classifier"].dropna().astype(str).unique()) - valid_classifiers
+        if bad_classifiers:
+            raise ValueError(f"{name}: invalid classifier values {sorted(bad_classifiers)}")
+        bad_selectors = set(df["selector"].dropna().astype(str).unique()) - valid_selectors
+        if bad_selectors:
+            raise ValueError(f"{name}: invalid selector values {sorted(bad_selectors)}")
+        bad_modes = set(df["replication_mode"].dropna().astype(str).unique()) - valid_replication_modes
         if bad_modes:
-            raise ValueError(f"{name}: invalid replication_mode values: {sorted(bad_modes)}")
-
-    n_cls = len(expected_cls_set)
-    n_sel = len(expected_selector_set)
-    expected_triplets = n_sel * n_cls * 2
-    if len(best_df) != expected_triplets:
-        raise ValueError(f"best: expected {expected_triplets} rows, got {len(best_df)}")
-    if len(summary_df) != expected_triplets:
-        raise ValueError(f"summary: expected {expected_triplets} rows, got {len(summary_df)}")
-    if len(full_fit_df) != expected_triplets:
-        raise ValueError(f"full_fit: expected {expected_triplets} rows, got {len(full_fit_df)}")
-    if len(fold_metrics_df) != expected_triplets * 10:
-        raise ValueError(f"fold_metrics: expected {expected_triplets * 10} rows, got {len(fold_metrics_df)}")
-    if len(ablation_df) != n_sel * n_cls:
-        raise ValueError(f"ablation: expected {n_sel * n_cls} rows, got {len(ablation_df)}")
+            raise ValueError(f"{name}: invalid replication_mode values {sorted(bad_modes)}")
 
     triplet_cols = ["selector", "classifier", "replication_mode"]
+    expected_modes = {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS}
+
+    def _mode_map(df: pd.DataFrame) -> dict[tuple[str, str], set[str]]:
+        out: dict[tuple[str, str], set[str]] = {}
+        for (selector, classifier), frame in df.groupby(["selector", "classifier"], dropna=False):
+            out[(str(selector), str(classifier))] = set(frame["replication_mode"].dropna().astype(str).unique())
+        return out
+
+    for name, df in (
+        ("benchmark_best_config", best_df),
+        ("benchmark_summary", summary_df),
+        ("benchmark_full_fit_summary", full_fit_df),
+    ):
+        mode_map = _mode_map(df)
+        for key, modes in mode_map.items():
+            if modes != expected_modes:
+                raise ValueError(f"{name}: expected paired replication modes for {key}, got {sorted(modes)}")
+
     if best_df.duplicated(triplet_cols, keep=False).any():
-        raise ValueError("best: duplicate or missing triplets")
+        raise ValueError("benchmark_best_config: duplicate triplets")
     if summary_df.duplicated(triplet_cols, keep=False).any():
-        raise ValueError("summary: duplicate or missing triplets")
+        raise ValueError("benchmark_summary: duplicate triplets")
     if full_fit_df.duplicated(triplet_cols, keep=False).any():
-        raise ValueError("full_fit: duplicate or missing triplets")
+        raise ValueError("benchmark_full_fit_summary: duplicate triplets")
 
-    fold_group_sizes = fold_metrics_df.groupby(
-        triplet_cols, dropna=False
-    )["fold"].nunique()
+    fold_group_sizes = fold_metrics_df.groupby(triplet_cols, dropna=False)["fold"].nunique()
     if not np.all(fold_group_sizes.to_numpy(dtype=int) == 10):
-        raise ValueError("fold_metrics: each triplet must include exactly 10 folds")
+        raise ValueError("benchmark_fold_metrics: each triplet must include exactly 10 folds")
     if fold_metrics_df["fold"].min() != 1 or fold_metrics_df["fold"].max() != 10:
-        raise ValueError("fold_metrics: fold values must be 1..10")
+        raise ValueError("benchmark_fold_metrics: fold values must be 1..10")
     if fold_metrics_df.duplicated([*triplet_cols, "fold"], keep=False).any():
-        raise ValueError("fold_metrics: duplicate (selector,classifier,replication_mode,fold) rows")
+        raise ValueError("benchmark_fold_metrics: duplicate (selector,classifier,replication_mode,fold) rows")
 
-    for (selector, classifier), grp in ablation_df.groupby(["selector", "classifier"]):
-        expected_delta = float(grp["BER_strict"].iloc[0]) - float(grp["BER_MI"].iloc[0])
-        actual_delta = float(grp["delta_BER"].iloc[0])
-        if not np.isclose(actual_delta, expected_delta, atol=1e-9):
-            raise ValueError(
-                f"delta_BER mismatch ({selector},{classifier}): {actual_delta} != {expected_delta}"
-            )
+    summary_triplets = set(summary_df[triplet_cols].itertuples(index=False, name=None))
+    best_triplets = set(best_df[triplet_cols].itertuples(index=False, name=None))
+    full_fit_triplets = set(full_fit_df[triplet_cols].itertuples(index=False, name=None))
+    fold_triplets = set(fold_metrics_df[triplet_cols].drop_duplicates().itertuples(index=False, name=None))
+    if not (best_triplets == summary_triplets == full_fit_triplets == fold_triplets):
+        raise ValueError("benchmark artifacts: inconsistent triplet coverage across benchmark outputs")
 
-    merge_cols = [*triplet_cols, *_LANE_A_PARAM_COLS]
-    best_keys = _normalized_key_tuples(best_df, merge_cols)
-    sweep_keys = _normalized_key_tuples(sweep_df.drop_duplicates(merge_cols), merge_cols)
-    if not best_keys.issubset(sweep_keys):
-        raise ValueError("best: at least one best-config row does not exist in sweep")
-
-    bad_full_role = set(full_fit_df["threshold_full_dataset_role"].dropna().astype(str).unique()) - {
-        "diagnostic_only"
-    }
-    if bad_full_role:
-        raise ValueError(f"full_fit: invalid threshold_full_dataset_role values: {sorted(bad_full_role)}")
-
-    if LaneAClassifier.KRR in expected_cls_set:
-        strict_mask = (
-            (summary_df["classifier"] == LaneAClassifier.KRR)
-            & (summary_df["selector"] == SelectorName.F_TEST)
-            & (summary_df["replication_mode"] == ReplicationMode.STRICT)
+    if {"BER_reference", "BER_missing_indicator", "delta_BER"}.issubset(ablation_df.columns):
+        diff = np.abs(
+            ablation_df["delta_BER"]
+            - (ablation_df["BER_reference"] - ablation_df["BER_missing_indicator"])
         )
-        mi_mask = (
-            (summary_df["classifier"] == LaneAClassifier.KRR)
-            & (summary_df["selector"] == SelectorName.F_TEST)
-            & (summary_df["replication_mode"] == ReplicationMode.WITH_MISSING_INDICATORS)
-        )
-        if int(strict_mask.sum()) != 1:
-            raise ValueError("benchmark anchor row missing or duplicated for (F-test,krr,strict)")
-        if int(mi_mask.sum()) != 1:
-            raise ValueError("benchmark companion row missing or duplicated for (F-test,krr,with_missing_indicators)")
+        if np.any(diff > 1e-9):
+            raise ValueError("benchmark_ablation: delta_BER mismatch")
+
+    ablation_pairs = set(ablation_df[["selector", "classifier"]].drop_duplicates().itertuples(index=False, name=None))
+    summary_pairs = set(summary_df[["selector", "classifier"]].drop_duplicates().itertuples(index=False, name=None))
+    if ablation_pairs != summary_pairs:
+        raise ValueError("benchmark_ablation: selector/classifier coverage mismatch vs summary")

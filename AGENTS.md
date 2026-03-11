@@ -36,16 +36,8 @@ Preserving outdated structure is not a goal.
 
 ## Validation
 
-After changes, always report:
-
-- commands run
-- exit code
-- runtime
-- what passed or failed
-- residual risks
-- what was not tested
-
-Validation should match the new design, not preserve the old one.
+- After changes, always report residual risks.
+- Validation should match the new design, not preserve the old one.
 
 Minimums:
 

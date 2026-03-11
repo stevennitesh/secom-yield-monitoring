@@ -5,10 +5,10 @@ import warnings
 import numpy as np
 from sklearn.exceptions import ConvergenceWarning
 
-from secom.models import fit_lane_b_classifier
+from secom.models import fit_temporal_logreg_model
 
 
-def test_fit_lane_b_classifier_suppresses_convergence_warning(monkeypatch) -> None:
+def test_fit_temporal_logreg_model_suppresses_convergence_warning(monkeypatch) -> None:
     class FakeClassifier:
         def fit(self, x_train, y_train):
             warnings.warn(
@@ -19,11 +19,11 @@ def test_fit_lane_b_classifier_suppresses_convergence_warning(monkeypatch) -> No
 
     import secom.models as models
 
-    monkeypatch.setattr(models, "make_lane_b_classifier", lambda c_value: FakeClassifier(), raising=False)
+    monkeypatch.setattr(models, "make_temporal_logreg_model", lambda c_value: FakeClassifier(), raising=False)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        fit_lane_b_classifier(
+        fit_temporal_logreg_model(
             x_train=np.array([[0.0], [1.0]], dtype=float),
             y_train_bin=np.array([0, 1], dtype=int),
             c_value=1.0,

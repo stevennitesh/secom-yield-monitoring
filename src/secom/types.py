@@ -17,8 +17,8 @@ class DataBundle:
     feature_columns: list[str]
     dev_with_weeks: pd.DataFrame
     fold_plan: OuterFoldPlanResult | None
-    lane_b_feasible: bool
-    lane_b_infeasible_reason: str | None
+    temporal_feasible: bool
+    temporal_infeasible_reason: str | None
 
 
 @dataclass(frozen=True)
