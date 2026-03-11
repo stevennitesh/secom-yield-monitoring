@@ -281,3 +281,59 @@ def test_lane_a_can_skip_relieff_for_faster_experiments(
     artifacts = _read_lane_a_global_artifacts(out_dir)
     for df in artifacts.values():
         assert SelectorName.RELIEFF not in set(df["selector"].unique())
+
+
+def test_lane_a_global_oof_skips_unused_fold_train_thresholds(
+    synthetic_input_dir, workspace_tmp_dir, monkeypatch
+) -> None:
+    out_dir = workspace_tmp_dir / "out_lane_a_threshold_calls"
+    project_root = Path(__file__).resolve().parents[1]
+    bundle = run_split_contract(synthetic_input_dir, out_dir, project_root)
+
+    import secom.workflows.lane_a as lane_a
+
+    real_find = lane_a.find_ber_optimal_threshold
+    call_count = {"n": 0}
+
+    def counting_find(y_true, scores):
+        call_count["n"] += 1
+        return real_find(y_true, scores)
+
+    monkeypatch.setattr(lane_a, "find_ber_optimal_threshold", counting_find, raising=False)
+
+    run_lane_a_replication(
+        bundle=bundle,
+        output_dir=out_dir,
+        selectors_run=[SelectorName.S2N, SelectorName.F_TEST],
+    )
+
+    # 2 selectors x 2 classifiers x 2 replication modes x (1 global OOF threshold + 1 full-data threshold)
+    assert call_count["n"] == 16
+
+
+def test_lane_a_reuses_selector_work_across_classifier_configs(
+    synthetic_input_dir, workspace_tmp_dir, monkeypatch
+) -> None:
+    out_dir = workspace_tmp_dir / "out_lane_a_selector_cache"
+    project_root = Path(__file__).resolve().parents[1]
+    bundle = run_split_contract(synthetic_input_dir, out_dir, project_root)
+
+    import secom.workflows.lane_a as lane_a
+
+    real_select = lane_a.select_features
+    call_count = {"n": 0}
+
+    def counting_select(*args, **kwargs):
+        call_count["n"] += 1
+        return real_select(*args, **kwargs)
+
+    monkeypatch.setattr(lane_a, "select_features", counting_select, raising=False)
+
+    run_lane_a_replication(
+        bundle=bundle,
+        output_dir=out_dir,
+        selectors_run=[SelectorName.S2N, SelectorName.F_TEST],
+    )
+
+    # 2 selectors x 2 replication modes x (10 folds + 1 full-data fit), cached across 2 classifier families
+    assert call_count["n"] == 44

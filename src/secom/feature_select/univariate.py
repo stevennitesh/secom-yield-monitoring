@@ -62,23 +62,24 @@ def score_welch_t(x: np.ndarray, y_bin: np.ndarray, eps: float = EPS_SELECTOR) -
 def score_f_test(x: np.ndarray, y_bin: np.ndarray) -> np.ndarray:
     x = np.asarray(x, dtype=float)
     y = np.asarray(y_bin, dtype=int)
+    zero_var = _zero_variance_mask(x)
+    score = np.full(x.shape[1], -np.inf, dtype=float)
+    if not np.any(~zero_var):
+        return score
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
             message=r"Features .* are constant\.",
             category=UserWarning,
-            module=r"sklearn\.feature_selection\._univariate_selection",
         )
         warnings.filterwarnings(
             "ignore",
             message=r"invalid value encountered in divide",
             category=RuntimeWarning,
-            module=r"sklearn\.feature_selection\._univariate_selection",
         )
         with np.errstate(divide="ignore", invalid="ignore"):
-            score, _ = f_classif(x, y)
-    score = _sanitize_scores(score)
-    score[_zero_variance_mask(x)] = -np.inf
+            non_constant_scores, _ = f_classif(x[:, ~zero_var], y)
+    score[~zero_var] = _sanitize_scores(non_constant_scores)
     return score
 
 
