@@ -8,12 +8,13 @@ from pathlib import Path
 
 def git_commit_and_dirty(project_root: Path) -> tuple[str, bool]:
     try:
+        git_base = ["git", f"-c", f"safe.directory={project_root.as_posix()}"]
         commit = (
-            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=project_root, text=True)
+            subprocess.check_output([*git_base, "rev-parse", "HEAD"], cwd=project_root, text=True)
             .strip()
         )
         dirty = bool(
-            subprocess.check_output(["git", "status", "--porcelain"], cwd=project_root, text=True).strip()
+            subprocess.check_output([*git_base, "status", "--porcelain"], cwd=project_root, text=True).strip()
         )
         return commit, dirty
     except Exception:
@@ -21,7 +22,7 @@ def git_commit_and_dirty(project_root: Path) -> tuple[str, bool]:
 
 
 def strategy_sha256(project_root: Path) -> str:
-    strategy = project_root / "docs" / "final_end_to_end_report_strategy_merged.md"
+    strategy = project_root / "docs" / "spec" / "README.md"
     if not strategy.exists():
         return "MISSING"
     h = hashlib.sha256()

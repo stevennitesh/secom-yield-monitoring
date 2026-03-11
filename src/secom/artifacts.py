@@ -55,11 +55,13 @@ def normalize_for_manifest(value: Any) -> Any:
         return [normalize_for_manifest(v) for v in value]
     if isinstance(value, tuple):
         return [normalize_for_manifest(v) for v in value]
+    if isinstance(value, bool):
+        return value
     if isinstance(value, (np.floating, float)):
         return _normalize_float(float(value))
     if isinstance(value, (np.integer, int)):
         return int(value)
-    if isinstance(value, (str, bool)) or value is None:
+    if isinstance(value, str) or value is None:
         return value
     return str(value)
 
