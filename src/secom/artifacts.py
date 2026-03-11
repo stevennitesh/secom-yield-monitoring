@@ -29,6 +29,13 @@ class ValidationResult:
     errors: list[str]
 
 
+_CSV_ARTIFACT_NAMES = sorted(
+    value
+    for name, value in vars(ArtifactName).items()
+    if not name.startswith("_") and isinstance(value, str) and value.endswith(".csv")
+)
+
+
 def ensure_reports_dir(output_dir: Path) -> Path:
     reports = output_dir / "reports"
     reports.mkdir(parents=True, exist_ok=True)
@@ -106,6 +113,16 @@ def validate_required_artifacts(output_dir: Path, lane_b_feasible: bool) -> list
     return errors
 
 
+def load_artifact_frames(output_dir: Path) -> dict[str, pd.DataFrame]:
+    reports = output_dir / "reports"
+    frames: dict[str, pd.DataFrame] = {}
+    for name in _CSV_ARTIFACT_NAMES:
+        df = _read_csv_if_exists(reports / name)
+        if df is not None:
+            frames[name] = df
+    return frames
+
+
 def _read_csv_if_exists(path: Path) -> pd.DataFrame | None:
     if not path.exists():
         return None
@@ -123,7 +140,21 @@ def _validate_enum_column(
         errors.append(f"{file_name}: invalid {column} values {sorted(bad)}")
 
 
-def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
+def _artifact_frame(
+    *,
+    name: str,
+    reports: Path,
+    artifact_frames: dict[str, pd.DataFrame] | None,
+) -> pd.DataFrame | None:
+    if artifact_frames is not None:
+        return artifact_frames.get(name)
+    return _read_csv_if_exists(reports / name)
+
+
+def validate_schema_and_logic(
+    output_dir: Path,
+    artifact_frames: dict[str, pd.DataFrame] | None = None,
+) -> ValidationResult:
     reports = output_dir / "reports"
     errors: list[str] = []
     lane_a_classifier_values = set(LaneAClassifier.ALL + LaneAClassifier.OPTIONAL_BENCHMARK)
@@ -134,7 +165,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
         "n_neighbors",
     ]
 
-    lane_a_sweep = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_SWEEP)
+    lane_a_sweep = _artifact_frame(
+        name=ArtifactName.LANE_A_GLOBAL_SWEEP,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if lane_a_sweep is not None:
         for req in [
             "selector",
@@ -168,7 +203,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             ArtifactName.LANE_A_GLOBAL_SWEEP,
         )
 
-    lane_a_best = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_BEST_CONFIG)
+    lane_a_best = _artifact_frame(
+        name=ArtifactName.LANE_A_GLOBAL_BEST_CONFIG,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if lane_a_best is not None:
         for req in [
             "selector",
@@ -203,7 +242,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             ArtifactName.LANE_A_GLOBAL_BEST_CONFIG,
         )
 
-    lane_a_fold = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_FOLD_METRICS)
+    lane_a_fold = _artifact_frame(
+        name=ArtifactName.LANE_A_GLOBAL_FOLD_METRICS,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if lane_a_fold is not None:
         for req in [
             "selector",
@@ -237,7 +280,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             ArtifactName.LANE_A_GLOBAL_FOLD_METRICS,
         )
 
-    lane_a_summary = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_SUMMARY)
+    lane_a_summary = _artifact_frame(
+        name=ArtifactName.LANE_A_GLOBAL_SUMMARY,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if lane_a_summary is not None:
         for req in [
             "selector",
@@ -276,7 +323,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             ArtifactName.LANE_A_GLOBAL_SUMMARY,
         )
 
-    lane_a_ablation = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_ABLATION)
+    lane_a_ablation = _artifact_frame(
+        name=ArtifactName.LANE_A_GLOBAL_ABLATION,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if lane_a_ablation is not None:
         for req in [
             "selector",
@@ -302,7 +353,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             if np.any(diff > 1e-9):
                 errors.append(f"{ArtifactName.LANE_A_GLOBAL_ABLATION}: delta_BER sign mismatch")
 
-    lane_a_full = _read_csv_if_exists(reports / ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY)
+    lane_a_full = _artifact_frame(
+        name=ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if lane_a_full is not None:
         for req in [
             "selector",
@@ -336,7 +391,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY,
         )
 
-    splitwise = _read_csv_if_exists(reports / ArtifactName.SPLITWISE)
+    splitwise = _artifact_frame(
+        name=ArtifactName.SPLITWISE,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if splitwise is not None:
         for req in [
             "selector",
@@ -381,7 +440,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             ArtifactName.SPLITWISE,
         )
 
-    stage_b_inner = _read_csv_if_exists(reports / ArtifactName.STAGE_B_INNER)
+    stage_b_inner = _artifact_frame(
+        name=ArtifactName.STAGE_B_INNER,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if stage_b_inner is not None:
         keys = ["selector", "outer_fold", "seed"]
         for key, grp in stage_b_inner.groupby(keys):
@@ -391,7 +454,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
                     f"{ArtifactName.STAGE_B_INNER}: {key} has {n_selected} selected configs"
                 )
 
-    freeze = _read_csv_if_exists(reports / ArtifactName.FREEZE)
+    freeze = _artifact_frame(
+        name=ArtifactName.FREEZE,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if freeze is not None:
         if "is_frozen_config" not in freeze.columns:
             errors.append(f"{ArtifactName.FREEZE}: missing is_frozen_config")
@@ -403,7 +470,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
                         f"{ArtifactName.FREEZE}: role={role} has {len(selected_cfg)} frozen configs"
                     )
 
-    final_lockbox = _read_csv_if_exists(reports / ArtifactName.FINAL_LOCKBOX)
+    final_lockbox = _artifact_frame(
+        name=ArtifactName.FINAL_LOCKBOX,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if final_lockbox is not None:
         _validate_enum_column(
             final_lockbox,
@@ -422,7 +493,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
                         f"{ArtifactName.FINAL_LOCKBOX}: role={role} column {col} must be identical for scientific/operational"
                     )
 
-    mspc = _read_csv_if_exists(reports / ArtifactName.MSPC)
+    mspc = _artifact_frame(
+        name=ArtifactName.MSPC,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if mspc is not None:
         if "fold_index" in mspc.columns:
             vals = mspc["fold_index"].astype(str)
@@ -435,7 +510,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
                     f"{ArtifactName.MSPC}: missing required eval scopes outer_fold/lockbox"
                 )
 
-    feature_stability = _read_csv_if_exists(reports / ArtifactName.FEATURE_STABILITY)
+    feature_stability = _artifact_frame(
+        name=ArtifactName.FEATURE_STABILITY,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if feature_stability is not None:
         _validate_enum_column(
             feature_stability,
@@ -445,7 +524,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             ArtifactName.FEATURE_STABILITY,
         )
 
-    feature_report = _read_csv_if_exists(reports / ArtifactName.FEATURE_REPORT)
+    feature_report = _artifact_frame(
+        name=ArtifactName.FEATURE_REPORT,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if feature_report is not None:
         _validate_enum_column(
             feature_report,
@@ -455,7 +538,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             ArtifactName.FEATURE_REPORT,
         )
 
-    drift = _read_csv_if_exists(reports / ArtifactName.DRIFT_GATE)
+    drift = _artifact_frame(
+        name=ArtifactName.DRIFT_GATE,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if drift is not None:
         _validate_enum_column(
             drift,
@@ -465,7 +552,11 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             ArtifactName.DRIFT_GATE,
         )
 
-    manager_outputs = _read_csv_if_exists(reports / ArtifactName.MANAGER_FACING)
+    manager_outputs = _artifact_frame(
+        name=ArtifactName.MANAGER_FACING,
+        reports=reports,
+        artifact_frames=artifact_frames,
+    )
     if manager_outputs is not None:
         for req in [
             "role",

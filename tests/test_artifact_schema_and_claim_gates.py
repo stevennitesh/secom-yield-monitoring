@@ -11,6 +11,40 @@ from secom.workflows.lane_a import run_lane_a_replication
 from secom.workflows.split_contract import run_split_contract
 
 
+def test_artifact_audit_reuses_loaded_frames(
+    synthetic_input_dir: Path, workspace_tmp_dir: Path, monkeypatch
+) -> None:
+    out_dir = workspace_tmp_dir / "out_audit_cached"
+    project_root = Path(__file__).resolve().parents[1]
+    bundle = run_split_contract(synthetic_input_dir, out_dir, project_root)
+    run_lane_a_replication(
+        bundle,
+        out_dir,
+        lane_a_classifier="krr",
+        selectors_run=[SelectorName.F_TEST, SelectorName.S2N],
+    )
+
+    manifest_path = out_dir / "reports" / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["lane_b_feasible"] = False
+    manifest["lane_b_infeasible_reason"] = "min_class_count_lt_5_for_inner_cv"
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    real_read_csv = pd.read_csv
+    read_count = 0
+
+    def _counted_read_csv(*args, **kwargs):
+        nonlocal read_count
+        read_count += 1
+        return real_read_csv(*args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_csv", _counted_read_csv)
+
+    result = run_artifact_audit(out_dir)
+    assert result.ok, result.errors
+    assert read_count == 6
+
+
 def test_artifact_audit_lane_a_only_mode(synthetic_input_dir: Path, workspace_tmp_dir: Path) -> None:
     out_dir = workspace_tmp_dir / "out_audit_ok"
     project_root = Path(__file__).resolve().parents[1]

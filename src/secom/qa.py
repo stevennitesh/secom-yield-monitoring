@@ -129,6 +129,14 @@ def _require_cls_sel_sets(
         raise ValueError(f"{name}: selector set {actual_selector_set} != expected {expected_selector_set}")
 
 
+def _normalized_key_tuples(df: pd.DataFrame, cols: list[str]) -> set[tuple[object, ...]]:
+    norm = df.loc[:, cols].copy()
+    for col in cols:
+        values = norm[col].astype(object)
+        norm[col] = values.where(values.notna(), "__NA__")
+    return set(norm.itertuples(index=False, name=None))
+
+
 def validate_lane_a_global_artifacts(
     sweep_df: pd.DataFrame,
     best_df: pd.DataFrame,
@@ -198,29 +206,22 @@ def validate_lane_a_global_artifacts(
     if len(ablation_df) != n_sel * n_cls:
         raise ValueError(f"ablation: expected {n_sel * n_cls} rows, got {len(ablation_df)}")
 
-    if len(
-        best_df.groupby(["selector", "classifier", "replication_mode"], dropna=False)
-    ) != expected_triplets:
+    triplet_cols = ["selector", "classifier", "replication_mode"]
+    if best_df.duplicated(triplet_cols, keep=False).any():
         raise ValueError("best: duplicate or missing triplets")
-    if len(
-        summary_df.groupby(["selector", "classifier", "replication_mode"], dropna=False)
-    ) != expected_triplets:
+    if summary_df.duplicated(triplet_cols, keep=False).any():
         raise ValueError("summary: duplicate or missing triplets")
-    if len(
-        full_fit_df.groupby(["selector", "classifier", "replication_mode"], dropna=False)
-    ) != expected_triplets:
+    if full_fit_df.duplicated(triplet_cols, keep=False).any():
         raise ValueError("full_fit: duplicate or missing triplets")
 
     fold_group_sizes = fold_metrics_df.groupby(
-        ["selector", "classifier", "replication_mode"], dropna=False
+        triplet_cols, dropna=False
     )["fold"].nunique()
     if not np.all(fold_group_sizes.to_numpy(dtype=int) == 10):
         raise ValueError("fold_metrics: each triplet must include exactly 10 folds")
     if fold_metrics_df["fold"].min() != 1 or fold_metrics_df["fold"].max() != 10:
         raise ValueError("fold_metrics: fold values must be 1..10")
-    if len(
-        fold_metrics_df.groupby(["selector", "classifier", "replication_mode", "fold"], dropna=False)
-    ) != expected_triplets * 10:
+    if fold_metrics_df.duplicated([*triplet_cols, "fold"], keep=False).any():
         raise ValueError("fold_metrics: duplicate (selector,classifier,replication_mode,fold) rows")
 
     for (selector, classifier), grp in ablation_df.groupby(["selector", "classifier"]):
@@ -231,19 +232,10 @@ def validate_lane_a_global_artifacts(
                 f"delta_BER mismatch ({selector},{classifier}): {actual_delta} != {expected_delta}"
             )
 
-    merge_cols = ["selector", "classifier", "replication_mode", *_LANE_A_PARAM_COLS]
-    best_key = best_df[merge_cols].copy()
-    sweep_key = sweep_df[merge_cols].drop_duplicates().copy()
-    for col in _LANE_A_PARAM_COLS:
-        best_key[col] = best_key[col].astype(object).where(best_key[col].notna(), "__NA__")
-        sweep_key[col] = sweep_key[col].astype(object).where(sweep_key[col].notna(), "__NA__")
-    merged_best = best_key.merge(
-        sweep_key,
-        on=merge_cols,
-        how="left",
-        indicator=True,
-    )
-    if not np.all(merged_best["_merge"] == "both"):
+    merge_cols = [*triplet_cols, *_LANE_A_PARAM_COLS]
+    best_keys = _normalized_key_tuples(best_df, merge_cols)
+    sweep_keys = _normalized_key_tuples(sweep_df.drop_duplicates(merge_cols), merge_cols)
+    if not best_keys.issubset(sweep_keys):
         raise ValueError("best: at least one best-config row does not exist in sweep")
 
     bad_full_role = set(full_fit_df["threshold_full_dataset_role"].dropna().astype(str).unique()) - {
