@@ -49,7 +49,7 @@ def run_split_contract(input_dir: Path, output_dir: Path, project_root: Path) ->
     commit, dirty = git_commit_and_dirty(project_root)
     manifest = {
         "manifest_version": "1.0",
-        "strategy_doc_path": "docs/final_end_to_end_report_strategy_merged.md",
+        "strategy_doc_path": "docs/spec/README.md",
         "strategy_doc_sha256": strategy_sha256(project_root),
         "git_commit": commit,
         "git_dirty": dirty,
@@ -93,4 +93,3 @@ def run_split_contract(input_dir: Path, output_dir: Path, project_root: Path) ->
         lane_b_feasible=feasible,
         lane_b_infeasible_reason=reason,
     )
-

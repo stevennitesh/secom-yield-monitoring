@@ -35,6 +35,77 @@ PARAM_COLS = [
     "n_neighbors",
 ]
 
+SWEEP_REQUIRED_COLS = {
+    "selector",
+    "classifier",
+    "replication_mode",
+    *PARAM_COLS,
+    "threshold_oof_global",
+    "mean_BER_oof",
+    "std_BER_fold",
+    "mean_True+_oof",
+    "mean_True-_oof",
+    "mean_n_selected_features",
+    "min_n_selected_features",
+    "max_n_selected_features",
+    "n_folds",
+}
+
+BEST_REQUIRED_COLS = SWEEP_REQUIRED_COLS | {"n_configs_evaluated"}
+
+FOLD_REQUIRED_COLS = {
+    "selector",
+    "classifier",
+    "replication_mode",
+    "fold",
+    "BER",
+    "True+",
+    "True-",
+    "n_train",
+    "n_test",
+    "n_test_fails",
+    "n_selected_features",
+    "threshold_oof_global",
+    *PARAM_COLS,
+}
+
+SUMMARY_REQUIRED_COLS = {
+    "selector",
+    "classifier",
+    "replication_mode",
+    "n_folds",
+    "n_boot",
+    "boot_seed",
+    "mean_BER",
+    "std_BER",
+    "CI_lower_BER",
+    "CI_upper_BER",
+    "mean_True+",
+    "std_True+",
+    "CI_lower_True+",
+    "CI_upper_True+",
+    "mean_True-",
+    "std_True-",
+    "CI_lower_True-",
+    "CI_upper_True-",
+}
+
+FULL_REQUIRED_COLS = {
+    "selector",
+    "classifier",
+    "replication_mode",
+    *PARAM_COLS,
+    "threshold_oof_global",
+    "threshold_full_dataset",
+    "BER_full_dataset",
+    "True+_full_dataset",
+    "True-_full_dataset",
+    "n_samples_full_dataset",
+    "n_fails_full_dataset",
+    "n_selected_features_full_dataset",
+    "threshold_full_dataset_role",
+}
+
 
 def _read_lane_a_global_artifacts(out_dir: Path) -> dict[str, pd.DataFrame]:
     reports = out_dir / "reports"
@@ -79,6 +150,12 @@ def test_lane_a_global_artifacts_and_pairing(synthetic_input_dir, workspace_tmp_
     assert len(ablation) == n_selectors * len(expected_classifiers)
     assert len(sweep) >= n_triplets
 
+    assert SWEEP_REQUIRED_COLS.issubset(sweep.columns)
+    assert BEST_REQUIRED_COLS.issubset(best.columns)
+    assert FOLD_REQUIRED_COLS.issubset(fold.columns)
+    assert SUMMARY_REQUIRED_COLS.issubset(summary.columns)
+    assert FULL_REQUIRED_COLS.issubset(full.columns)
+
     assert set(summary["replication_mode"].unique()) == {"strict", "with_missing_indicators"}
     assert set(fold["replication_mode"].unique()) == {"strict", "with_missing_indicators"}
     assert set(full["replication_mode"].unique()) == {"strict", "with_missing_indicators"}
@@ -105,6 +182,19 @@ def test_lane_a_global_artifacts_and_pairing(synthetic_input_dir, workspace_tmp_
     assert set(full["threshold_full_dataset_role"].unique()) == {"diagnostic_only"}
     assert np.isfinite(best["threshold_oof_global"]).all()
     assert np.isfinite(full["threshold_full_dataset"]).all()
+
+    strict_anchor = summary[
+        (summary["selector"] == SelectorName.F_TEST)
+        & (summary["classifier"] == "krr")
+        & (summary["replication_mode"] == "strict")
+    ]
+    mi_anchor = summary[
+        (summary["selector"] == SelectorName.F_TEST)
+        & (summary["classifier"] == "krr")
+        & (summary["replication_mode"] == "with_missing_indicators")
+    ]
+    assert len(strict_anchor) == 1
+    assert len(mi_anchor) == 1
 
 
 def test_lane_a_logreg_mode_runs(synthetic_input_dir, workspace_tmp_dir) -> None:
