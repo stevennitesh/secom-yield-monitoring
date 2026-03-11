@@ -42,6 +42,102 @@ from secom.types import DataBundle, FittedRoleModel, RoleConfig
 from secom.workflows.lane_b import build_stage_b_config_grid
 
 
+def _manager_weekly_metrics(
+    y_true: np.ndarray,
+    scores: np.ndarray,
+    threshold: float,
+    week_labels: np.ndarray,
+) -> dict[str, float]:
+    y_true = np.asarray(y_true, dtype=int)
+    scores = np.asarray(scores, dtype=float)
+    weeks = np.asarray(week_labels, dtype=int)
+    preds = (scores >= threshold).astype(int)
+    unique_weeks = sorted(np.unique(weeks).tolist())
+
+    flagged_counts: list[float] = []
+    tp_counts: list[float] = []
+    fn_counts: list[float] = []
+    for week in unique_weeks:
+        idx = weeks == week
+        y_week = y_true[idx]
+        pred_week = preds[idx]
+        flagged_counts.append(float(np.sum(pred_week == 1)))
+        tp_counts.append(float(np.sum((y_week == 1) & (pred_week == 1))))
+        fn_counts.append(float(np.sum((y_week == 1) & (pred_week == 0))))
+
+    week_count = len(unique_weeks)
+    sample_count = len(y_true)
+    return {
+        "dev_sample_count": float(sample_count),
+        "dev_week_count": float(week_count),
+        "weekly_rate": float(sample_count / week_count) if week_count else 0.0,
+        "predicted_flag_fraction": float(np.mean(preds)) if sample_count else 0.0,
+        "mean_weekly_flagged_wafers": float(np.mean(flagged_counts)) if flagged_counts else 0.0,
+        "mean_weekly_fail_captures": float(np.mean(tp_counts)) if tp_counts else 0.0,
+        "mean_weekly_fail_misses": float(np.mean(fn_counts)) if fn_counts else 0.0,
+    }
+
+
+def _flagged_fraction_from_binary_metrics(metrics: dict[str, float]) -> float:
+    n = float(metrics["lockbox_n"])
+    if n <= 0:
+        return 0.0
+    tp = float(metrics["lockbox_fails"]) - float(metrics["FN"])
+    flagged = float(metrics["FP"]) + tp
+    return float(flagged / n)
+
+
+def _build_manager_facing_outputs(
+    fitted_models: list[FittedRoleModel],
+    y_dev: np.ndarray,
+    week_dev: np.ndarray,
+    final_lock_df: pd.DataFrame,
+    splitwise_df: pd.DataFrame,
+) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for fitted in fitted_models:
+        selector_splitwise = splitwise_df[splitwise_df["selector"] == fitted.config.selector]
+        stage_b_mean_flagged_fraction = (
+            float(selector_splitwise["flagged_fraction"].mean())
+            if not selector_splitwise.empty and "flagged_fraction" in selector_splitwise.columns
+            else np.nan
+        )
+        for policy, threshold in [
+            (ThresholdPolicy.SCIENTIFIC, fitted.scientific_threshold),
+            (ThresholdPolicy.OPERATIONAL, fitted.operational_threshold),
+        ]:
+            weekly = _manager_weekly_metrics(
+                y_true=y_dev,
+                scores=fitted.dev_scores,
+                threshold=float(threshold),
+                week_labels=week_dev,
+            )
+            lock_row = final_lock_df[
+                (final_lock_df["role"] == fitted.config.role)
+                & (final_lock_df["threshold_policy"] == policy)
+            ]
+            lockbox_flagged_fraction = (
+                _flagged_fraction_from_binary_metrics(lock_row.iloc[0].to_dict()) if not lock_row.empty else np.nan
+            )
+            rows.append(
+                {
+                    "role": fitted.config.role,
+                    "selector": fitted.config.selector,
+                    "threshold_policy": policy,
+                    "dev_sample_count": int(weekly["dev_sample_count"]),
+                    "dev_week_count": int(weekly["dev_week_count"]),
+                    "weekly_rate": float(weekly["weekly_rate"]),
+                    "predicted_flag_fraction": float(weekly["predicted_flag_fraction"]),
+                    "mean_weekly_flagged_wafers": float(weekly["mean_weekly_flagged_wafers"]),
+                    "mean_weekly_fail_captures": float(weekly["mean_weekly_fail_captures"]),
+                    "mean_weekly_fail_misses": float(weekly["mean_weekly_fail_misses"]),
+                    "stage_b_mean_flagged_fraction": stage_b_mean_flagged_fraction,
+                    "lockbox_flagged_fraction": lockbox_flagged_fraction,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _phase2_freeze_for_role(
     role: str,
     selector: str,
@@ -439,6 +535,18 @@ def run_freeze_lockbox(
         cost_rows.append(row)
     write_csv(pd.DataFrame(cost_rows), reports / ArtifactName.COST_CURVES)
 
+    splitwise_stage3 = stage3.get("splitwise")
+    if not isinstance(splitwise_stage3, pd.DataFrame):
+        splitwise_stage3 = pd.read_csv(reports / ArtifactName.SPLITWISE)
+    manager_df = _build_manager_facing_outputs(
+        fitted_models=fitted_models,
+        y_dev=y_dev,
+        week_dev=week_dev,
+        final_lock_df=final_lock_df,
+        splitwise_df=splitwise_stage3,
+    )
+    write_csv(manager_df, reports / ArtifactName.MANAGER_FACING)
+
     primary_model = [m for m in fitted_models if m.config.role == "primary"][0]
     coefs = np.abs(primary_model.clf.coef_[0])
     feature_stability = pd.read_csv(reports / ArtifactName.FEATURE_STABILITY)
@@ -544,4 +652,3 @@ def run_freeze_lockbox(
         manifest["empirical_ARL0_nan_reason"] = "fewer_than_two_alarms_in_evaluated_sequence"
     write_manifest(manifest, manifest_path)
     return {"lane_b_feasible": True, "challenger_available": challenger_available}
-

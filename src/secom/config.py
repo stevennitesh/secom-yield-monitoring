@@ -95,6 +95,7 @@ class ArtifactName:
     FINAL_LOCKBOX = "final_lockbox_result.csv"
     MSPC = "mspc_baseline.csv"
     COST_CURVES = "operational_cost_curves.csv"
+    MANAGER_FACING = "manager_facing_outputs.csv"
     FEATURE_REPORT = "feature_report.csv"
     DRIFT_GATE = "drift_gate_summary.csv"
     MANIFEST = "run_manifest.json"
@@ -117,6 +118,7 @@ REQUIRED_ARTIFACTS_LANE_B: Final[list[str]] = [
     ArtifactName.FINAL_LOCKBOX,
     ArtifactName.MSPC,
     ArtifactName.COST_CURVES,
+    ArtifactName.MANAGER_FACING,
     ArtifactName.FEATURE_REPORT,
     ArtifactName.DRIFT_GATE,
     ArtifactName.MANIFEST,

@@ -336,6 +336,27 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
 
     splitwise = _read_csv_if_exists(reports / ArtifactName.SPLITWISE)
     if splitwise is not None:
+        for req in [
+            "selector",
+            "outer_fold",
+            "seed",
+            "train_window",
+            "test_window",
+            "k",
+            "C",
+            "scaler",
+            "n_neighbors",
+            "threshold_policy",
+            "outer_threshold",
+            "n_test",
+            "test_fails",
+            "flagged_fraction",
+            "BER",
+            "True+",
+            "True-",
+        ]:
+            if req not in splitwise.columns:
+                errors.append(f"{ArtifactName.SPLITWISE}: missing {req}")
         _validate_enum_column(
             splitwise,
             "selector",
@@ -440,6 +461,32 @@ def validate_schema_and_logic(output_dir: Path) -> ValidationResult:
             {ModelScope.PRIMARY_FROZEN, ModelScope.CHALLENGER_FROZEN},
             errors,
             ArtifactName.DRIFT_GATE,
+        )
+
+    manager_outputs = _read_csv_if_exists(reports / ArtifactName.MANAGER_FACING)
+    if manager_outputs is not None:
+        for req in [
+            "role",
+            "selector",
+            "threshold_policy",
+            "dev_sample_count",
+            "dev_week_count",
+            "weekly_rate",
+            "predicted_flag_fraction",
+            "mean_weekly_flagged_wafers",
+            "mean_weekly_fail_captures",
+            "mean_weekly_fail_misses",
+            "stage_b_mean_flagged_fraction",
+            "lockbox_flagged_fraction",
+        ]:
+            if req not in manager_outputs.columns:
+                errors.append(f"{ArtifactName.MANAGER_FACING}: missing {req}")
+        _validate_enum_column(
+            manager_outputs,
+            "threshold_policy",
+            {ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPERATIONAL},
+            errors,
+            ArtifactName.MANAGER_FACING,
         )
 
     return ValidationResult(ok=len(errors) == 0, errors=errors)
