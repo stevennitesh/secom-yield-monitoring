@@ -10,6 +10,8 @@ import pandas as pd
 from scipy.stats import ks_2samp
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
 from secom.artifacts import config_hash, ensure_reports_dir, write_csv, write_manifest
@@ -52,29 +54,43 @@ def _manager_weekly_metrics(
     scores = np.asarray(scores, dtype=float)
     weeks = np.asarray(week_labels, dtype=int)
     preds = (scores >= threshold).astype(int)
-    unique_weeks = sorted(np.unique(weeks).tolist())
+    _, week_codes = np.unique(weeks, return_inverse=True)
+    week_count = int(week_codes.max()) + 1 if week_codes.size else 0
+    preds_float = preds.astype(float, copy=False)
+    fail_mask = (y_true == 1).astype(float)
+    flagged_counts = (
+        np.bincount(week_codes, weights=preds_float, minlength=week_count)
+        if week_count
+        else np.array([], dtype=float)
+    )
+    tp_counts = (
+        np.bincount(
+            week_codes,
+            weights=(preds_float * fail_mask),
+            minlength=week_count,
+        )
+        if week_count
+        else np.array([], dtype=float)
+    )
+    fn_counts = (
+        np.bincount(
+            week_codes,
+            weights=((1.0 - preds_float) * fail_mask),
+            minlength=week_count,
+        )
+        if week_count
+        else np.array([], dtype=float)
+    )
 
-    flagged_counts: list[float] = []
-    tp_counts: list[float] = []
-    fn_counts: list[float] = []
-    for week in unique_weeks:
-        idx = weeks == week
-        y_week = y_true[idx]
-        pred_week = preds[idx]
-        flagged_counts.append(float(np.sum(pred_week == 1)))
-        tp_counts.append(float(np.sum((y_week == 1) & (pred_week == 1))))
-        fn_counts.append(float(np.sum((y_week == 1) & (pred_week == 0))))
-
-    week_count = len(unique_weeks)
     sample_count = len(y_true)
     return {
         "dev_sample_count": float(sample_count),
         "dev_week_count": float(week_count),
         "weekly_rate": float(sample_count / week_count) if week_count else 0.0,
         "predicted_flag_fraction": float(np.mean(preds)) if sample_count else 0.0,
-        "mean_weekly_flagged_wafers": float(np.mean(flagged_counts)) if flagged_counts else 0.0,
-        "mean_weekly_fail_captures": float(np.mean(tp_counts)) if tp_counts else 0.0,
-        "mean_weekly_fail_misses": float(np.mean(fn_counts)) if fn_counts else 0.0,
+        "mean_weekly_flagged_wafers": float(np.mean(flagged_counts)) if flagged_counts.size else 0.0,
+        "mean_weekly_fail_captures": float(np.mean(tp_counts)) if tp_counts.size else 0.0,
+        "mean_weekly_fail_misses": float(np.mean(fn_counts)) if fn_counts.size else 0.0,
     }
 
 
@@ -94,13 +110,28 @@ def _build_manager_facing_outputs(
     final_lock_df: pd.DataFrame,
     splitwise_df: pd.DataFrame,
 ) -> pd.DataFrame:
+    stage_b_flagged_by_selector: dict[str, float] = {}
+    if "flagged_fraction" in splitwise_df.columns:
+        stage_b_flagged_by_selector = (
+            splitwise_df.groupby("selector")["flagged_fraction"].mean().astype(float).to_dict()
+        )
+    lockbox_flagged_by_role_policy = {
+        (str(row.role), str(row.threshold_policy)): _flagged_fraction_from_binary_metrics(
+            {
+                "lockbox_n": row.lockbox_n,
+                "lockbox_fails": row.lockbox_fails,
+                "FP": row.FP,
+                "FN": row.FN,
+            }
+        )
+        for row in final_lock_df.itertuples(index=False)
+    }
+
     rows: list[dict[str, Any]] = []
     for fitted in fitted_models:
-        selector_splitwise = splitwise_df[splitwise_df["selector"] == fitted.config.selector]
-        stage_b_mean_flagged_fraction = (
-            float(selector_splitwise["flagged_fraction"].mean())
-            if not selector_splitwise.empty and "flagged_fraction" in selector_splitwise.columns
-            else np.nan
+        stage_b_mean_flagged_fraction = stage_b_flagged_by_selector.get(
+            fitted.config.selector,
+            np.nan,
         )
         for policy, threshold in [
             (ThresholdPolicy.SCIENTIFIC, fitted.scientific_threshold),
@@ -112,12 +143,9 @@ def _build_manager_facing_outputs(
                 threshold=float(threshold),
                 week_labels=week_dev,
             )
-            lock_row = final_lock_df[
-                (final_lock_df["role"] == fitted.config.role)
-                & (final_lock_df["threshold_policy"] == policy)
-            ]
-            lockbox_flagged_fraction = (
-                _flagged_fraction_from_binary_metrics(lock_row.iloc[0].to_dict()) if not lock_row.empty else np.nan
+            lockbox_flagged_fraction = lockbox_flagged_by_role_policy.get(
+                (fitted.config.role, policy),
+                np.nan,
             )
             rows.append(
                 {
@@ -138,6 +166,65 @@ def _build_manager_facing_outputs(
     return pd.DataFrame(rows)
 
 
+def _phase2_fold_metrics(y_true: np.ndarray, scores: np.ndarray, threshold: float) -> tuple[float, float]:
+    y_true = np.asarray(y_true, dtype=int)
+    scores = np.asarray(scores, dtype=float)
+    preds = (scores >= threshold).astype(int)
+
+    pos_mask = y_true == 1
+    neg_mask = ~pos_mask
+    tp = int(np.sum(pos_mask & (preds == 1)))
+    fn = int(np.sum(pos_mask & (preds == 0)))
+    tn = int(np.sum(neg_mask & (preds == 0)))
+    fp = int(np.sum(neg_mask & (preds == 1)))
+
+    tpr = float(tp / (tp + fn)) if (tp + fn) else 0.0
+    tnr = float(tn / (tn + fp)) if (tn + fp) else 0.0
+    ber = float(1.0 - 0.5 * (tpr + tnr))
+    auc = float(roc_auc_score(y_true, scores)) if np.unique(y_true).size == 2 else 0.5
+    return ber, auc
+
+
+def _prepare_phase2_inner_views(
+    *,
+    selector: str,
+    x_dev: np.ndarray,
+    y_dev: np.ndarray,
+    k: int,
+    scaler_name: str,
+    n_neighbors: int | None,
+) -> list[dict[str, Any]]:
+    prepared_views: list[dict[str, Any]] = []
+    for seed in SEEDS_PHASE2:
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+        for inner_fold_i, (tr, va) in enumerate(skf.split(x_dev, y_dev), start=1):
+            x_tr = x_dev[tr]
+            y_tr = y_dev[tr]
+            x_va = x_dev[va]
+            y_va = y_dev[va]
+            x_train_sel, x_val_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
+                x_train_raw=x_tr,
+                y_train=y_tr,
+                x_eval_raw=x_va,
+                method=selector,
+                k=int(k),
+                scaler_name=scaler_name,
+                add_indicator=True,
+                n_neighbors=n_neighbors,
+            )
+            prepared_views.append(
+                {
+                    "seed": seed,
+                    "inner_fold": inner_fold_i,
+                    "y_train": y_tr,
+                    "y_val": y_va,
+                    "x_train_sel": x_train_sel,
+                    "x_val_sel": x_val_sel,
+                }
+            )
+    return prepared_views
+
+
 def _phase2_freeze_for_role(
     role: str,
     selector: str,
@@ -146,49 +233,49 @@ def _phase2_freeze_for_role(
 ) -> tuple[pd.DataFrame, RoleConfig]:
     configs = build_stage_b_config_grid(selector)
     per_config: dict[tuple, list[dict[str, Any]]] = {}
-
+    grouped_configs: dict[tuple[int, str, int | None], list[dict[str, Any]]] = {}
     for cfg in configs:
-        key = (cfg["k"], float(cfg["C"]), cfg["scaler"], cfg.get("n_neighbors"))
-        per_config[key] = []
-        for seed in SEEDS_PHASE2:
-            from sklearn.model_selection import StratifiedKFold
+        prep_key = (int(cfg["k"]), str(cfg["scaler"]), cfg.get("n_neighbors"))
+        grouped_configs.setdefault(prep_key, []).append(cfg)
 
-            skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-            for inner_fold_i, (tr, va) in enumerate(skf.split(x_dev, y_dev), start=1):
-                x_tr = x_dev[tr]
-                y_tr = y_dev[tr]
-                x_va = x_dev[va]
-                y_va = y_dev[va]
+    for (k, scaler_name, n_neighbors), prep_configs in grouped_configs.items():
+        prepared_views = _prepare_phase2_inner_views(
+            selector=selector,
+            x_dev=x_dev,
+            y_dev=y_dev,
+            k=k,
+            scaler_name=scaler_name,
+            n_neighbors=n_neighbors,
+        )
+        for cfg in prep_configs:
+            key = (k, float(cfg["C"]), scaler_name, n_neighbors)
+            items: list[dict[str, Any]] = []
+            for prepared in prepared_views:
+                y_tr = prepared["y_train"]
+                y_va = prepared["y_val"]
+                x_train_sel = prepared["x_train_sel"]
+                x_val_sel = prepared["x_val_sel"]
 
-                x_train_sel, x_val_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
-                    x_train_raw=x_tr,
-                    y_train=y_tr,
-                    x_eval_raw=x_va,
-                    method=selector,
-                    k=int(cfg["k"]),
-                    scaler_name=cfg["scaler"],
-                    add_indicator=True,
-                    n_neighbors=cfg.get("n_neighbors"),
-                )
                 clf = fit_lane_b_classifier(x_train_sel, y_tr, c_value=float(cfg["C"]))
                 tr_scores = clf.predict_proba(x_train_sel)[:, 1]
                 va_scores = clf.predict_proba(x_val_sel)[:, 1]
                 threshold, _ = find_ber_optimal_threshold(y_tr, tr_scores)
-                m = binary_metrics_at_threshold(y_va, va_scores, threshold)
-                per_config[key].append(
+                ber, auc = _phase2_fold_metrics(y_va, va_scores, threshold)
+                items.append(
                     {
                         "role": role,
                         "selector": selector,
-                        "k": int(cfg["k"]),
+                        "k": k,
                         "C": float(cfg["C"]),
-                        "scaler": cfg["scaler"],
-                        "n_neighbors": cfg.get("n_neighbors"),
-                        "seed": seed,
-                        "inner_fold": inner_fold_i,
-                        "inner_ROC_AUC": float(m["ROC_AUC"]) if np.isfinite(m["ROC_AUC"]) else 0.5,
-                        "inner_BER": float(m["BER"]),
+                        "scaler": scaler_name,
+                        "n_neighbors": n_neighbors,
+                        "seed": prepared["seed"],
+                        "inner_fold": prepared["inner_fold"],
+                        "inner_ROC_AUC": auc,
+                        "inner_BER": ber,
                     }
                 )
+            per_config[key] = items
 
     config_rows = []
     for (k, c, scaler, nn), items in per_config.items():
@@ -227,6 +314,25 @@ def _phase2_freeze_for_role(
         n_neighbors=None if best.get("n_neighbors") is None else int(best["n_neighbors"]),
     )
     return freeze_df, role_cfg
+
+
+def _prepare_lockbox_eval_context(
+    *,
+    model: FittedRoleModel,
+    x_lock_raw: np.ndarray,
+    y_lock: np.ndarray,
+) -> dict[str, Any]:
+    x_lock_imp = model.imputer.transform(x_lock_raw)
+    x_lock_scaled = model.scaler.transform(x_lock_imp)
+    x_lock_sel = x_lock_scaled[:, model.selected_local_idx]
+    lock_scores = model.clf.predict_proba(x_lock_sel)[:, 1]
+    t90, tnr90, tpr90 = extract_tpr_at_tnr(y_lock, lock_scores, target_tnr=0.90)
+    return {
+        "lock_scores": lock_scores,
+        "threshold_at_tnr90": float(t90),
+        "tnr_at_tnr90": float(tnr90),
+        "tpr_at_tnr90": float(tpr90),
+    }
 
 
 def _fit_phase3_role_model(
@@ -274,13 +380,12 @@ def _fit_phase3_role_model(
     )
 
 
-def _score_lockbox_for_role(model: FittedRoleModel, x_lock_raw: np.ndarray, y_lock: np.ndarray) -> pd.DataFrame:
-    x_lock_imp = model.imputer.transform(x_lock_raw)
-    x_lock_scaled = model.scaler.transform(x_lock_imp)
-    x_lock_sel = x_lock_scaled[:, model.selected_local_idx]
-    lock_scores = model.clf.predict_proba(x_lock_sel)[:, 1]
-    t90, tnr90, tpr90 = extract_tpr_at_tnr(y_lock, lock_scores, target_tnr=0.90)
-
+def _score_lockbox_for_role(
+    model: FittedRoleModel,
+    y_lock: np.ndarray,
+    lock_ctx: dict[str, Any],
+) -> pd.DataFrame:
+    lock_scores = np.asarray(lock_ctx["lock_scores"], dtype=float)
     rows = []
     for policy, th in [
         (ThresholdPolicy.SCIENTIFIC, model.scientific_threshold),
@@ -302,9 +407,9 @@ def _score_lockbox_for_role(model: FittedRoleModel, x_lock_raw: np.ndarray, y_lo
                 "F2": m["F2"],
                 "lockbox_n": int(m["lockbox_n"]),
                 "lockbox_fails": int(m["lockbox_fails"]),
-                "threshold_at_TNR90": float(t90),
-                "TNR_at_TNR90": float(tnr90),
-                "TPR_at_TNR90": float(tpr90),
+                "threshold_at_TNR90": float(lock_ctx["threshold_at_tnr90"]),
+                "TNR_at_TNR90": float(lock_ctx["tnr_at_tnr90"]),
+                "TPR_at_TNR90": float(lock_ctx["tpr_at_tnr90"]),
                 "FP": int(m["FP"]),
                 "FN": int(m["FN"]),
             }
@@ -318,11 +423,9 @@ def _drift_gate_for_role(
     y_dev: np.ndarray,
     x_lock_raw: np.ndarray,
     y_lock: np.ndarray,
+    lock_ctx: dict[str, Any],
 ) -> dict[str, Any]:
-    x_lock_imp = model.imputer.transform(x_lock_raw)
-    x_lock_scaled = model.scaler.transform(x_lock_imp)
-    x_lock_sel = x_lock_scaled[:, model.selected_local_idx]
-    lock_scores = model.clf.predict_proba(x_lock_sel)[:, 1]
+    lock_scores = np.asarray(lock_ctx["lock_scores"], dtype=float)
 
     dev_fail_rate = float(np.mean(y_dev == 1))
     lock_fail_rate = float(np.mean(y_lock == 1))
@@ -479,7 +582,12 @@ def run_freeze_lockbox(
     lock_rows = []
     drift_rows = []
     for fitted in fitted_models:
-        lock_rows.append(_score_lockbox_for_role(fitted, x_lock_raw=x_lock, y_lock=y_lock))
+        lock_ctx = _prepare_lockbox_eval_context(
+            model=fitted,
+            x_lock_raw=x_lock,
+            y_lock=y_lock,
+        )
+        lock_rows.append(_score_lockbox_for_role(fitted, y_lock=y_lock, lock_ctx=lock_ctx))
         drift_rows.append(
             _drift_gate_for_role(
                 model=fitted,
@@ -487,6 +595,7 @@ def run_freeze_lockbox(
                 y_dev=y_dev,
                 x_lock_raw=x_lock,
                 y_lock=y_lock,
+                lock_ctx=lock_ctx,
             )
         )
 

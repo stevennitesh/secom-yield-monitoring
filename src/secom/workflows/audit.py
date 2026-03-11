@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pandas as pd
-
-from secom.artifacts import ValidationResult, validate_required_artifacts, validate_schema_and_logic
+from secom.artifacts import (
+    ValidationResult,
+    load_artifact_frames,
+    validate_required_artifacts,
+    validate_schema_and_logic,
+)
 from secom.config import ArtifactName, LaneAClassifier, ModelScope, ReplicationMode, SelectorName, ThresholdPolicy
 from secom.qa import validate_lane_a_global_artifacts
 
@@ -15,31 +18,19 @@ def run_artifact_audit(output_dir: Path) -> ValidationResult:
     manifest = json.loads((reports / ArtifactName.MANIFEST).read_text(encoding="utf-8"))
     lane_b_feasible = bool(manifest.get("lane_b_feasible", False))
 
+    artifact_frames = load_artifact_frames(output_dir)
     errors = []
     errors.extend(validate_required_artifacts(output_dir=output_dir, lane_b_feasible=lane_b_feasible))
-    schema = validate_schema_and_logic(output_dir=output_dir)
+    schema = validate_schema_and_logic(output_dir=output_dir, artifact_frames=artifact_frames)
     errors.extend(schema.errors)
 
-    sweep_path = reports / ArtifactName.LANE_A_GLOBAL_SWEEP
-    best_path = reports / ArtifactName.LANE_A_GLOBAL_BEST_CONFIG
-    fold_metrics_path = reports / ArtifactName.LANE_A_GLOBAL_FOLD_METRICS
-    summary_path = reports / ArtifactName.LANE_A_GLOBAL_SUMMARY
-    ablation_path = reports / ArtifactName.LANE_A_GLOBAL_ABLATION
-    full_fit_path = reports / ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY
-    if (
-        sweep_path.exists()
-        and best_path.exists()
-        and fold_metrics_path.exists()
-        and ablation_path.exists()
-        and summary_path.exists()
-        and full_fit_path.exists()
-    ):
-        sweep_df = pd.read_csv(sweep_path)
-        best_df = pd.read_csv(best_path)
-        fold_metrics_df = pd.read_csv(fold_metrics_path)
-        ablation_df = pd.read_csv(ablation_path)
-        summary_df = pd.read_csv(summary_path)
-        full_fit_df = pd.read_csv(full_fit_path)
+    sweep_df = artifact_frames.get(ArtifactName.LANE_A_GLOBAL_SWEEP)
+    best_df = artifact_frames.get(ArtifactName.LANE_A_GLOBAL_BEST_CONFIG)
+    fold_metrics_df = artifact_frames.get(ArtifactName.LANE_A_GLOBAL_FOLD_METRICS)
+    summary_df = artifact_frames.get(ArtifactName.LANE_A_GLOBAL_SUMMARY)
+    ablation_df = artifact_frames.get(ArtifactName.LANE_A_GLOBAL_ABLATION)
+    full_fit_df = artifact_frames.get(ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY)
+    if all(df is not None for df in (sweep_df, best_df, fold_metrics_df, ablation_df, summary_df, full_fit_df)):
         classifiers_run = (
             sorted(summary_df["classifier"].dropna().astype(str).unique().tolist())
             if "classifier" in summary_df.columns
@@ -86,33 +77,33 @@ def run_artifact_audit(output_dir: Path) -> ValidationResult:
                     "classifier=krr, selector=F-test, replication_mode=with_missing_indicators"
                 )
 
-    if lane_b_feasible and (reports / ArtifactName.FINAL_LOCKBOX).exists():
-        lock = pd.read_csv(reports / ArtifactName.FINAL_LOCKBOX)
-        mspc = pd.read_csv(reports / ArtifactName.MSPC)
-        drift = pd.read_csv(reports / ArtifactName.DRIFT_GATE)
+    lock = artifact_frames.get(ArtifactName.FINAL_LOCKBOX)
+    mspc = artifact_frames.get(ArtifactName.MSPC)
+    drift = artifact_frames.get(ArtifactName.DRIFT_GATE)
+    if lane_b_feasible and lock is not None and mspc is not None and drift is not None:
         mspc_lock = mspc[mspc["eval_scope"] == "lockbox"]
         if mspc_lock.empty:
             errors.append("mspc lockbox row missing for claim gate")
         else:
             mspc_tpr = float(mspc_lock.iloc[0]["best_MSPC_TPR_at_TNR90"])
-            for role in lock["role"].unique():
-                row = lock[
-                    (lock["role"] == role)
-                    & (lock["threshold_policy"] == ThresholdPolicy.SCIENTIFIC)
-                ]
-                if row.empty:
-                    continue
-                sup_tpr = float(row.iloc[0]["TPR_at_TNR90"])
+            lock_tpr_by_role = {
+                str(row.role): float(row.TPR_at_TNR90)
+                for row in lock.itertuples(index=False)
+                if str(row.threshold_policy) == ThresholdPolicy.SCIENTIFIC
+            }
+            drift_status_by_scope = {
+                str(row.model_scope): str(row.drift_gate_status)
+                for row in drift.itertuples(index=False)
+            }
+            for role, sup_tpr in lock_tpr_by_role.items():
                 scope = ModelScope.PRIMARY_FROZEN if role == "primary" else ModelScope.CHALLENGER_FROZEN
-                drift_row = drift[drift["model_scope"] == scope]
-                if drift_row.empty:
+                status = drift_status_by_scope.get(scope)
+                if status is None:
                     errors.append(f"drift gate row missing for role={role}")
-                else:
-                    status = str(drift_row.iloc[0]["drift_gate_status"])
-                    if status == "HIGH_SHIFT" and sup_tpr > mspc_tpr:
-                        errors.append(
-                            f"invalid claim condition: role={role} better than MSPC but HIGH_SHIFT"
-                        )
+                elif status == "HIGH_SHIFT" and sup_tpr > mspc_tpr:
+                    errors.append(
+                        f"invalid claim condition: role={role} better than MSPC but HIGH_SHIFT"
+                    )
 
     return ValidationResult(ok=len(errors) == 0, errors=errors)
 
