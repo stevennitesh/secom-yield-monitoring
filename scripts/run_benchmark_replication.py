@@ -16,8 +16,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the benchmark replication study")
     parser.add_argument("--input-dir", default="data/raw")
     parser.add_argument("--output-dir", default="runs/benchmark_replication")
+    parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
-    run_benchmark_replication(Path(args.input_dir), Path(args.output_dir))
+    result = run_benchmark_replication(Path(args.input_dir), Path(args.output_dir))
+    print(f"PRIMARY_STUDY_STATUS: {result['primary_study_status']}")
+    if args.strict and result["primary_study_status"] != "passed":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

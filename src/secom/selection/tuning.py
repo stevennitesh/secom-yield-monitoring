@@ -8,18 +8,18 @@ import numpy as np
 from sklearn.model_selection import StratifiedKFold
 
 from secom.config import (
-    LANE_A_KRR_ALPHA_GRID,
-    LANE_A_KRR_GAMMA_GRID,
-    LANE_A_KRR_INNER_SPLITS,
-    LANE_A_LOGREG_C_GRID,
+    BENCHMARK_INNER_SPLITS,
+    BENCHMARK_KRR_ALPHA_GRID,
+    BENCHMARK_KRR_GAMMA_GRID,
+    BENCHMARK_LOGREG_C_GRID,
     ScalerName,
-    SEED_LANE_A,
+    SEED_BENCHMARK,
 )
 from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold
 from secom.models import (
-    fit_lane_a_krr_classifier,
-    make_lane_a_classifier,
-    make_lane_a_logreg_tuned_classifier,
+    fit_benchmark_krr_model,
+    make_benchmark_krr_model,
+    make_benchmark_logreg_model,
 )
 
 
@@ -35,17 +35,17 @@ def select_krr_config_with_inner_cv(
     n_fail = int(np.sum(y_train == 1))
     n_pass = int(np.sum(y_train == 0))
     min_class = min(n_fail, n_pass)
-    n_splits = min(int(LANE_A_KRR_INNER_SPLITS), min_class)
-    sorted_alphas = sorted(float(a) for a in LANE_A_KRR_ALPHA_GRID)
+    n_splits = min(int(BENCHMARK_INNER_SPLITS), min_class)
+    sorted_alphas = sorted(float(a) for a in BENCHMARK_KRR_ALPHA_GRID)
     sorted_gammas = sorted(
-        (None if g is None else float(g) for g in LANE_A_KRR_GAMMA_GRID),
+        (None if g is None else float(g) for g in BENCHMARK_KRR_GAMMA_GRID),
         key=gamma_sort_key,
     )
 
     if n_splits < 2:
         fallback_alpha = float(sorted_alphas[0])
         fallback_gamma = sorted_gammas[0]
-        fallback_clf = fit_lane_a_krr_classifier(
+        fallback_clf = fit_benchmark_krr_model(
             x_train_sel,
             y_train,
             alpha=fallback_alpha,
@@ -58,7 +58,7 @@ def select_krr_config_with_inner_cv(
     inner_cv = StratifiedKFold(
         n_splits=n_splits,
         shuffle=True,
-        random_state=SEED_LANE_A,
+        random_state=SEED_BENCHMARK,
     )
     best_alpha: float | None = None
     best_gamma: float | None = None
@@ -72,7 +72,7 @@ def select_krr_config_with_inner_cv(
             x_inner_val = x_train_sel[inner_val_idx]
             y_inner_val = y_train[inner_val_idx]
 
-            clf_inner = fit_lane_a_krr_classifier(
+            clf_inner = fit_benchmark_krr_model(
                 x_inner_train,
                 y_inner_train,
                 alpha=alpha,
@@ -104,7 +104,7 @@ def select_krr_config_with_inner_cv(
     if best_alpha is None:
         raise RuntimeError("krr: failed to choose (alpha, gamma) from inner CV")
 
-    final_clf = fit_lane_a_krr_classifier(
+    final_clf = fit_benchmark_krr_model(
         x_train_sel,
         y_train,
         alpha=float(best_alpha),
@@ -123,12 +123,12 @@ def select_logreg_config_with_inner_cv(
     n_fail = int(np.sum(y_train == 1))
     n_pass = int(np.sum(y_train == 0))
     min_class = min(n_fail, n_pass)
-    n_splits = min(int(LANE_A_KRR_INNER_SPLITS), min_class)
-    sorted_c_values = sorted(float(c) for c in LANE_A_LOGREG_C_GRID)
+    n_splits = min(int(BENCHMARK_INNER_SPLITS), min_class)
+    sorted_c_values = sorted(float(c) for c in BENCHMARK_LOGREG_C_GRID)
 
     if n_splits < 2:
         fallback_c = float(sorted_c_values[0])
-        fallback_clf = make_lane_a_logreg_tuned_classifier(c_value=fallback_c)
+        fallback_clf = make_benchmark_logreg_model(c_value=fallback_c)
         fallback_clf.fit(x_train_sel, y_train)
         fallback_train_scores = np.asarray(fallback_clf.predict_proba(x_train_sel)[:, 1], dtype=float)
         fallback_threshold, _ = find_ber_optimal_threshold(y_train, fallback_train_scores)
@@ -137,7 +137,7 @@ def select_logreg_config_with_inner_cv(
     inner_cv = StratifiedKFold(
         n_splits=n_splits,
         shuffle=True,
-        random_state=SEED_LANE_A,
+        random_state=SEED_BENCHMARK,
     )
     best_c: float | None = None
     best_inner_ber = np.inf
@@ -150,7 +150,7 @@ def select_logreg_config_with_inner_cv(
             x_inner_val = x_train_sel[inner_val_idx]
             y_inner_val = y_train[inner_val_idx]
 
-            clf_inner = make_lane_a_logreg_tuned_classifier(c_value=c_value)
+            clf_inner = make_benchmark_logreg_model(c_value=c_value)
             clf_inner.fit(x_inner_train, y_inner_train)
             inner_train_scores = np.asarray(clf_inner.predict_proba(x_inner_train)[:, 1], dtype=float)
             inner_threshold, _ = find_ber_optimal_threshold(y_inner_train, inner_train_scores)
@@ -173,7 +173,7 @@ def select_logreg_config_with_inner_cv(
     if best_c is None:
         raise RuntimeError("logreg: failed to choose C from inner CV")
 
-    final_clf = make_lane_a_logreg_tuned_classifier(c_value=float(best_c))
+    final_clf = make_benchmark_logreg_model(c_value=float(best_c))
     final_clf.fit(x_train_sel, y_train)
     final_train_scores = np.asarray(final_clf.predict_proba(x_train_sel)[:, 1], dtype=float)
     final_threshold, _ = find_ber_optimal_threshold(y_train, final_train_scores)
@@ -185,9 +185,9 @@ def inner_cv_ber_krr_strict(x_train_sel: np.ndarray, y_train: np.ndarray) -> flo
     n_fail = int(np.sum(y_train == 1))
     n_pass = int(np.sum(y_train == 0))
     min_class = min(n_fail, n_pass)
-    n_splits = min(int(LANE_A_KRR_INNER_SPLITS), min_class)
+    n_splits = min(int(BENCHMARK_INNER_SPLITS), min_class)
     if n_splits < 2:
-        clf = make_lane_a_classifier(alpha=1.0, gamma=None)
+        clf = make_benchmark_krr_model(alpha=1.0, gamma=None)
         y_train_krr = 2 * y_train - 1
         clf.fit(x_train_sel, y_train_krr)
         train_scores = np.asarray(clf.predict(x_train_sel), dtype=float)
@@ -195,14 +195,14 @@ def inner_cv_ber_krr_strict(x_train_sel: np.ndarray, y_train: np.ndarray) -> flo
         m = binary_metrics_at_threshold(y_train, train_scores, threshold=float(threshold))
         return float(m["BER"])
 
-    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=SEED_LANE_A)
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=SEED_BENCHMARK)
     fold_bers: list[float] = []
     for inner_train_idx, inner_val_idx in skf.split(x_train_sel, y_train):
         x_inner_train = x_train_sel[inner_train_idx]
         y_inner_train = y_train[inner_train_idx]
         x_inner_val = x_train_sel[inner_val_idx]
         y_inner_val = y_train[inner_val_idx]
-        clf = make_lane_a_classifier(alpha=1.0, gamma=None)
+        clf = make_benchmark_krr_model(alpha=1.0, gamma=None)
         y_inner_train_krr = 2 * y_inner_train - 1
         clf.fit(x_inner_train, y_inner_train_krr)
         inner_train_scores = np.asarray(clf.predict(x_inner_train), dtype=float)
@@ -236,4 +236,3 @@ def select_best_inner_config(config_rows: list[dict[str, Any]]) -> dict[str, Any
         return (row["k"], row["C"], scaler_pref, nn_key)
 
     return sorted(tied, key=key)[0]
-

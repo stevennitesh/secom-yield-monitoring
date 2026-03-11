@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-SEED_LANE_A: Final[int] = 42
+SEED_BENCHMARK: Final[int] = 42
 SEEDS_STAGE_B: Final[list[int]] = [42, 11, 23, 37, 59]
 SEEDS_PHASE2: Final[list[int]] = [42, 11, 23, 37, 59]
 SEED_PHASE3: Final[int] = 42
@@ -17,10 +17,10 @@ EPS_PSI: Final[float] = 1e-6
 PSI_MAX_FEATURES: Final[int] = 10
 
 COST_RATIOS: Final[list[int]] = [1, 2, 5, 10, 20]
-LANE_A_KRR_ALPHA_GRID: Final[list[float]] = [0.1, 1.0, 10.0]
-LANE_A_KRR_GAMMA_GRID: Final[list[float | None]] = [None, 0.01, 0.1, 1.0]
-LANE_A_LOGREG_C_GRID: Final[list[float]] = [0.01, 0.1, 1.0, 10.0]
-LANE_A_KRR_INNER_SPLITS: Final[int] = 3
+BENCHMARK_KRR_ALPHA_GRID: Final[list[float]] = [0.1, 1.0, 10.0]
+BENCHMARK_KRR_GAMMA_GRID: Final[list[float | None]] = [None, 0.01, 0.1, 1.0]
+BENCHMARK_LOGREG_C_GRID: Final[list[float]] = [0.01, 0.1, 1.0, 10.0]
+BENCHMARK_INNER_SPLITS: Final[int] = 3
 
 
 class SelectorName:
@@ -34,7 +34,6 @@ class SelectorName:
     EXPERIMENTAL: list[str] = [PEARSON]
     ALL = CORE + EXPERIMENTAL
     ACTIVE = CORE
-    STAGE_B = [S2N, WELCH_T, F_TEST, RELIEFF, GRAM_SCHMIDT]
 
 
 class ScalerName:
@@ -44,19 +43,19 @@ class ScalerName:
 
 
 class ThresholdPolicy:
-    OUTER_TRAIN_YOUDEN = "outer_train_youden_ber_optimal"
     SCIENTIFIC = "scientific"
     OPERATIONAL = "operational"
 
 
 class EvalScope:
-    OUTER_FOLD = "outer_fold"
+    BENCHMARK = "benchmark"
+    TEMPORAL = "temporal"
     LOCKBOX = "lockbox"
 
 
 class ModelScope:
-    PRIMARY_FROZEN = "primary_frozen"
-    CHALLENGER_FROZEN = "challenger_frozen"
+    PRIMARY = "primary"
+    CHALLENGER = "challenger"
 
 
 class ReplicationMode:
@@ -64,7 +63,7 @@ class ReplicationMode:
     WITH_MISSING_INDICATORS = "with_missing_indicators"
 
 
-class LaneAClassifier:
+class BenchmarkClassifier:
     KRR = "krr"
     LOGREG = "logreg"
     KRR_STRICT = "krr_strict"
@@ -78,60 +77,60 @@ class FoldPlanName:
     FALLBACK_2FOLD = "fallback_2fold"
 
 
+class StudyStatus:
+    NOT_RUN = "not_run"
+    PASSED = "passed"
+    FAILED = "failed"
+    WARNING = "warning"
+    ALL = [NOT_RUN, PASSED, FAILED, WARNING]
+
+
 class ArtifactName:
-    LANE_A_GLOBAL_SWEEP = "lane_a_global_sweep.csv"
-    LANE_A_GLOBAL_BEST_CONFIG = "lane_a_global_best_config.csv"
-    LANE_A_GLOBAL_FOLD_METRICS = "lane_a_global_fold_metrics.csv"
-    LANE_A_GLOBAL_SUMMARY = "lane_a_global_summary.csv"
-    LANE_A_GLOBAL_ABLATION = "lane_a_global_ablation.csv"
-    LANE_A_GLOBAL_FULL_FIT_SUMMARY = "lane_a_global_full_fit_summary.csv"
-    STAGE_A = "timeaware_selector_screening.csv"
-    SPLITWISE = "splitwise_timeaware_results.csv"
-    STAGE_B_INNER = "stage_b_inner_cv_results.csv"
-    MODEL_SELECTION = "timeaware_model_selection.csv"
-    SEED_STABILITY = "seed_stability_summary.csv"
-    FEATURE_STABILITY = "feature_stability_by_seed.csv"
-    FREEZE = "hyperparameter_freeze_results.csv"
-    FINAL_LOCKBOX = "final_lockbox_result.csv"
-    MSPC = "mspc_baseline.csv"
-    COST_CURVES = "operational_cost_curves.csv"
-    MANAGER_FACING = "manager_facing_outputs.csv"
+    BENCHMARK_SWEEP = "benchmark_sweep.csv"
+    BENCHMARK_BEST_CONFIG = "benchmark_best_config.csv"
+    BENCHMARK_FOLD_METRICS = "benchmark_fold_metrics.csv"
+    BENCHMARK_SUMMARY = "benchmark_summary.csv"
+    BENCHMARK_ABLATION = "benchmark_ablation.csv"
+    BENCHMARK_FULL_FIT_SUMMARY = "benchmark_full_fit_summary.csv"
+    FEATURE_STABILITY = "feature_stability.csv"
     FEATURE_REPORT = "feature_report.csv"
-    DRIFT_GATE = "drift_gate_summary.csv"
+    TEMPORAL_SPLIT_METADATA = "temporal_split_metadata.csv"
+    TEMPORAL_SELECTOR_SCREENING = "temporal_selector_screening.csv"
+    TEMPORAL_MODEL_SELECTION = "temporal_model_selection.csv"
+    TEMPORAL_INNER_CV = "temporal_inner_cv.csv"
+    TEMPORAL_FREEZE = "temporal_freeze.csv"
+    TEMPORAL_LOCKBOX = "temporal_lockbox.csv"
+    TEMPORAL_DRIFT = "temporal_drift_summary.csv"
+    TEMPORAL_MSPC = "temporal_mspc.csv"
+    TEMPORAL_COST_CURVES = "temporal_cost_curves.csv"
+    TEMPORAL_MANAGER_OUTPUTS = "temporal_manager_outputs.csv"
     MANIFEST = "run_manifest.json"
+    REPORT_SKELETON = "final_report_skeleton.md"
 
 
-REQUIRED_ARTIFACTS_LANE_B: Final[list[str]] = [
-    ArtifactName.LANE_A_GLOBAL_SWEEP,
-    ArtifactName.LANE_A_GLOBAL_BEST_CONFIG,
-    ArtifactName.LANE_A_GLOBAL_FOLD_METRICS,
-    ArtifactName.LANE_A_GLOBAL_SUMMARY,
-    ArtifactName.LANE_A_GLOBAL_ABLATION,
-    ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY,
-    ArtifactName.STAGE_A,
-    ArtifactName.SPLITWISE,
-    ArtifactName.STAGE_B_INNER,
-    ArtifactName.MODEL_SELECTION,
-    ArtifactName.SEED_STABILITY,
+REQUIRED_ARTIFACTS_PRIMARY: Final[list[str]] = [
+    ArtifactName.BENCHMARK_SWEEP,
+    ArtifactName.BENCHMARK_BEST_CONFIG,
+    ArtifactName.BENCHMARK_FOLD_METRICS,
+    ArtifactName.BENCHMARK_SUMMARY,
+    ArtifactName.BENCHMARK_ABLATION,
+    ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
     ArtifactName.FEATURE_STABILITY,
-    ArtifactName.FREEZE,
-    ArtifactName.FINAL_LOCKBOX,
-    ArtifactName.MSPC,
-    ArtifactName.COST_CURVES,
-    ArtifactName.MANAGER_FACING,
     ArtifactName.FEATURE_REPORT,
-    ArtifactName.DRIFT_GATE,
     ArtifactName.MANIFEST,
 ]
 
-REQUIRED_ARTIFACTS_LANE_A_ONLY: Final[list[str]] = [
-    ArtifactName.LANE_A_GLOBAL_SWEEP,
-    ArtifactName.LANE_A_GLOBAL_BEST_CONFIG,
-    ArtifactName.LANE_A_GLOBAL_FOLD_METRICS,
-    ArtifactName.LANE_A_GLOBAL_SUMMARY,
-    ArtifactName.LANE_A_GLOBAL_ABLATION,
-    ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY,
-    ArtifactName.MANIFEST,
+REQUIRED_ARTIFACTS_TEMPORAL: Final[list[str]] = [
+    ArtifactName.TEMPORAL_SPLIT_METADATA,
+    ArtifactName.TEMPORAL_SELECTOR_SCREENING,
+    ArtifactName.TEMPORAL_MODEL_SELECTION,
+    ArtifactName.TEMPORAL_INNER_CV,
+    ArtifactName.TEMPORAL_FREEZE,
+    ArtifactName.TEMPORAL_LOCKBOX,
+    ArtifactName.TEMPORAL_DRIFT,
+    ArtifactName.TEMPORAL_MSPC,
+    ArtifactName.TEMPORAL_COST_CURVES,
+    ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
 ]
 
 
@@ -148,23 +147,14 @@ class Paths:
 
 MANIFEST_REQUIRED_KEYS: Final[list[str]] = [
     "manifest_version",
-    "strategy_doc_path",
-    "strategy_doc_sha256",
+    "study_spec_path",
+    "study_spec_sha256",
     "git_commit",
     "git_dirty",
     "python_executable",
     "library_versions",
-    "seed_policy",
-    "dev_lockbox_split",
-    "outer_fold_plan_used",
-    "outer_fold_week_ranges",
-    "lane_b_feasible",
-    "lane_b_infeasible_reason",
-    "challenger_available",
-    "challenger_unavailable_reason",
-    "frozen_primary",
-    "frozen_challenger",
-    "frozen_thresholds",
-    "drift_gate_results",
-    "empirical_ARL0_nan_reason",
+    "primary_study_status",
+    "temporal_robustness_status",
+    "temporal_claim_restrictions",
+    "industrialization_notes",
 ]

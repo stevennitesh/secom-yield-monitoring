@@ -11,15 +11,10 @@ import pandas as pd
 
 from secom.config import (
     ArtifactName,
-    LaneAClassifier,
     MANIFEST_REQUIRED_KEYS,
-    ModelScope,
-    REQUIRED_ARTIFACTS_LANE_A_ONLY,
-    REQUIRED_ARTIFACTS_LANE_B,
-    ReplicationMode,
-    ScalerName,
-    SelectorName,
-    ThresholdPolicy,
+    REQUIRED_ARTIFACTS_PRIMARY,
+    REQUIRED_ARTIFACTS_TEMPORAL,
+    StudyStatus,
 )
 
 
@@ -27,6 +22,8 @@ from secom.config import (
 class ValidationResult:
     ok: bool
     errors: list[str]
+    warnings: list[str]
+    claim_restrictions: list[str]
 
 
 _CSV_ARTIFACT_NAMES = sorted(
@@ -34,6 +31,132 @@ _CSV_ARTIFACT_NAMES = sorted(
     for name, value in vars(ArtifactName).items()
     if not name.startswith("_") and isinstance(value, str) and value.endswith(".csv")
 )
+
+_PRIMARY_REQUIRED_COLUMNS: dict[str, set[str]] = {
+    ArtifactName.BENCHMARK_SWEEP: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "mean_BER",
+        "mean_True+",
+        "mean_True-",
+    },
+    ArtifactName.BENCHMARK_BEST_CONFIG: {
+        "selector",
+        "classifier",
+        "replication_mode",
+    },
+    ArtifactName.BENCHMARK_FOLD_METRICS: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "fold",
+        "BER",
+        "True+",
+        "True-",
+    },
+    ArtifactName.BENCHMARK_SUMMARY: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "mean_BER",
+        "CI_lower_BER",
+        "CI_upper_BER",
+        "mean_True+",
+        "mean_True-",
+    },
+    ArtifactName.BENCHMARK_ABLATION: {
+        "selector",
+        "classifier",
+        "BER_reference",
+        "BER_missing_indicator",
+        "delta_BER",
+    },
+    ArtifactName.BENCHMARK_FULL_FIT_SUMMARY: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "BER_full_dataset",
+        "True+_full_dataset",
+        "True-_full_dataset",
+    },
+    ArtifactName.FEATURE_STABILITY: {
+        "selector",
+        "resample_id",
+        "feature_index",
+        "feature_type",
+        "selected",
+    },
+    ArtifactName.FEATURE_REPORT: {
+        "feature_index",
+        "feature_type",
+        "selection_frequency",
+        "conditional_effect_magnitude",
+        "expected_contribution",
+    },
+}
+
+_TEMPORAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
+    ArtifactName.TEMPORAL_SPLIT_METADATA: {
+        "n_total",
+        "n_dev",
+        "n_lockbox",
+        "split_rule",
+    },
+    ArtifactName.TEMPORAL_SELECTOR_SCREENING: {
+        "selector",
+        "mean_BER",
+        "std_BER",
+    },
+    ArtifactName.TEMPORAL_MODEL_SELECTION: {
+        "selector",
+        "status",
+        "is_primary",
+        "is_challenger",
+        "mean_BER",
+    },
+    ArtifactName.TEMPORAL_INNER_CV: {
+        "selector",
+        "resample_id",
+        "mean_inner_BER",
+        "mean_inner_ROC_AUC",
+        "is_selected_config",
+    },
+    ArtifactName.TEMPORAL_FREEZE: {
+        "role",
+        "selector",
+        "is_frozen_config",
+    },
+    ArtifactName.TEMPORAL_LOCKBOX: {
+        "role",
+        "threshold_policy",
+        "BER",
+        "True+",
+        "True-",
+        "TPR_at_TNR90",
+    },
+    ArtifactName.TEMPORAL_DRIFT: {
+        "model_scope",
+        "drift_gate_status",
+        "lockbox_claims_allowed",
+    },
+    ArtifactName.TEMPORAL_MSPC: {
+        "eval_scope",
+        "best_MSPC_TPR_at_TNR90",
+        "best_MSPC_source",
+    },
+    ArtifactName.TEMPORAL_COST_CURVES: {
+        "cost_ratio",
+        "all_pass_baseline",
+        "all_flag_baseline",
+    },
+    ArtifactName.TEMPORAL_MANAGER_OUTPUTS: {
+        "role",
+        "threshold_policy",
+        "predicted_flag_fraction",
+        "mean_weekly_flagged_wafers",
+    },
+}
 
 
 def ensure_reports_dir(output_dir: Path) -> Path:
@@ -84,9 +207,7 @@ def canonical_json_bytes(data: Any) -> bytes:
 
 
 def config_hash(config: dict[str, Any]) -> str:
-    keys = ["selector", "k", "C", "scaler", "n_neighbors"]
-    payload = {k: config.get(k) for k in keys}
-    digest = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+    digest = hashlib.sha256(canonical_json_bytes(config)).hexdigest()
     return digest
 
 
@@ -100,14 +221,24 @@ def write_manifest(manifest: dict[str, Any], path: Path) -> None:
         json.dump(payload, f, sort_keys=True, indent=2, ensure_ascii=True)
 
 
-def _required_artifacts(lane_b_feasible: bool) -> list[str]:
-    return REQUIRED_ARTIFACTS_LANE_B if lane_b_feasible else REQUIRED_ARTIFACTS_LANE_A_ONLY
+def _required_artifacts(primary_status: str, temporal_status: str) -> list[str]:
+    names = [ArtifactName.MANIFEST]
+    if primary_status != StudyStatus.NOT_RUN:
+        names.extend(name for name in REQUIRED_ARTIFACTS_PRIMARY if name != ArtifactName.MANIFEST)
+    if temporal_status != StudyStatus.NOT_RUN:
+        names.extend(REQUIRED_ARTIFACTS_TEMPORAL)
+    return names
 
 
-def validate_required_artifacts(output_dir: Path, lane_b_feasible: bool) -> list[str]:
+def validate_required_artifacts(
+    output_dir: Path,
+    *,
+    primary_status: str,
+    temporal_status: str,
+) -> list[str]:
     reports = output_dir / "reports"
     errors: list[str] = []
-    for name in _required_artifacts(lane_b_feasible):
+    for name in _required_artifacts(primary_status, temporal_status):
         if not (reports / name).exists():
             errors.append(f"missing artifact: {name}")
     return errors
@@ -129,15 +260,15 @@ def _read_csv_if_exists(path: Path) -> pd.DataFrame | None:
     return pd.read_csv(path)
 
 
-def _validate_enum_column(
-    df: pd.DataFrame, column: str, allowed: set[str], errors: list[str], file_name: str
+def _validate_required_columns(
+    df: pd.DataFrame,
+    required: set[str],
+    errors: list[str],
+    file_name: str,
 ) -> None:
-    if column not in df.columns:
-        errors.append(f"{file_name}: missing column {column}")
-        return
-    bad = set(df[column].dropna().astype(str).unique()) - allowed
-    if bad:
-        errors.append(f"{file_name}: invalid {column} values {sorted(bad)}")
+    missing = required - set(df.columns)
+    if missing:
+        errors.append(f"{file_name}: missing columns {sorted(missing)}")
 
 
 def _artifact_frame(
@@ -154,432 +285,92 @@ def _artifact_frame(
 def validate_schema_and_logic(
     output_dir: Path,
     artifact_frames: dict[str, pd.DataFrame] | None = None,
+    manifest: dict[str, Any] | None = None,
 ) -> ValidationResult:
     reports = output_dir / "reports"
     errors: list[str] = []
-    lane_a_classifier_values = set(LaneAClassifier.ALL + LaneAClassifier.OPTIONAL_BENCHMARK)
-    lane_a_param_cols = [
-        "alpha",
-        "gamma",
-        "C",
-        "n_neighbors",
-    ]
+    warnings: list[str] = []
+    claim_restrictions: list[str] = []
 
-    lane_a_sweep = _artifact_frame(
-        name=ArtifactName.LANE_A_GLOBAL_SWEEP,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if lane_a_sweep is not None:
-        for req in [
-            "selector",
-            "classifier",
-            "replication_mode",
-            *lane_a_param_cols,
-            "threshold_oof_global",
-            "mean_BER_oof",
-            "std_BER_fold",
-            "mean_True+_oof",
-            "mean_True-_oof",
-            "mean_n_selected_features",
-            "min_n_selected_features",
-            "max_n_selected_features",
-            "n_folds",
-        ]:
-            if req not in lane_a_sweep.columns:
-                errors.append(f"{ArtifactName.LANE_A_GLOBAL_SWEEP}: missing {req}")
-        _validate_enum_column(
-            lane_a_sweep,
-            "classifier",
-            lane_a_classifier_values,
-            errors,
-            ArtifactName.LANE_A_GLOBAL_SWEEP,
-        )
-        _validate_enum_column(
-            lane_a_sweep,
-            "replication_mode",
-            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
-            errors,
-            ArtifactName.LANE_A_GLOBAL_SWEEP,
-        )
+    if manifest is None:
+        manifest_path = reports / ArtifactName.MANIFEST
+        if not manifest_path.exists():
+            return ValidationResult(
+                ok=False,
+                errors=[f"missing artifact: {ArtifactName.MANIFEST}"],
+                warnings=[],
+                claim_restrictions=[],
+            )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    lane_a_best = _artifact_frame(
-        name=ArtifactName.LANE_A_GLOBAL_BEST_CONFIG,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if lane_a_best is not None:
-        for req in [
-            "selector",
-            "classifier",
-            "replication_mode",
-            *lane_a_param_cols,
-            "threshold_oof_global",
-            "mean_BER_oof",
-            "std_BER_fold",
-            "mean_True+_oof",
-            "mean_True-_oof",
-            "mean_n_selected_features",
-            "min_n_selected_features",
-            "max_n_selected_features",
-            "n_folds",
-            "n_configs_evaluated",
-        ]:
-            if req not in lane_a_best.columns:
-                errors.append(f"{ArtifactName.LANE_A_GLOBAL_BEST_CONFIG}: missing {req}")
-        _validate_enum_column(
-            lane_a_best,
-            "classifier",
-            lane_a_classifier_values,
-            errors,
-            ArtifactName.LANE_A_GLOBAL_BEST_CONFIG,
-        )
-        _validate_enum_column(
-            lane_a_best,
-            "replication_mode",
-            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
-            errors,
-            ArtifactName.LANE_A_GLOBAL_BEST_CONFIG,
-        )
+    missing_manifest_keys = [k for k in MANIFEST_REQUIRED_KEYS if k not in manifest]
+    if missing_manifest_keys:
+        errors.append(f"{ArtifactName.MANIFEST}: missing keys {missing_manifest_keys}")
 
-    lane_a_fold = _artifact_frame(
-        name=ArtifactName.LANE_A_GLOBAL_FOLD_METRICS,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if lane_a_fold is not None:
-        for req in [
-            "selector",
-            "classifier",
-            "replication_mode",
-            "fold",
-            "BER",
-            "True+",
-            "True-",
-            "n_train",
-            "n_test",
-            "n_test_fails",
-            "n_selected_features",
-            "threshold_oof_global",
-            *lane_a_param_cols,
-        ]:
-            if req not in lane_a_fold.columns:
-                errors.append(f"{ArtifactName.LANE_A_GLOBAL_FOLD_METRICS}: missing {req}")
-        _validate_enum_column(
-            lane_a_fold,
-            "classifier",
-            lane_a_classifier_values,
-            errors,
-            ArtifactName.LANE_A_GLOBAL_FOLD_METRICS,
-        )
-        _validate_enum_column(
-            lane_a_fold,
-            "replication_mode",
-            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
-            errors,
-            ArtifactName.LANE_A_GLOBAL_FOLD_METRICS,
-        )
+    primary_status = str(manifest.get("primary_study_status", StudyStatus.NOT_RUN))
+    temporal_status = str(manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN))
+    if primary_status not in StudyStatus.ALL:
+        errors.append(f"{ArtifactName.MANIFEST}: invalid primary_study_status {primary_status}")
+    if temporal_status not in StudyStatus.ALL:
+        errors.append(f"{ArtifactName.MANIFEST}: invalid temporal_robustness_status {temporal_status}")
 
-    lane_a_summary = _artifact_frame(
-        name=ArtifactName.LANE_A_GLOBAL_SUMMARY,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if lane_a_summary is not None:
-        for req in [
-            "selector",
-            "classifier",
-            "replication_mode",
-            "n_folds",
-            "n_boot",
-            "boot_seed",
-            "mean_BER",
-            "std_BER",
-            "CI_lower_BER",
-            "CI_upper_BER",
-            "mean_True+",
-            "std_True+",
-            "CI_lower_True+",
-            "CI_upper_True+",
-            "mean_True-",
-            "std_True-",
-            "CI_lower_True-",
-            "CI_upper_True-",
-        ]:
-            if req not in lane_a_summary.columns:
-                errors.append(f"{ArtifactName.LANE_A_GLOBAL_SUMMARY}: missing {req}")
-        _validate_enum_column(
-            lane_a_summary,
-            "classifier",
-            lane_a_classifier_values,
-            errors,
-            ArtifactName.LANE_A_GLOBAL_SUMMARY,
-        )
-        _validate_enum_column(
-            lane_a_summary,
-            "replication_mode",
-            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
-            errors,
-            ArtifactName.LANE_A_GLOBAL_SUMMARY,
-        )
+    restrictions = manifest.get("temporal_claim_restrictions", [])
+    if not isinstance(restrictions, list):
+        errors.append(f"{ArtifactName.MANIFEST}: temporal_claim_restrictions must be a list")
+        restrictions = []
+    else:
+        claim_restrictions.extend(str(x) for x in restrictions)
 
-    lane_a_ablation = _artifact_frame(
-        name=ArtifactName.LANE_A_GLOBAL_ABLATION,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if lane_a_ablation is not None:
-        for req in [
-            "selector",
-            "classifier",
-            "BER_strict",
-            "BER_MI",
-            "delta_BER",
-            "CI_lower",
-            "CI_upper",
-            "n_boot",
-        ]:
-            if req not in lane_a_ablation.columns:
-                errors.append(f"{ArtifactName.LANE_A_GLOBAL_ABLATION}: missing {req}")
-        _validate_enum_column(
-            lane_a_ablation,
-            "classifier",
-            lane_a_classifier_values,
-            errors,
-            ArtifactName.LANE_A_GLOBAL_ABLATION,
-        )
-        if {"BER_strict", "BER_MI", "delta_BER"}.issubset(lane_a_ablation.columns):
-            diff = np.abs(lane_a_ablation["delta_BER"] - (lane_a_ablation["BER_strict"] - lane_a_ablation["BER_MI"]))
-            if np.any(diff > 1e-9):
-                errors.append(f"{ArtifactName.LANE_A_GLOBAL_ABLATION}: delta_BER sign mismatch")
+    industrialization_notes = manifest.get("industrialization_notes", [])
+    if not isinstance(industrialization_notes, list):
+        errors.append(f"{ArtifactName.MANIFEST}: industrialization_notes must be a list")
 
-    lane_a_full = _artifact_frame(
-        name=ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if lane_a_full is not None:
-        for req in [
-            "selector",
-            "classifier",
-            "replication_mode",
-            *lane_a_param_cols,
-            "threshold_oof_global",
-            "threshold_full_dataset",
-            "BER_full_dataset",
-            "True+_full_dataset",
-            "True-_full_dataset",
-            "n_samples_full_dataset",
-            "n_fails_full_dataset",
-            "n_selected_features_full_dataset",
-            "threshold_full_dataset_role",
-        ]:
-            if req not in lane_a_full.columns:
-                errors.append(f"{ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY}: missing {req}")
-        _validate_enum_column(
-            lane_a_full,
-            "classifier",
-            lane_a_classifier_values,
-            errors,
-            ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY,
-        )
-        _validate_enum_column(
-            lane_a_full,
-            "replication_mode",
-            {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS},
-            errors,
-            ArtifactName.LANE_A_GLOBAL_FULL_FIT_SUMMARY,
-        )
+    if primary_status == StudyStatus.FAILED:
+        errors.append("primary study status indicates failure")
+    elif primary_status == StudyStatus.WARNING:
+        warnings.append("primary study status indicates warnings")
 
-    splitwise = _artifact_frame(
-        name=ArtifactName.SPLITWISE,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if splitwise is not None:
-        for req in [
-            "selector",
-            "outer_fold",
-            "seed",
-            "train_window",
-            "test_window",
-            "k",
-            "C",
-            "scaler",
-            "n_neighbors",
-            "threshold_policy",
-            "outer_threshold",
-            "n_test",
-            "test_fails",
-            "flagged_fraction",
-            "BER",
-            "True+",
-            "True-",
-        ]:
-            if req not in splitwise.columns:
-                errors.append(f"{ArtifactName.SPLITWISE}: missing {req}")
-        _validate_enum_column(
-            splitwise,
-            "selector",
-            set(SelectorName.STAGE_B),
-            errors,
-            ArtifactName.SPLITWISE,
-        )
-        _validate_enum_column(
-            splitwise,
-            "scaler",
-            {ScalerName.STANDARD, ScalerName.ROBUST},
-            errors,
-            ArtifactName.SPLITWISE,
-        )
-        _validate_enum_column(
-            splitwise,
-            "threshold_policy",
-            {ThresholdPolicy.OUTER_TRAIN_YOUDEN},
-            errors,
-            ArtifactName.SPLITWISE,
-        )
+    if temporal_status == StudyStatus.FAILED:
+        warnings.append("temporal robustness status indicates failure")
+    elif temporal_status == StudyStatus.WARNING:
+        warnings.append("temporal robustness status indicates warnings")
 
-    stage_b_inner = _artifact_frame(
-        name=ArtifactName.STAGE_B_INNER,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if stage_b_inner is not None:
-        keys = ["selector", "outer_fold", "seed"]
-        for key, grp in stage_b_inner.groupby(keys):
-            n_selected = int(np.sum(grp["is_selected_config"].astype(bool)))
-            if n_selected != 1:
-                errors.append(
-                    f"{ArtifactName.STAGE_B_INNER}: {key} has {n_selected} selected configs"
-                )
+    active_primary = primary_status != StudyStatus.NOT_RUN
+    active_temporal = temporal_status != StudyStatus.NOT_RUN
 
-    freeze = _artifact_frame(
-        name=ArtifactName.FREEZE,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if freeze is not None:
-        if "is_frozen_config" not in freeze.columns:
-            errors.append(f"{ArtifactName.FREEZE}: missing is_frozen_config")
-        else:
-            for role, grp in freeze.groupby("role"):
-                selected_cfg = grp.loc[grp["is_frozen_config"].astype(bool), ["selector", "k", "C", "scaler", "n_neighbors"]].drop_duplicates()
-                if len(selected_cfg) != 1:
-                    errors.append(
-                        f"{ArtifactName.FREEZE}: role={role} has {len(selected_cfg)} frozen configs"
-                    )
+    for name, required in _PRIMARY_REQUIRED_COLUMNS.items():
+        df = _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
+        if df is not None:
+            _validate_required_columns(df, required, errors, name)
+        elif active_primary and name in REQUIRED_ARTIFACTS_PRIMARY:
+            errors.append(f"missing artifact: {name}")
 
-    final_lockbox = _artifact_frame(
-        name=ArtifactName.FINAL_LOCKBOX,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if final_lockbox is not None:
-        _validate_enum_column(
-            final_lockbox,
-            "threshold_policy",
-            {ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPERATIONAL},
-            errors,
-            ArtifactName.FINAL_LOCKBOX,
-        )
-        for role, grp in final_lockbox.groupby("role"):
-            if len(grp) != 2:
+    for name, required in _TEMPORAL_REQUIRED_COLUMNS.items():
+        df = _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
+        if df is not None:
+            _validate_required_columns(df, required, errors, name)
+        elif active_temporal and name in REQUIRED_ARTIFACTS_TEMPORAL:
+            errors.append(f"missing artifact: {name}")
+
+    if not active_primary:
+        for name in REQUIRED_ARTIFACTS_PRIMARY:
+            if name == ArtifactName.MANIFEST:
                 continue
-            cols = ["threshold_at_TNR90", "TNR_at_TNR90", "TPR_at_TNR90"]
-            for col in cols:
-                if grp[col].nunique(dropna=False) != 1:
-                    errors.append(
-                        f"{ArtifactName.FINAL_LOCKBOX}: role={role} column {col} must be identical for scientific/operational"
-                    )
+            if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None:
+                warnings.append(f"primary artifact present while primary study status is {StudyStatus.NOT_RUN}: {name}")
 
-    mspc = _artifact_frame(
-        name=ArtifactName.MSPC,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if mspc is not None:
-        if "fold_index" in mspc.columns:
-            vals = mspc["fold_index"].astype(str)
-            if any(v == "nan" for v in vals):
-                errors.append(f"{ArtifactName.MSPC}: fold_index has NaN")
-        if "eval_scope" in mspc.columns:
-            scopes = set(mspc["eval_scope"].astype(str).unique())
-            if not {"outer_fold", "lockbox"}.issubset(scopes):
-                errors.append(
-                    f"{ArtifactName.MSPC}: missing required eval scopes outer_fold/lockbox"
+    if not active_temporal:
+        for name in REQUIRED_ARTIFACTS_TEMPORAL:
+            if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None:
+                warnings.append(
+                    f"temporal artifact present while temporal robustness status is {StudyStatus.NOT_RUN}: {name}"
                 )
 
-    feature_stability = _artifact_frame(
-        name=ArtifactName.FEATURE_STABILITY,
-        reports=reports,
-        artifact_frames=artifact_frames,
+    deduped_warnings = list(dict.fromkeys(warnings))
+    deduped_restrictions = list(dict.fromkeys(claim_restrictions))
+    return ValidationResult(
+        ok=len(errors) == 0,
+        errors=errors,
+        warnings=deduped_warnings,
+        claim_restrictions=deduped_restrictions,
     )
-    if feature_stability is not None:
-        _validate_enum_column(
-            feature_stability,
-            "feature_type",
-            {"value", "missing_indicator"},
-            errors,
-            ArtifactName.FEATURE_STABILITY,
-        )
-
-    feature_report = _artifact_frame(
-        name=ArtifactName.FEATURE_REPORT,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if feature_report is not None:
-        _validate_enum_column(
-            feature_report,
-            "feature_type",
-            {"value", "missing_indicator"},
-            errors,
-            ArtifactName.FEATURE_REPORT,
-        )
-
-    drift = _artifact_frame(
-        name=ArtifactName.DRIFT_GATE,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if drift is not None:
-        _validate_enum_column(
-            drift,
-            "model_scope",
-            {ModelScope.PRIMARY_FROZEN, ModelScope.CHALLENGER_FROZEN},
-            errors,
-            ArtifactName.DRIFT_GATE,
-        )
-
-    manager_outputs = _artifact_frame(
-        name=ArtifactName.MANAGER_FACING,
-        reports=reports,
-        artifact_frames=artifact_frames,
-    )
-    if manager_outputs is not None:
-        for req in [
-            "role",
-            "selector",
-            "threshold_policy",
-            "dev_sample_count",
-            "dev_week_count",
-            "weekly_rate",
-            "predicted_flag_fraction",
-            "mean_weekly_flagged_wafers",
-            "mean_weekly_fail_captures",
-            "mean_weekly_fail_misses",
-            "stage_b_mean_flagged_fraction",
-            "lockbox_flagged_fraction",
-        ]:
-            if req not in manager_outputs.columns:
-                errors.append(f"{ArtifactName.MANAGER_FACING}: missing {req}")
-        _validate_enum_column(
-            manager_outputs,
-            "threshold_policy",
-            {ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPERATIONAL},
-            errors,
-            ArtifactName.MANAGER_FACING,
-        )
-
-    return ValidationResult(ok=len(errors) == 0, errors=errors)
