@@ -20,7 +20,6 @@ from secom.config import (
     SelectorName,
     StudyStatus,
 )
-from secom.io import load_raw_secom, parse_sort_and_label
 from secom.metrics import (
     binary_metrics_at_threshold,
     bootstrap_ci_for_mean,
@@ -40,8 +39,8 @@ from secom.workflows.benchmark_replication import (
     _config_tie_break_key,
     _fit_classifier_scores,
     _fit_full_dataset,
-    _prepare_cv,
-    _prepare_selector_views,
+    _prepare_benchmark_dataset,
+    _prepare_full_selector_view,
 )
 
 
@@ -76,62 +75,13 @@ def _select_best_tuned_config(config_rows: list[dict[str, Any]]) -> dict[str, An
 
 def _inner_cv_summary_for_config(
     *,
-    x_outer_train_raw: np.ndarray,
-    y_outer_train: np.ndarray,
-    selector: str,
-    add_indicator: bool,
-    selector_config: dict[str, Any],
     classifier: str,
     classifier_config: dict[str, Any],
+    prepared_inner_views: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
 ) -> dict[str, Any]:
-    y_outer_train = np.asarray(y_outer_train, dtype=int)
-    n_fail = int(np.sum(y_outer_train == 1))
-    n_pass = int(np.sum(y_outer_train == 0))
-    n_splits = min(int(BENCHMARK_INNER_SPLITS), min(n_fail, n_pass))
-
-    if n_splits < 2:
-        x_train_sel, x_eval_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
-            x_train_raw=x_outer_train_raw,
-            y_train=y_outer_train,
-            x_eval_raw=x_outer_train_raw,
-            method=selector,
-            k=int(selector_config["k"]),
-            scaler_name=ScalerName.STANDARD,
-            add_indicator=add_indicator,
-            n_neighbors=selector_config.get("n_neighbors"),
-        )
-        train_scores, eval_scores = _fit_classifier_scores(
-            classifier=classifier,
-            x_train_sel=x_train_sel,
-            y_train=y_outer_train,
-            x_eval_sel=x_eval_sel,
-            classifier_config=classifier_config,
-        )
-        threshold, _ = find_ber_optimal_threshold(y_outer_train, train_scores)
-        metrics = binary_metrics_at_threshold(y_outer_train, eval_scores, threshold=float(threshold))
-        return {
-            "mean_inner_ROC_AUC": float(metrics["ROC_AUC"]) if np.isfinite(metrics["ROC_AUC"]) else 0.5,
-            "mean_inner_BER": float(metrics["BER"]),
-        }
-
-    inner_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     aucs: list[float] = []
     bers: list[float] = []
-    for inner_train_idx, inner_val_idx in inner_cv.split(x_outer_train_raw, y_outer_train):
-        x_inner_train = x_outer_train_raw[inner_train_idx]
-        y_inner_train = y_outer_train[inner_train_idx]
-        x_inner_val = x_outer_train_raw[inner_val_idx]
-        y_inner_val = y_outer_train[inner_val_idx]
-        x_train_sel, x_val_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
-            x_train_raw=x_inner_train,
-            y_train=y_inner_train,
-            x_eval_raw=x_inner_val,
-            method=selector,
-            k=int(selector_config["k"]),
-            scaler_name=ScalerName.STANDARD,
-            add_indicator=add_indicator,
-            n_neighbors=selector_config.get("n_neighbors"),
-        )
+    for x_train_sel, y_inner_train, x_val_sel, y_inner_val in prepared_inner_views:
         train_scores, val_scores = _fit_classifier_scores(
             classifier=classifier,
             x_train_sel=x_train_sel,
@@ -147,6 +97,52 @@ def _inner_cv_summary_for_config(
         "mean_inner_ROC_AUC": float(np.mean(np.asarray(aucs, dtype=float))),
         "mean_inner_BER": float(np.mean(np.asarray(bers, dtype=float))),
     }
+
+
+def _prepare_inner_selector_views(
+    *,
+    x_outer_train_raw: np.ndarray,
+    y_outer_train: np.ndarray,
+    selector: str,
+    add_indicator: bool,
+    selector_config: dict[str, Any],
+) -> list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+    y_outer_train = np.asarray(y_outer_train, dtype=int)
+    n_fail = int(np.sum(y_outer_train == 1))
+    n_pass = int(np.sum(y_outer_train == 0))
+    n_splits = min(int(BENCHMARK_INNER_SPLITS), min(n_fail, n_pass))
+    if n_splits < 2:
+        x_train_sel, x_eval_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
+            x_train_raw=x_outer_train_raw,
+            y_train=y_outer_train,
+            x_eval_raw=x_outer_train_raw,
+            method=selector,
+            k=int(selector_config["k"]),
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=add_indicator,
+            n_neighbors=selector_config.get("n_neighbors"),
+        )
+        return [(x_train_sel, y_outer_train, x_eval_sel, y_outer_train)]
+
+    inner_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+    prepared: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
+    for inner_train_idx, inner_val_idx in inner_cv.split(x_outer_train_raw, y_outer_train):
+        x_inner_train = x_outer_train_raw[inner_train_idx]
+        y_inner_train = y_outer_train[inner_train_idx]
+        x_inner_val = x_outer_train_raw[inner_val_idx]
+        y_inner_val = y_outer_train[inner_val_idx]
+        x_train_sel, x_val_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
+            x_train_raw=x_inner_train,
+            y_train=y_inner_train,
+            x_eval_raw=x_inner_val,
+            method=selector,
+            k=int(selector_config["k"]),
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=add_indicator,
+            n_neighbors=selector_config.get("n_neighbors"),
+        )
+        prepared.append((x_train_sel, y_inner_train, x_val_sel, y_inner_val))
+    return prepared
 
 
 def _evaluate_outer_fold_with_config(
@@ -302,13 +298,15 @@ def run_tuned_benchmark_replication(
     *,
     classifiers_run: list[str] | None = None,
     selectors_run: list[str] | None = None,
+    _prepared_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     reports = ensure_reports_dir(output_dir)
-    project_root = Path(__file__).resolve().parents[3]
-
-    loaded = load_raw_secom(input_dir)
-    df = parse_sort_and_label(loaded.frame)
-    x, y, folds = _prepare_cv(df=df, feature_cols=loaded.feature_columns)
+    prepared_data = _prepare_benchmark_dataset(input_dir) if _prepared_data is None else _prepared_data
+    project_root = prepared_data["project_root"]
+    feature_columns = prepared_data["feature_columns"]
+    x = prepared_data["x"]
+    y = prepared_data["y"]
+    folds = prepared_data["folds"]
 
     classifiers_run = list(BenchmarkClassifier.ALL) if classifiers_run is None else [str(c) for c in classifiers_run]
     selectors_run = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
@@ -331,15 +329,18 @@ def run_tuned_benchmark_replication(
                     y_outer_test = y[test_idx]
                     config_rows: list[dict[str, Any]] = []
                     for selector_config in selector_grid:
+                        prepared_inner_views = _prepare_inner_selector_views(
+                            x_outer_train_raw=x_outer_train,
+                            y_outer_train=y_outer_train,
+                            selector=selector,
+                            add_indicator=add_indicator,
+                            selector_config=selector_config,
+                        )
                         for classifier_config in classifier_grid:
                             inner_payload = _inner_cv_summary_for_config(
-                                x_outer_train_raw=x_outer_train,
-                                y_outer_train=y_outer_train,
-                                selector=selector,
-                                add_indicator=add_indicator,
-                                selector_config=selector_config,
                                 classifier=classifier,
                                 classifier_config=classifier_config,
+                                prepared_inner_views=prepared_inner_views,
                             )
                             row = {
                                 "selector": selector,
@@ -368,7 +369,7 @@ def run_tuned_benchmark_replication(
                         replication_mode=replication_mode,
                         selector_config=selector_config,
                         classifier_config=classifier_config,
-                        raw_feature_count=len(loaded.feature_columns),
+                        raw_feature_count=len(feature_columns),
                         fold=fold_i,
                     )
                     fold_rows.append(fold_row)
@@ -479,19 +480,18 @@ def run_tuned_benchmark_replication(
     for row in best_df.itertuples(index=False):
         selector_config = {"k": int(row.k), "n_neighbors": row.n_neighbors}
         classifier_config = {"alpha": row.alpha, "gamma": row.gamma, "C": row.C}
-        prepared_views = _prepare_selector_views(
+        prepared_full = _prepare_full_selector_view(
             x=x,
             y=y,
-            folds=folds,
             selector=str(row.selector),
             add_indicator=str(row.replication_mode) == ReplicationMode.WITH_MISSING_INDICATORS,
             selector_config=selector_config,
-            raw_feature_count=len(loaded.feature_columns),
+            raw_feature_count=len(feature_columns),
             k=int(row.k),
         )
         full_fit_payload = _fit_full_dataset(
             classifier=str(row.classifier),
-            prepared_full=prepared_views["full_view"],
+            prepared_full=prepared_full,
             classifier_config=classifier_config,
         )
         if str(row.classifier) == BenchmarkClassifier.LOGREG:
