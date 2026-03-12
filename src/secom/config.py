@@ -94,6 +94,14 @@ class ArtifactName:
     BENCHMARK_FULL_FIT_SUMMARY = "benchmark_full_fit_summary.csv"
     FEATURE_STABILITY = "feature_stability.csv"
     FEATURE_REPORT = "feature_report.csv"
+    BENCHMARK_TUNED_SEARCH = "benchmark_tuned_search.csv"
+    BENCHMARK_TUNED_BEST_CONFIG = "benchmark_tuned_best_config.csv"
+    BENCHMARK_TUNED_FOLD_METRICS = "benchmark_tuned_fold_metrics.csv"
+    BENCHMARK_TUNED_SUMMARY = "benchmark_tuned_summary.csv"
+    BENCHMARK_TUNED_ABLATION = "benchmark_tuned_ablation.csv"
+    BENCHMARK_TUNED_FULL_FIT_SUMMARY = "benchmark_tuned_full_fit_summary.csv"
+    BENCHMARK_TUNED_FEATURE_STABILITY = "benchmark_tuned_feature_stability.csv"
+    BENCHMARK_TUNED_FEATURE_REPORT = "benchmark_tuned_feature_report.csv"
     TEMPORAL_SPLIT_METADATA = "temporal_split_metadata.csv"
     TEMPORAL_SELECTOR_SCREENING = "temporal_selector_screening.csv"
     TEMPORAL_MODEL_SELECTION = "temporal_model_selection.csv"
@@ -117,6 +125,14 @@ REQUIRED_ARTIFACTS_PRIMARY: Final[list[str]] = [
     ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
     ArtifactName.FEATURE_STABILITY,
     ArtifactName.FEATURE_REPORT,
+    ArtifactName.BENCHMARK_TUNED_SEARCH,
+    ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+    ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+    ArtifactName.BENCHMARK_TUNED_SUMMARY,
+    ArtifactName.BENCHMARK_TUNED_ABLATION,
+    ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+    ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+    ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
     ArtifactName.MANIFEST,
 ]
 
@@ -154,6 +170,8 @@ MANIFEST_REQUIRED_KEYS: Final[list[str]] = [
     "python_executable",
     "library_versions",
     "primary_study_status",
+    "benchmark_original_status",
+    "benchmark_tuned_status",
     "temporal_robustness_status",
     "temporal_claim_restrictions",
     "industrialization_notes",

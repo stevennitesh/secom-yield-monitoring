@@ -22,6 +22,8 @@ def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
     )
 
     assert result["primary_study_status"] == StudyStatus.PASSED
+    assert result["benchmark_original_status"] == StudyStatus.PASSED
+    assert result["benchmark_tuned_status"] == StudyStatus.PASSED
 
     reports = out_dir / "reports"
     expected = [
@@ -33,13 +35,33 @@ def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
         ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
         ArtifactName.FEATURE_STABILITY,
         ArtifactName.FEATURE_REPORT,
+        ArtifactName.BENCHMARK_TUNED_SEARCH,
+        ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+        ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+        ArtifactName.BENCHMARK_TUNED_SUMMARY,
+        ArtifactName.BENCHMARK_TUNED_ABLATION,
+        ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+        ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+        ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
         ArtifactName.MANIFEST,
     ]
     for name in expected:
         assert (reports / name).exists(), name
 
     summary_df = pd.read_csv(reports / ArtifactName.BENCHMARK_SUMMARY)
-    assert {"selector", "classifier", "replication_mode", "mean_BER"}.issubset(summary_df.columns)
+    assert {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "mean_BER",
+        "mean_ROC_AUC",
+        "mean_PR_AUC",
+        "mean_MCC",
+        "mean_F2",
+    }.issubset(summary_df.columns)
+
+    fold_metrics_df = pd.read_csv(reports / ArtifactName.BENCHMARK_FOLD_METRICS)
+    assert {"ROC_AUC", "PR_AUC", "MCC", "F2"}.issubset(fold_metrics_df.columns)
 
     feature_report_df = pd.read_csv(reports / ArtifactName.FEATURE_REPORT)
     assert {
@@ -52,6 +74,17 @@ def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
         "conditional_effect_magnitude",
         "expected_contribution",
     }.issubset(feature_report_df.columns)
+    tuned_summary_df = pd.read_csv(reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
+    assert {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "mean_BER",
+        "mean_ROC_AUC",
+        "mean_PR_AUC",
+        "mean_MCC",
+        "mean_F2",
+    }.issubset(tuned_summary_df.columns)
 
     audit = run_study_audit(out_dir)
     assert audit.ok, audit.errors
@@ -72,3 +105,5 @@ def test_benchmark_replication_feature_report_aligns_with_requested_classifier(
 
     feature_report_df = pd.read_csv(out_dir / "reports" / ArtifactName.FEATURE_REPORT)
     assert set(feature_report_df["classifier"].dropna().astype(str).unique()) == {"krr"}
+    tuned_feature_report_df = pd.read_csv(out_dir / "reports" / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
+    assert set(tuned_feature_report_df["classifier"].dropna().astype(str).unique()) == {"krr"}

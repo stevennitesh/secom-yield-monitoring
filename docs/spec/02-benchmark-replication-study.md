@@ -2,36 +2,34 @@
 
 ## Scope
 
-This file defines the primary scientific study.
+This file defines the two benchmark studies that anchor the project.
 
 ## Purpose
 
-The benchmark replication study answers:
+The benchmark study layer answers:
 
-1. Can SECOM pass/fail yield be predicted with literature-style supervised pipelines?
-2. Which selector/classifier combinations are strongest under replication-style evaluation?
-3. Does adding missing-indicator features change the result materially?
+1. Can SECOM pass/fail yield be predicted with literature-style supervised pipelines under an original replication protocol?
+2. How much do the results improve when the same selector family is tuned under a stricter nested benchmark design?
+3. Does adding missing-indicator features change the result materially in both studies?
 
 ## Core Design
 
 1. Use the full available dataset after timestamp parsing and `NaT` removal.
-2. Use stratified replication-style cross-validation as the primary evaluation.
-3. Perform preprocessing and feature selection inside training folds only.
-4. Treat missing-indicator ablation as a mandatory paired comparison.
-5. Use the benchmark replication study as the main basis for conclusions.
+2. Run an original replication study that keeps the literature-style fixed-budget selector comparison.
+3. Run a tuned benchmark study that uses nested tuning and AUC-first inner selection before final thresholded BER reporting.
+4. Perform preprocessing and feature selection inside training folds only.
+5. Treat missing-indicator ablation as a mandatory paired comparison in both studies.
+6. Use the benchmark study layer as the main basis for project conclusions.
 
 ## Required Outputs
 
-1. Config sweep results
-2. Best config per selector/classifier/ablation mode
-3. Fold-level performance
-4. Summary performance with uncertainty
-5. Missing-indicator ablation results
-6. Full-fit summary for interpretive use
+1. Original replication search, best-config, fold, summary, ablation, and full-fit outputs
+2. Tuned benchmark search, selected-config, fold, summary, ablation, and full-fit outputs
+3. Feature-stability and feature-report outputs for both studies
 
 ## Claim Rule
 
-Claims about replication success, selector comparison, classifier comparison, and missing-indicator benefit come from this study, not from the temporal stress-test study.
+Claims about replication success, selector comparison, classifier comparison, tuned improvement, and missing-indicator benefit come from the benchmark study layer, not from the temporal stress-test study.
 
 ## See Also
 

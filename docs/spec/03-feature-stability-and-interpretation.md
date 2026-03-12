@@ -2,7 +2,7 @@
 
 ## Scope
 
-This file defines how feature stability and feature interpretation are computed and reported for the primary study.
+This file defines how feature stability and feature interpretation are computed and reported for the benchmark study layer.
 
 ## Required Quantities
 
@@ -20,10 +20,11 @@ Report, at minimum:
 2. Missing-indicator features and value features must remain distinguishable.
 3. Clusters should reduce redundant emphasis on highly correlated value features.
 4. Stability should be interpreted across benchmark resamples, not only from a single final fit.
+5. Original and tuned benchmark studies should each retain their own feature-stability and feature-report outputs.
 
 ## Primary Role
 
-Feature stability and interpretation are part of the primary study and should be presented alongside benchmark replication results, not as a secondary appendix.
+Feature stability and interpretation are part of the benchmark study layer and should be presented alongside both original-replication and tuned-benchmark results, not as a secondary appendix.
 
 ## See Also
 

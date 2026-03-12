@@ -1,10 +1,11 @@
 # SECOM Benchmark-First Study
 
-This repository is organized around three explicit study layers:
+This repository is organized around four explicit study layers:
 
-1. Benchmark replication as the primary scientific study
-2. Temporal robustness as a secondary stress-test study
-3. Industrialization-gap analysis as a required interpretation layer
+1. Original benchmark replication as the faithful literature-style study
+2. Tuned benchmark as the improved benchmark study
+3. Temporal robustness as a secondary stress-test study
+4. Industrialization-gap analysis as a required interpretation layer
 
 The active canonical spec lives under:
 
@@ -12,14 +13,34 @@ The active canonical spec lives under:
 
 The rebuilt active surface now supports:
 
-1. benchmark replication artifact generation
-2. temporal robustness artifact generation
-3. categorized study audit output
-4. markdown report-skeleton generation from active artifacts
+1. original benchmark replication artifact generation
+2. tuned benchmark artifact generation
+3. temporal robustness artifact generation
+4. categorized study audit output
+5. markdown report-skeleton generation from active artifacts
+
+The intent is deliberate:
+
+1. show the original benchmark faithfully
+2. show how much a tuned version improves it
+3. show what still breaks under temporal stress
+4. show what a real industrial study would still require
 
 ## Active Entry Points
 
-Primary study:
+Original replication:
+
+```bash
+python scripts/run_original_replication.py --input-dir data/raw --output-dir runs/original_replication --strict
+```
+
+Tuned benchmark:
+
+```bash
+python scripts/run_benchmark_tuned.py --input-dir data/raw --output-dir runs/benchmark_tuned --strict
+```
+
+Benchmark study bundle:
 
 ```bash
 python scripts/run_benchmark_replication.py --input-dir data/raw --output-dir runs/benchmark_replication --strict
@@ -51,10 +72,18 @@ python scripts/run_report_skeleton.py --output-dir runs/full_study
 
 ## Current Output Model
 
-Primary benchmark artifacts use `benchmark_*` names plus:
+Original replication artifacts use the `benchmark_*` family plus:
 
 - `feature_stability.csv`
 - `feature_report.csv`
+
+Tuned benchmark artifacts use the `benchmark_tuned_*` family plus:
+
+- `benchmark_tuned_feature_stability.csv`
+- `benchmark_tuned_feature_report.csv`
+
+Shared outputs:
+
 - `run_manifest.json`
 - `final_report_skeleton.md`
 
@@ -65,6 +94,13 @@ Audit output distinguishes:
 - `ERROR`
 - `WARNING`
 - `CLAIM_RESTRICTION`
+
+The final scaffold is designed to read like a professional study draft:
+
+- original replication first
+- tuned benchmark second
+- temporal robustness third
+- industrialization limits stated explicitly
 
 ## Canonical Reading Order
 

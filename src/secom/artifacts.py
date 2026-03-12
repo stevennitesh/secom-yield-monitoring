@@ -9,13 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from secom.config import (
-    ArtifactName,
-    MANIFEST_REQUIRED_KEYS,
-    REQUIRED_ARTIFACTS_PRIMARY,
-    REQUIRED_ARTIFACTS_TEMPORAL,
-    StudyStatus,
-)
+from secom.config import ArtifactName, MANIFEST_REQUIRED_KEYS, REQUIRED_ARTIFACTS_TEMPORAL, StudyStatus
 
 
 @dataclass(frozen=True)
@@ -32,7 +26,7 @@ _CSV_ARTIFACT_NAMES = sorted(
     if not name.startswith("_") and isinstance(value, str) and value.endswith(".csv")
 )
 
-_PRIMARY_REQUIRED_COLUMNS: dict[str, set[str]] = {
+_BENCHMARK_ORIGINAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_SWEEP: {
         "selector",
         "classifier",
@@ -40,6 +34,10 @@ _PRIMARY_REQUIRED_COLUMNS: dict[str, set[str]] = {
         "mean_BER",
         "mean_True+",
         "mean_True-",
+        "mean_ROC_AUC",
+        "mean_PR_AUC",
+        "mean_MCC",
+        "mean_F2",
     },
     ArtifactName.BENCHMARK_BEST_CONFIG: {
         "selector",
@@ -54,6 +52,10 @@ _PRIMARY_REQUIRED_COLUMNS: dict[str, set[str]] = {
         "BER",
         "True+",
         "True-",
+        "ROC_AUC",
+        "PR_AUC",
+        "MCC",
+        "F2",
     },
     ArtifactName.BENCHMARK_SUMMARY: {
         "selector",
@@ -64,6 +66,10 @@ _PRIMARY_REQUIRED_COLUMNS: dict[str, set[str]] = {
         "CI_upper_BER",
         "mean_True+",
         "mean_True-",
+        "mean_ROC_AUC",
+        "mean_PR_AUC",
+        "mean_MCC",
+        "mean_F2",
     },
     ArtifactName.BENCHMARK_ABLATION: {
         "selector",
@@ -79,6 +85,10 @@ _PRIMARY_REQUIRED_COLUMNS: dict[str, set[str]] = {
         "BER_full_dataset",
         "True+_full_dataset",
         "True-_full_dataset",
+        "ROC_AUC_full_dataset",
+        "PR_AUC_full_dataset",
+        "MCC_full_dataset",
+        "F2_full_dataset",
     },
     ArtifactName.FEATURE_STABILITY: {
         "selector",
@@ -88,6 +98,91 @@ _PRIMARY_REQUIRED_COLUMNS: dict[str, set[str]] = {
         "selected",
     },
     ArtifactName.FEATURE_REPORT: {
+        "feature_index",
+        "feature_type",
+        "selection_frequency",
+        "conditional_effect_magnitude",
+        "expected_contribution",
+    },
+}
+
+_BENCHMARK_TUNED_REQUIRED_COLUMNS: dict[str, set[str]] = {
+    ArtifactName.BENCHMARK_TUNED_SEARCH: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "fold",
+        "mean_inner_ROC_AUC",
+        "mean_inner_BER",
+        "is_selected_config",
+    },
+    ArtifactName.BENCHMARK_TUNED_BEST_CONFIG: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "mean_BER",
+        "mean_ROC_AUC",
+        "k",
+    },
+    ArtifactName.BENCHMARK_TUNED_FOLD_METRICS: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "fold",
+        "BER",
+        "True+",
+        "True-",
+        "ROC_AUC",
+        "PR_AUC",
+        "MCC",
+        "F2",
+    },
+    ArtifactName.BENCHMARK_TUNED_SUMMARY: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "mean_BER",
+        "CI_lower_BER",
+        "CI_upper_BER",
+        "mean_True+",
+        "mean_True-",
+        "mean_ROC_AUC",
+        "mean_PR_AUC",
+        "mean_MCC",
+        "mean_F2",
+    },
+    ArtifactName.BENCHMARK_TUNED_ABLATION: {
+        "selector",
+        "classifier",
+        "BER_reference",
+        "BER_missing_indicator",
+        "delta_BER",
+    },
+    ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "BER_full_dataset",
+        "True+_full_dataset",
+        "True-_full_dataset",
+        "ROC_AUC_full_dataset",
+        "PR_AUC_full_dataset",
+        "MCC_full_dataset",
+        "F2_full_dataset",
+    },
+    ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY: {
+        "selector",
+        "classifier",
+        "replication_mode",
+        "resample_id",
+        "feature_index",
+        "feature_type",
+        "selected",
+    },
+    ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT: {
+        "selector",
+        "classifier",
+        "replication_mode",
         "feature_index",
         "feature_type",
         "selection_frequency",
@@ -224,7 +319,56 @@ def write_manifest(manifest: dict[str, Any], path: Path) -> None:
 def _required_artifacts(primary_status: str, temporal_status: str) -> list[str]:
     names = [ArtifactName.MANIFEST]
     if primary_status != StudyStatus.NOT_RUN:
-        names.extend(name for name in REQUIRED_ARTIFACTS_PRIMARY if name != ArtifactName.MANIFEST)
+        names.extend(
+            [
+                ArtifactName.BENCHMARK_SWEEP,
+                ArtifactName.BENCHMARK_BEST_CONFIG,
+                ArtifactName.BENCHMARK_FOLD_METRICS,
+                ArtifactName.BENCHMARK_SUMMARY,
+                ArtifactName.BENCHMARK_ABLATION,
+                ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+                ArtifactName.FEATURE_STABILITY,
+                ArtifactName.FEATURE_REPORT,
+            ]
+        )
+    if temporal_status != StudyStatus.NOT_RUN:
+        names.extend(REQUIRED_ARTIFACTS_TEMPORAL)
+    return names
+
+
+def _required_artifacts_by_study(
+    *,
+    benchmark_original_status: str,
+    benchmark_tuned_status: str,
+    temporal_status: str,
+) -> list[str]:
+    names = [ArtifactName.MANIFEST]
+    if benchmark_original_status != StudyStatus.NOT_RUN:
+        names.extend(
+            [
+                ArtifactName.BENCHMARK_SWEEP,
+                ArtifactName.BENCHMARK_BEST_CONFIG,
+                ArtifactName.BENCHMARK_FOLD_METRICS,
+                ArtifactName.BENCHMARK_SUMMARY,
+                ArtifactName.BENCHMARK_ABLATION,
+                ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+                ArtifactName.FEATURE_STABILITY,
+                ArtifactName.FEATURE_REPORT,
+            ]
+        )
+    if benchmark_tuned_status != StudyStatus.NOT_RUN:
+        names.extend(
+            [
+                ArtifactName.BENCHMARK_TUNED_SEARCH,
+                ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+                ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+                ArtifactName.BENCHMARK_TUNED_SUMMARY,
+                ArtifactName.BENCHMARK_TUNED_ABLATION,
+                ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+                ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+                ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+            ]
+        )
     if temporal_status != StudyStatus.NOT_RUN:
         names.extend(REQUIRED_ARTIFACTS_TEMPORAL)
     return names
@@ -234,11 +378,22 @@ def validate_required_artifacts(
     output_dir: Path,
     *,
     primary_status: str,
+    benchmark_original_status: str | None = None,
+    benchmark_tuned_status: str | None = None,
     temporal_status: str,
 ) -> list[str]:
     reports = output_dir / "reports"
     errors: list[str] = []
-    for name in _required_artifacts(primary_status, temporal_status):
+    required = (
+        _required_artifacts_by_study(
+            benchmark_original_status=benchmark_original_status or primary_status,
+            benchmark_tuned_status=benchmark_tuned_status or StudyStatus.NOT_RUN,
+            temporal_status=temporal_status,
+        )
+        if benchmark_original_status is not None or benchmark_tuned_status is not None
+        else _required_artifacts(primary_status, temporal_status)
+    )
+    for name in required:
         if not (reports / name).exists():
             errors.append(f"missing artifact: {name}")
     return errors
@@ -308,9 +463,15 @@ def validate_schema_and_logic(
         errors.append(f"{ArtifactName.MANIFEST}: missing keys {missing_manifest_keys}")
 
     primary_status = str(manifest.get("primary_study_status", StudyStatus.NOT_RUN))
+    original_status = str(manifest.get("benchmark_original_status", StudyStatus.NOT_RUN))
+    tuned_status = str(manifest.get("benchmark_tuned_status", StudyStatus.NOT_RUN))
     temporal_status = str(manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN))
     if primary_status not in StudyStatus.ALL:
         errors.append(f"{ArtifactName.MANIFEST}: invalid primary_study_status {primary_status}")
+    if original_status not in StudyStatus.ALL:
+        errors.append(f"{ArtifactName.MANIFEST}: invalid benchmark_original_status {original_status}")
+    if tuned_status not in StudyStatus.ALL:
+        errors.append(f"{ArtifactName.MANIFEST}: invalid benchmark_tuned_status {tuned_status}")
     if temporal_status not in StudyStatus.ALL:
         errors.append(f"{ArtifactName.MANIFEST}: invalid temporal_robustness_status {temporal_status}")
 
@@ -336,13 +497,40 @@ def validate_schema_and_logic(
         warnings.append("temporal robustness status indicates warnings")
 
     active_primary = primary_status != StudyStatus.NOT_RUN
+    active_original = original_status != StudyStatus.NOT_RUN
+    active_tuned = tuned_status != StudyStatus.NOT_RUN
     active_temporal = temporal_status != StudyStatus.NOT_RUN
 
-    for name, required in _PRIMARY_REQUIRED_COLUMNS.items():
+    for name, required in _BENCHMARK_ORIGINAL_REQUIRED_COLUMNS.items():
         df = _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
         if df is not None:
             _validate_required_columns(df, required, errors, name)
-        elif active_primary and name in REQUIRED_ARTIFACTS_PRIMARY:
+        elif active_original and name in {
+            ArtifactName.BENCHMARK_SWEEP,
+            ArtifactName.BENCHMARK_BEST_CONFIG,
+            ArtifactName.BENCHMARK_FOLD_METRICS,
+            ArtifactName.BENCHMARK_SUMMARY,
+            ArtifactName.BENCHMARK_ABLATION,
+            ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+            ArtifactName.FEATURE_STABILITY,
+            ArtifactName.FEATURE_REPORT,
+        }:
+            errors.append(f"missing artifact: {name}")
+
+    for name, required in _BENCHMARK_TUNED_REQUIRED_COLUMNS.items():
+        df = _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
+        if df is not None:
+            _validate_required_columns(df, required, errors, name)
+        elif active_tuned and name in {
+            ArtifactName.BENCHMARK_TUNED_SEARCH,
+            ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+            ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+            ArtifactName.BENCHMARK_TUNED_SUMMARY,
+            ArtifactName.BENCHMARK_TUNED_ABLATION,
+            ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+            ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+            ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+        }:
             errors.append(f"missing artifact: {name}")
 
     for name, required in _TEMPORAL_REQUIRED_COLUMNS.items():
@@ -352,12 +540,40 @@ def validate_schema_and_logic(
         elif active_temporal and name in REQUIRED_ARTIFACTS_TEMPORAL:
             errors.append(f"missing artifact: {name}")
 
-    if not active_primary:
-        for name in REQUIRED_ARTIFACTS_PRIMARY:
-            if name == ArtifactName.MANIFEST:
-                continue
+    original_artifacts = [
+        ArtifactName.BENCHMARK_SWEEP,
+        ArtifactName.BENCHMARK_BEST_CONFIG,
+        ArtifactName.BENCHMARK_FOLD_METRICS,
+        ArtifactName.BENCHMARK_SUMMARY,
+        ArtifactName.BENCHMARK_ABLATION,
+        ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+        ArtifactName.FEATURE_STABILITY,
+        ArtifactName.FEATURE_REPORT,
+    ]
+    tuned_artifacts = [
+        ArtifactName.BENCHMARK_TUNED_SEARCH,
+        ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+        ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+        ArtifactName.BENCHMARK_TUNED_SUMMARY,
+        ArtifactName.BENCHMARK_TUNED_ABLATION,
+        ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+        ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+        ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+    ]
+
+    if not active_original:
+        for name in original_artifacts:
             if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None:
-                warnings.append(f"primary artifact present while primary study status is {StudyStatus.NOT_RUN}: {name}")
+                warnings.append(
+                    f"original benchmark artifact present while benchmark_original_status is {StudyStatus.NOT_RUN}: {name}"
+                )
+
+    if not active_tuned:
+        for name in tuned_artifacts:
+            if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None:
+                warnings.append(
+                    f"tuned benchmark artifact present while benchmark_tuned_status is {StudyStatus.NOT_RUN}: {name}"
+                )
 
     if not active_temporal:
         for name in REQUIRED_ARTIFACTS_TEMPORAL:
