@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.audit import run_study_audit
 from secom.workflows.benchmark_replication import run_benchmark_replication
+from secom.workflows import benchmark_tuned
 
 
 def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
@@ -107,3 +109,84 @@ def test_benchmark_replication_feature_report_aligns_with_requested_classifier(
     assert set(feature_report_df["classifier"].dropna().astype(str).unique()) == {"krr"}
     tuned_feature_report_df = pd.read_csv(out_dir / "reports" / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
     assert set(tuned_feature_report_df["classifier"].dropna().astype(str).unique()) == {"krr"}
+
+
+def test_benchmark_bundle_prepares_dataset_once(
+    synthetic_input_dir: Path,
+    workspace_tmp_dir: Path,
+    monkeypatch,
+) -> None:
+    import secom.workflows.benchmark_replication as benchmark
+
+    out_dir = workspace_tmp_dir / "out_benchmark_bundle_once"
+    original_prepare = benchmark._prepare_benchmark_dataset
+    counter = {"count": 0}
+
+    def counted_prepare(input_dir: Path) -> dict[str, object]:
+        counter["count"] += 1
+        return original_prepare(input_dir)
+
+    monkeypatch.setattr(benchmark, "_prepare_benchmark_dataset", counted_prepare)
+
+    run_benchmark_replication(
+        input_dir=synthetic_input_dir,
+        output_dir=out_dir,
+        classifiers_run=["krr"],
+        selectors_run=["F-test"],
+    )
+
+    assert counter["count"] == 1
+
+
+def test_tuned_inner_selector_views_reuse_selector_prep_across_classifier_configs(monkeypatch) -> None:
+    x = np.arange(48, dtype=float).reshape(12, 4)
+    y = np.asarray([0, 1] * 6, dtype=int)
+    calls = {"count": 0}
+
+    def fake_fit_selector_pipeline(
+        *,
+        x_train_raw: np.ndarray,
+        y_train: np.ndarray,
+        x_eval_raw: np.ndarray,
+        method: str,
+        k: int,
+        scaler_name: str,
+        add_indicator: bool,
+        n_neighbors: int | None,
+    ):
+        calls["count"] += 1
+        return (
+            np.asarray(x_train_raw[:, : min(k, x_train_raw.shape[1])], dtype=float),
+            np.asarray(x_eval_raw[:, : min(k, x_eval_raw.shape[1])], dtype=float),
+            [],
+            np.arange(min(k, x_train_raw.shape[1]), dtype=int),
+            object(),
+            object(),
+        )
+
+    monkeypatch.setattr(benchmark_tuned, "fit_selector_pipeline", fake_fit_selector_pipeline)
+    monkeypatch.setattr(benchmark_tuned, "BENCHMARK_INNER_SPLITS", 2, raising=False)
+
+    prepared_views = benchmark_tuned._prepare_inner_selector_views(
+        x_outer_train_raw=x,
+        y_outer_train=y,
+        selector="F-test",
+        add_indicator=False,
+        selector_config={"k": 2, "n_neighbors": None},
+    )
+    prep_calls = calls["count"]
+
+    payload_a = benchmark_tuned._inner_cv_summary_for_config(
+        classifier="krr",
+        classifier_config={"alpha": 1.0, "gamma": None},
+        prepared_inner_views=prepared_views,
+    )
+    payload_b = benchmark_tuned._inner_cv_summary_for_config(
+        classifier="krr",
+        classifier_config={"alpha": 10.0, "gamma": None},
+        prepared_inner_views=prepared_views,
+    )
+
+    assert calls["count"] == prep_calls
+    assert set(payload_a) == {"mean_inner_ROC_AUC", "mean_inner_BER"}
+    assert set(payload_b) == {"mean_inner_ROC_AUC", "mean_inner_BER"}

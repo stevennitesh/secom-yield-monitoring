@@ -83,6 +83,44 @@ def _fit_eval_with_labels(
     scaler_name: str,
     n_neighbors: int | None,
 ) -> tuple[dict[str, float], float, list[Any], np.ndarray, Any, Any, Any]:
+    prepared = _prepare_selector_eval_view(
+        x_train_raw=x_train_raw,
+        y_train=y_train,
+        x_eval_raw=x_eval_raw,
+        y_eval=y_eval,
+        method=method,
+        k=k,
+        scaler_name=scaler_name,
+        add_indicator=True,
+        n_neighbors=n_neighbors,
+    )
+    metrics, threshold, clf, _train_scores, _eval_scores = _score_temporal_logreg_view(
+        prepared_view=prepared,
+        c_value=c_value,
+    )
+    return (
+        metrics,
+        threshold,
+        prepared["feature_meta"],
+        prepared["selected_local"],
+        clf,
+        prepared["imputer"],
+        prepared["scaler"],
+    )
+
+
+def _prepare_selector_eval_view(
+    *,
+    x_train_raw: np.ndarray,
+    y_train: np.ndarray,
+    x_eval_raw: np.ndarray,
+    y_eval: np.ndarray,
+    method: str,
+    k: int,
+    scaler_name: str,
+    add_indicator: bool,
+    n_neighbors: int | None,
+) -> dict[str, Any]:
     x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler = fit_selector_pipeline(
         x_train_raw=x_train_raw,
         y_train=y_train,
@@ -90,15 +128,64 @@ def _fit_eval_with_labels(
         method=method,
         k=k,
         scaler_name=scaler_name,
-        add_indicator=True,
+        add_indicator=add_indicator,
         n_neighbors=n_neighbors,
     )
+    return {
+        "x_train_sel": x_train_sel,
+        "y_train": np.asarray(y_train, dtype=int),
+        "x_eval_sel": x_eval_sel,
+        "y_eval": np.asarray(y_eval, dtype=int),
+        "feature_meta": feature_meta,
+        "selected_local": selected_local,
+        "imputer": imputer,
+        "scaler": scaler,
+    }
+
+
+def _score_temporal_logreg_view(
+    *,
+    prepared_view: dict[str, Any],
+    c_value: float,
+) -> tuple[dict[str, float], float, Any, np.ndarray, np.ndarray]:
+    x_train_sel = prepared_view["x_train_sel"]
+    y_train = prepared_view["y_train"]
+    x_eval_sel = prepared_view["x_eval_sel"]
+    y_eval = prepared_view["y_eval"]
     clf = fit_temporal_logreg_model(x_train_sel, y_train, c_value=c_value)
     train_scores = clf.predict_proba(x_train_sel)[:, 1]
     eval_scores = clf.predict_proba(x_eval_sel)[:, 1]
     threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
     metrics = binary_metrics_at_threshold(y_eval, eval_scores, threshold)
-    return metrics, threshold, feature_meta, selected_local, clf, imputer, scaler
+    return metrics, float(threshold), clf, train_scores, eval_scores
+
+
+def _prepare_resampled_selector_views(
+    *,
+    x_raw: np.ndarray,
+    y: np.ndarray,
+    splits_with_meta: list[tuple[dict[str, Any], np.ndarray, np.ndarray]],
+    selector: str,
+    k: int,
+    scaler_name: str,
+    add_indicator: bool,
+    n_neighbors: int | None,
+) -> list[dict[str, Any]]:
+    prepared_views: list[dict[str, Any]] = []
+    for meta, train_idx, eval_idx in splits_with_meta:
+        prepared = _prepare_selector_eval_view(
+            x_train_raw=x_raw[train_idx],
+            y_train=y[train_idx],
+            x_eval_raw=x_raw[eval_idx],
+            y_eval=y[eval_idx],
+            method=selector,
+            k=k,
+            scaler_name=scaler_name,
+            add_indicator=add_indicator,
+            n_neighbors=n_neighbors,
+        )
+        prepared_views.append({**meta, **prepared})
+    return prepared_views
 
 
 def _stage_a_configs(selectors_run: list[str]) -> list[dict[str, Any]]:
@@ -159,24 +246,24 @@ def _prepare_inner_cv_views(
     seed: int,
 ) -> list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
-    prepared_folds: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
-    for inner_train_idx, inner_val_idx in skf.split(x_outer_train_raw, y_outer_train):
-        x_inner_train = x_outer_train_raw[inner_train_idx]
-        y_inner_train = y_outer_train[inner_train_idx]
-        x_inner_val = x_outer_train_raw[inner_val_idx]
-        y_inner_val = y_outer_train[inner_val_idx]
-        x_train_sel, x_val_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
-            x_train_raw=x_inner_train,
-            y_train=y_inner_train,
-            x_eval_raw=x_inner_val,
-            method=selector,
-            k=k,
-            scaler_name=scaler_name,
-            add_indicator=True,
-            n_neighbors=n_neighbors,
-        )
-        prepared_folds.append((x_train_sel, y_inner_train, x_val_sel, y_inner_val))
-    return prepared_folds
+    splits_with_meta = [
+        ({}, inner_train_idx, inner_val_idx)
+        for inner_train_idx, inner_val_idx in skf.split(x_outer_train_raw, y_outer_train)
+    ]
+    prepared = _prepare_resampled_selector_views(
+        x_raw=x_outer_train_raw,
+        y=y_outer_train,
+        splits_with_meta=splits_with_meta,
+        selector=selector,
+        k=k,
+        scaler_name=scaler_name,
+        add_indicator=True,
+        n_neighbors=n_neighbors,
+    )
+    return [
+        (view["x_train_sel"], view["y_train"], view["x_eval_sel"], view["y_eval"])
+        for view in prepared
+    ]
 
 
 def _score_prepared_inner_cv(
@@ -186,11 +273,16 @@ def _score_prepared_inner_cv(
     aucs: list[float] = []
     bers: list[float] = []
     for x_train_sel, y_inner_train, x_val_sel, y_inner_val in prepared_folds:
-        clf = fit_temporal_logreg_model(x_train_sel, y_inner_train, c_value=c_value)
-        train_scores = clf.predict_proba(x_train_sel)[:, 1]
-        val_scores = clf.predict_proba(x_val_sel)[:, 1]
-        threshold, _ = find_ber_optimal_threshold(y_inner_train, train_scores)
-        m = binary_metrics_at_threshold(y_inner_val, val_scores, threshold)
+        prepared = {
+            "x_train_sel": x_train_sel,
+            "y_train": y_inner_train,
+            "x_eval_sel": x_val_sel,
+            "y_eval": y_inner_val,
+        }
+        m, _threshold, _clf, _train_scores, _eval_scores = _score_temporal_logreg_view(
+            prepared_view=prepared,
+            c_value=c_value,
+        )
         aucs.append(float(m["ROC_AUC"]) if np.isfinite(m["ROC_AUC"]) else 0.5)
         bers.append(float(m["BER"]))
     return float(np.mean(aucs)), float(np.mean(bers))
@@ -222,35 +314,27 @@ def _prepare_phase2_inner_views(
     scaler_name: str,
     n_neighbors: int | None,
 ) -> list[dict[str, Any]]:
-    prepared_views: list[dict[str, Any]] = []
+    splits_with_meta: list[tuple[dict[str, Any], np.ndarray, np.ndarray]] = []
     for seed in SEEDS_PHASE2:
         skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
         for inner_fold_i, (tr, va) in enumerate(skf.split(x_dev, y_dev), start=1):
-            x_tr = x_dev[tr]
-            y_tr = y_dev[tr]
-            x_va = x_dev[va]
-            y_va = y_dev[va]
-            x_train_sel, x_val_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
-                x_train_raw=x_tr,
-                y_train=y_tr,
-                x_eval_raw=x_va,
-                method=selector,
-                k=int(k),
-                scaler_name=scaler_name,
-                add_indicator=True,
-                n_neighbors=n_neighbors,
+            splits_with_meta.append(
+                (
+                    {"seed": seed, "inner_fold": inner_fold_i},
+                    tr,
+                    va,
+                )
             )
-            prepared_views.append(
-                {
-                    "seed": seed,
-                    "inner_fold": inner_fold_i,
-                    "y_train": y_tr,
-                    "y_val": y_va,
-                    "x_train_sel": x_train_sel,
-                    "x_val_sel": x_val_sel,
-                }
-            )
-    return prepared_views
+    return _prepare_resampled_selector_views(
+        x_raw=x_dev,
+        y=y_dev,
+        splits_with_meta=splits_with_meta,
+        selector=selector,
+        k=k,
+        scaler_name=scaler_name,
+        add_indicator=True,
+        n_neighbors=n_neighbors,
+    )
 
 
 def _phase2_freeze_for_role(
@@ -279,15 +363,17 @@ def _phase2_freeze_for_role(
             key = (k, float(cfg["C"]), scaler_name, n_neighbors)
             items: list[dict[str, Any]] = []
             for prepared in prepared_views:
-                y_tr = prepared["y_train"]
-                y_va = prepared["y_val"]
-                x_train_sel = prepared["x_train_sel"]
-                x_val_sel = prepared["x_val_sel"]
-                clf = fit_temporal_logreg_model(x_train_sel, y_tr, c_value=float(cfg["C"]))
-                tr_scores = clf.predict_proba(x_train_sel)[:, 1]
-                va_scores = clf.predict_proba(x_val_sel)[:, 1]
-                threshold, _ = find_ber_optimal_threshold(y_tr, tr_scores)
-                ber, auc = _phase2_fold_metrics(y_va, va_scores, threshold)
+                phase2_prepared = {
+                    "x_train_sel": prepared["x_train_sel"],
+                    "y_train": prepared["y_train"],
+                    "x_eval_sel": prepared["x_eval_sel"],
+                    "y_eval": prepared["y_eval"],
+                }
+                _metrics, threshold, _clf, _tr_scores, va_scores = _score_temporal_logreg_view(
+                    prepared_view=phase2_prepared,
+                    c_value=float(cfg["C"]),
+                )
+                ber, auc = _phase2_fold_metrics(prepared["y_eval"], va_scores, threshold)
                 items.append(
                     {
                         "role": role,

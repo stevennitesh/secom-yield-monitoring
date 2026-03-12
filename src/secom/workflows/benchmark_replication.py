@@ -137,10 +137,61 @@ def _prepare_cv(
     return x, y, folds
 
 
+def _prepare_benchmark_dataset(input_dir: Path) -> dict[str, Any]:
+    project_root = Path(__file__).resolve().parents[3]
+    loaded = load_raw_secom(input_dir)
+    df = parse_sort_and_label(loaded.frame)
+    x, y, folds = _prepare_cv(df=df, feature_cols=loaded.feature_columns)
+    return {
+        "project_root": project_root,
+        "feature_columns": list(loaded.feature_columns),
+        "x": x,
+        "y": y,
+        "folds": folds,
+    }
+
+
 def _build_primary_feature_universe(raw_feature_count: int, add_indicator: bool) -> list[Any]:
     if add_indicator:
         return build_feature_universe(raw_feature_count)
     return build_feature_universe(raw_feature_count)[:raw_feature_count]
+
+
+def _prepare_full_selector_view(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    selector: str,
+    add_indicator: bool,
+    selector_config: dict[str, Any],
+    raw_feature_count: int,
+    k: int = 40,
+) -> dict[str, Any]:
+    selector_kwargs = _selector_kwargs(selector=selector, selector_config=selector_config)
+    imputer = make_imputer(add_indicator=add_indicator)
+    x_imp = imputer.fit_transform(x)
+    scaler = make_scaler(ScalerName.STANDARD)
+    x_scaled = scaler.fit_transform(x_imp)
+    selected_local, _ = select_features(
+        method=selector,
+        x_train=x_scaled,
+        y_train=y,
+        k=int(k),
+        **selector_kwargs,
+    )
+    if selected_local.size <= 0:
+        raise RuntimeError("Benchmark full-data fit produced zero selected features")
+    meta = transformed_feature_metadata_from_imputer(imputer=imputer, raw_feature_count=raw_feature_count)
+    selected_global = local_to_global_feature_indices(selected_local, meta)
+    return {
+        "x_sel": x_scaled[:, selected_local],
+        "y": y,
+        "selected_global": selected_global,
+        "feature_meta": meta,
+        "n_samples_full_dataset": int(y.size),
+        "n_fails_full_dataset": int(np.sum(y == 1)),
+        "n_selected_features_full_dataset": int(selected_local.size),
+    }
 
 
 def _prepare_selector_views(
@@ -224,34 +275,18 @@ def _prepare_selector_views(
             )
         )
 
-    imputer = make_imputer(add_indicator=add_indicator)
-    x_imp = imputer.fit_transform(x)
-    scaler = make_scaler(ScalerName.STANDARD)
-    x_scaled = scaler.fit_transform(x_imp)
-    selected_local, _ = select_features(
-        method=selector,
-        x_train=x_scaled,
-        y_train=y,
-        k=int(k),
-        **selector_kwargs,
-    )
-    if selected_local.size <= 0:
-        raise RuntimeError("Benchmark full-data fit produced zero selected features")
-    meta = transformed_feature_metadata_from_imputer(imputer=imputer, raw_feature_count=raw_feature_count)
-    selected_global = local_to_global_feature_indices(selected_local, meta)
-
     return {
         "fold_views": fold_views,
         "feature_stability_df": pd.concat(feature_stability_frames, ignore_index=True),
-        "full_view": {
-            "x_sel": x_scaled[:, selected_local],
-            "y": y,
-            "selected_global": selected_global,
-            "feature_meta": meta,
-            "n_samples_full_dataset": int(y.size),
-            "n_fails_full_dataset": int(np.sum(y == 1)),
-            "n_selected_features_full_dataset": int(selected_local.size),
-        },
+        "full_view": _prepare_full_selector_view(
+            x=x,
+            y=y,
+            selector=selector,
+            add_indicator=add_indicator,
+            selector_config=selector_config,
+            raw_feature_count=raw_feature_count,
+            k=k,
+        ),
     }
 
 
@@ -314,12 +349,13 @@ def _evaluate_config_over_folds(
         x_test_sel = fold_view["x_test_sel"]
         y_test = fold_view["y_test"]
 
-        _train_scores, scores = _fit_classifier_scores(
+        _, scores = _fit_classifier_scores(
             classifier=classifier,
             x_train_sel=x_train_sel,
             y_train=y_train,
             x_eval_sel=x_test_sel,
             classifier_config=classifier_config,
+            include_train_scores=False,
         )
         fold_scores.append(scores)
         fold_labels.append(np.asarray(y_test, dtype=int))
@@ -399,7 +435,7 @@ def _fit_full_dataset(
             for feature_index, coef in zip(prepared_full["selected_global"], clf.coef_[0])
         }
     else:
-        _train_scores, scores = _fit_classifier_scores(
+        _, scores = _fit_classifier_scores(
             classifier=classifier,
             x_train_sel=x_sel,
             y_train=y,
@@ -546,13 +582,15 @@ def run_original_benchmark_replication(
     *,
     classifiers_run: list[str] | None = None,
     selectors_run: list[str] | None = None,
+    _prepared_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     reports = ensure_reports_dir(output_dir)
-    project_root = Path(__file__).resolve().parents[3]
-
-    loaded = load_raw_secom(input_dir)
-    df = parse_sort_and_label(loaded.frame)
-    x, y, folds = _prepare_cv(df=df, feature_cols=loaded.feature_columns)
+    prepared_data = _prepare_benchmark_dataset(input_dir) if _prepared_data is None else _prepared_data
+    project_root = prepared_data["project_root"]
+    feature_columns = prepared_data["feature_columns"]
+    x = prepared_data["x"]
+    y = prepared_data["y"]
+    folds = prepared_data["folds"]
 
     classifiers_run = list(BenchmarkClassifier.ALL) if classifiers_run is None else [str(c) for c in classifiers_run]
     selectors_run = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
@@ -580,7 +618,7 @@ def run_original_benchmark_replication(
                     selector=selector,
                     add_indicator=add_indicator,
                     selector_config=selector_config,
-                    raw_feature_count=len(loaded.feature_columns),
+                    raw_feature_count=len(feature_columns),
                     k=int(selector_config.get("k", 40)),
                 )
                 feature_stability_frames.append(prepared_views["feature_stability_df"])
@@ -853,17 +891,20 @@ def run_benchmark_replication(
 ) -> dict[str, Any]:
     from secom.workflows.benchmark_tuned import run_tuned_benchmark_replication
 
+    prepared_data = _prepare_benchmark_dataset(input_dir)
     original_result = run_original_benchmark_replication(
         input_dir=input_dir,
         output_dir=output_dir,
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
+        _prepared_data=prepared_data,
     )
     tuned_result = run_tuned_benchmark_replication(
         input_dir=input_dir,
         output_dir=output_dir,
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
+        _prepared_data=prepared_data,
     )
     return {
         "primary_study_status": _aggregate_primary_status(
