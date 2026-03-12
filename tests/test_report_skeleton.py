@@ -51,8 +51,19 @@ def test_report_skeleton_is_generated_from_active_artifacts(
     assert report_path.name == ArtifactName.REPORT_SKELETON
     assert "## Executive Summary" in text
     assert "## Benchmark Replication Results" in text
+    assert "### Original Replication" in text
+    assert "### Tuned Benchmark" in text
     assert "## Temporal Robustness Stress Test" in text
     assert "## Industrialization Gaps" in text
+    assert "### Supporting Benchmark Metrics" in text
+    assert "### Lockbox Metrics" in text
+    assert "### Illustrative Cost Curves" in text
     assert "PRIMARY_STUDY_STATUS" not in text
     assert "| F-test | krr | strict |" in text
+    assert "mean_ROC_AUC" in text
+    assert "mean_PR_AUC" in text
+    assert "mean_MCC" in text
+    assert "mean_F2" in text
+    assert "Leading original replication configuration" in text
+    assert "Leading tuned benchmark configuration" in text
     assert "| n/a | n/a |" not in text

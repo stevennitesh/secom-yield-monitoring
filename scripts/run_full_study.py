@@ -20,6 +20,8 @@ def main() -> None:
     args = parser.parse_args()
     result = run_full_study(Path(args.input_dir), Path(args.output_dir))
     print(f"PRIMARY_STUDY_STATUS: {result['benchmark']['primary_study_status']}")
+    print(f"BENCHMARK_ORIGINAL_STATUS: {result['benchmark_original_status']}")
+    print(f"BENCHMARK_TUNED_STATUS: {result['benchmark_tuned_status']}")
     print(f"TEMPORAL_ROBUSTNESS_STATUS: {result['temporal']['temporal_robustness_status']}")
     print(f"REPORT_SKELETON: {result['report_path']}")
     for error in result["audit"].errors:

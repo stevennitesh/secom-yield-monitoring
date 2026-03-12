@@ -579,6 +579,8 @@ def _init_manifest(output_dir: Path) -> dict[str, Any]:
         "python_executable": sys.executable,
         "library_versions": library_versions(),
         "primary_study_status": StudyStatus.NOT_RUN,
+        "benchmark_original_status": StudyStatus.NOT_RUN,
+        "benchmark_tuned_status": StudyStatus.NOT_RUN,
         "temporal_robustness_status": StudyStatus.NOT_RUN,
         "temporal_claim_restrictions": [],
         "industrialization_notes": [],

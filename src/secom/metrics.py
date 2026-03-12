@@ -240,15 +240,14 @@ def binary_metrics_at_threshold(
     scores: np.ndarray,
     threshold: float,
 ) -> dict[str, float]:
+    core_metrics = core_binary_metrics_at_threshold(y_true=y_true, scores=scores, threshold=threshold)
     y_true = np.asarray(y_true, dtype=int)
     scores = np.asarray(scores, dtype=float)
     y_pred = predict_from_threshold(scores, threshold)
     counts = confusion_counts(y_true, y_pred)
 
     metrics = {
-        "BER": ber_from_counts(counts),
-        "True+": true_pos_rate(counts),
-        "True-": true_neg_rate(counts),
+        **core_metrics,
         "ROC_AUC": np.nan,
         "PR_AUC": np.nan,
         "MCC": matthews_corrcoef(y_true, y_pred),
@@ -266,18 +265,50 @@ def binary_metrics_at_threshold(
     return metrics
 
 
+def core_binary_metrics_at_threshold(
+    y_true: np.ndarray,
+    scores: np.ndarray,
+    threshold: float,
+) -> dict[str, float]:
+    y_arr = np.asarray(y_true, dtype=int)
+    y_pred = predict_from_threshold(scores, threshold)
+    counts = confusion_counts(y_arr, y_pred)
+    return {
+        "BER": ber_from_counts(counts),
+        "True+": true_pos_rate(counts),
+        "True-": true_neg_rate(counts),
+    }
+
+
+def bootstrap_resample_indices(
+    n_values: int,
+    n_boot: int = 1000,
+    seed: int = 42,
+) -> np.ndarray:
+    n = int(n_values)
+    if n <= 0:
+        return np.empty((0, 0), dtype=int)
+    rng = np.random.default_rng(seed)
+    return rng.integers(0, n, size=(int(n_boot), n), endpoint=False)
+
+
 def bootstrap_ci_for_mean(
-    values: np.ndarray, n_boot: int = 1000, seed: int = 42, alpha: float = 0.95
+    values: np.ndarray,
+    n_boot: int = 1000,
+    seed: int = 42,
+    alpha: float = 0.95,
+    draw_indices: np.ndarray | None = None,
 ) -> tuple[float, float]:
     vals = np.asarray(values, dtype=float)
     if vals.size == 0:
         return (np.nan, np.nan)
-    rng = np.random.default_rng(seed)
-    means = np.empty(n_boot, dtype=float)
-    idx = np.arange(vals.size)
-    for i in range(n_boot):
-        draw = rng.choice(idx, size=vals.size, replace=True)
-        means[i] = float(np.mean(vals[draw]))
+    if draw_indices is None:
+        draw_indices = bootstrap_resample_indices(n_values=vals.size, n_boot=n_boot, seed=seed)
+    else:
+        draw_indices = np.asarray(draw_indices, dtype=int)
+        if draw_indices.ndim != 2 or draw_indices.shape[1] != vals.size:
+            raise ValueError("draw_indices must have shape (n_boot, n_values)")
+    means = np.mean(vals[draw_indices], axis=1)
     lower_q = (1 - alpha) / 2.0
     upper_q = 1.0 - lower_q
     return (float(np.quantile(means, lower_q)), float(np.quantile(means, upper_q)))

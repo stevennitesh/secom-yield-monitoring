@@ -4,9 +4,9 @@
 
 This file defines the artifact families for the rebuilt study.
 
-## Primary Study Artifact Family
+## Benchmark Study Artifact Families
 
-The benchmark replication study should produce:
+The original replication study should produce:
 
 1. benchmark sweep
 2. benchmark best config
@@ -17,13 +17,25 @@ The benchmark replication study should produce:
 7. feature stability
 8. feature report
 
+The tuned benchmark study should produce:
+
+1. benchmark tuned search
+2. benchmark tuned best config
+3. benchmark tuned fold metrics
+4. benchmark tuned summary
+5. benchmark tuned ablation
+6. benchmark tuned full-fit summary
+7. benchmark tuned feature stability
+8. benchmark tuned feature report
+
 These artifacts are canonical for:
 
-1. headline benchmark metrics,
-2. uncertainty summaries,
-3. ablation results,
-4. selector/classifier comparison,
-5. feature-stability interpretation.
+1. original replication benchmark metrics,
+2. tuned benchmark metrics,
+3. uncertainty summaries,
+4. ablation results,
+5. selector/classifier comparison,
+6. feature-stability interpretation.
 
 ## Secondary Study Artifact Family
 
@@ -51,13 +63,18 @@ These artifacts are canonical for:
 
 ### Headline Metric Sources
 
-Headline benchmark metrics should come from the primary artifact family only, especially:
+Headline benchmark metrics should come from the original and tuned benchmark artifact families, especially:
 
 1. benchmark summary
 2. benchmark fold metrics
-3. benchmark ablation
-4. feature stability
-5. feature report
+3. benchmark tuned summary
+4. benchmark tuned fold metrics
+5. benchmark ablation
+6. benchmark tuned ablation
+7. feature stability
+8. benchmark tuned feature stability
+9. feature report
+10. benchmark tuned feature report
 
 ### Secondary Metric Sources
 
@@ -82,9 +99,11 @@ These outputs must not be treated as production-validated operating metrics.
 The run manifest must distinguish between:
 
 1. primary-study status,
-2. temporal-study status,
-3. temporal claim restrictions,
-4. industrialization notes or gaps where applicable.
+2. benchmark original status,
+3. benchmark tuned status,
+4. temporal-study status,
+5. temporal claim restrictions,
+6. industrialization notes or gaps where applicable.
 
 ## Naming Rule
 

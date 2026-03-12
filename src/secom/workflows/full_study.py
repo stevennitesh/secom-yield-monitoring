@@ -16,6 +16,8 @@ def run_full_study(input_dir: Path, output_dir: Path, **kwargs: Any) -> dict[str
     report_path = write_report_skeleton(output_dir=output_dir)
     return {
         "benchmark": benchmark_result,
+        "benchmark_original_status": benchmark_result["benchmark_original_status"],
+        "benchmark_tuned_status": benchmark_result["benchmark_tuned_status"],
         "temporal": temporal_result,
         "audit": audit_result,
         "report_path": str(report_path),

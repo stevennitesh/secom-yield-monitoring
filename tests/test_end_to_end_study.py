@@ -47,13 +47,17 @@ def test_end_to_end_active_studies_share_output_dir(
     audit = run_study_audit(out_dir)
 
     assert benchmark_result["primary_study_status"] == StudyStatus.PASSED
+    assert benchmark_result["benchmark_original_status"] == StudyStatus.PASSED
+    assert benchmark_result["benchmark_tuned_status"] == StudyStatus.PASSED
     assert temporal_result["temporal_robustness_status"] in {StudyStatus.PASSED, StudyStatus.WARNING}
     assert audit.ok, audit.errors
 
     reports = out_dir / "reports"
     for name in [
         ArtifactName.BENCHMARK_SUMMARY,
+        ArtifactName.BENCHMARK_TUNED_SUMMARY,
         ArtifactName.FEATURE_REPORT,
+        ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
         ArtifactName.TEMPORAL_MODEL_SELECTION,
         ArtifactName.TEMPORAL_LOCKBOX,
         ArtifactName.MANIFEST,

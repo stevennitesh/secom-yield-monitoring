@@ -8,18 +8,20 @@ This file defines the required structure of the final active report.
 
 1. Executive summary
 2. Dataset and study scope
-3. Benchmark replication design
-4. Benchmark replication results
-5. Feature stability and interpretation
-6. Temporal robustness stress test
-7. Industrialization gaps
-8. Conclusions and next data requirements
+3. Original replication design
+4. Original replication results
+5. Tuned benchmark design
+6. Tuned benchmark results
+7. Feature stability and interpretation
+8. Temporal robustness stress test
+9. Industrialization gaps
+10. Conclusions and next data requirements
 
 ## Metric Policy
 
 ### Headline Metrics
 
-The main report narrative must prioritize these primary-study metrics:
+The main report narrative must prioritize these benchmark-study metrics:
 
 1. `BER`
 2. `TPR` / `True+`
@@ -27,7 +29,7 @@ The main report narrative must prioritize these primary-study metrics:
 4. uncertainty summaries for the mean metric values
 5. missing-indicator ablation deltas
 6. selector/classifier comparison outcomes
-7. feature-stability summaries from the primary study
+7. feature-stability summaries from the benchmark studies
 
 ### Secondary Robustness Metrics
 
@@ -62,21 +64,24 @@ The following may appear as supporting diagnostics, appendix material, or tables
 
 ## Ordering Rules
 
-1. Primary-study results must appear before temporal stress-test results.
-2. Feature interpretation must be attached to the primary study, not treated only as an operational appendix.
-3. Industrialization gaps must be explicit and substantive.
-4. Conclusions must separate:
+1. Original replication results must appear before tuned benchmark results.
+2. Both benchmark studies must appear before temporal stress-test results.
+3. Feature interpretation must be attached to the benchmark studies, not treated only as an operational appendix.
+4. Industrialization gaps must be explicit and substantive.
+5. Conclusions must separate:
    1. what was replicated,
-   2. what was stress-tested,
-   3. what remains unsupported.
+   2. what improved under tuning,
+   3. what was stress-tested,
+   4. what remains unsupported.
 
 ## Narrative Rule
 
 The report must make it obvious which findings are:
 
-1. primary scientific conclusions,
-2. secondary robustness observations,
-3. non-claimable or unsupported for real deployment.
+1. original benchmark conclusions,
+2. tuned benchmark conclusions,
+3. secondary robustness observations,
+4. non-claimable or unsupported for real deployment.
 
 Operational framing must not be written as if the dataset already supports production-readiness claims.
 

@@ -8,16 +8,18 @@ This file defines the corrected study objective for the active SECOM refactor.
 
 The project has three ordered goals:
 
-1. Produce a faithful and technically defensible SECOM-style benchmark replication.
-2. Evaluate temporal robustness under stricter deployment-like conditions as a secondary stress test.
-3. State clearly what this dataset does and does not support for real industrial deployment.
+1. Produce a faithful and technically defensible SECOM-style benchmark replication that mirrors the literature as closely as practical.
+2. Produce a tuned benchmark extension that keeps the selector family but improves methodology through nested tuning and threshold-free inner selection.
+3. Evaluate temporal robustness under stricter deployment-like conditions as secondary stress-test evidence.
+4. State clearly what this dataset does and does not support for real industrial deployment.
 
 ## Precedence
 
-1. Benchmark replication is the primary scientific study.
-2. Temporal robustness is secondary evidence.
-3. Industrialization-gap analysis is required report content, not optional commentary.
-4. Project-level conclusions must be driven by the primary study unless the spec explicitly says otherwise.
+1. Original benchmark replication is the first primary scientific study.
+2. Tuned benchmark is the second primary scientific study.
+3. Temporal robustness is secondary evidence.
+4. Industrialization-gap analysis is required report content, not optional commentary.
+5. Project-level conclusions must separate what came from original replication, tuned benchmark, and temporal stress testing.
 
 ## Required Outcome
 
