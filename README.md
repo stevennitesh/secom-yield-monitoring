@@ -17,7 +17,8 @@ The rebuilt active surface now supports:
 2. tuned benchmark artifact generation
 3. temporal robustness artifact generation
 4. categorized study audit output
-5. markdown report-skeleton generation from active artifacts
+5. polished markdown final-report generation from active artifacts
+6. optional PDF export from the generated markdown report
 
 The intent is deliberate:
 
@@ -70,6 +71,18 @@ Report scaffold from existing artifacts:
 python scripts/run_report_skeleton.py --output-dir runs/full_study
 ```
 
+Canonical final report from existing artifacts:
+
+```bash
+python scripts/run_final_report.py --output-dir runs/full_study
+```
+
+Optional PDF export:
+
+```bash
+python scripts/run_final_report.py --output-dir runs/full_study --export-pdf
+```
+
 ## Current Output Model
 
 Original replication artifacts use the `benchmark_*` family plus:
@@ -85,9 +98,13 @@ Tuned benchmark artifacts use the `benchmark_tuned_*` family plus:
 Shared outputs:
 
 - `run_manifest.json`
+- `final_report.md`
 - `final_report_skeleton.md`
+- `figures/*.png`
 
 Secondary temporal artifacts use `temporal_*` names.
+
+`final_report.md` is the canonical generated report artifact. `final_report_skeleton.md` remains available as a scaffold/debugging aid.
 
 Audit output distinguishes:
 
@@ -95,7 +112,7 @@ Audit output distinguishes:
 - `WARNING`
 - `CLAIM_RESTRICTION`
 
-The final scaffold is designed to read like a professional study draft:
+The final generated report is designed to read like a professional study draft:
 
 - original replication first
 - tuned benchmark second

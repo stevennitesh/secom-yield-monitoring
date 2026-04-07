@@ -52,12 +52,29 @@ def test_report_skeleton_is_generated_from_active_artifacts(
     assert "## Executive Summary" in text
     assert "## Benchmark Replication Results" in text
     assert "### Original Replication" in text
+    assert "#### Original Replication Design" in text
+    assert "#### Original Replication Search Summary" in text
+    assert "##### Search Space" in text
+    assert "##### Selected Configurations" in text
+    assert "#### Original Replication Results" in text
     assert "### Tuned Benchmark" in text
+    assert "#### Tuned Benchmark Design" in text
+    assert "#### Tuned Benchmark Search Summary" in text
+    assert "##### Search Space" in text
+    assert "##### Modal Selected Configurations" in text
+    assert "#### Tuned Benchmark Results" in text
+    assert "#### Tuned Feature Stability and Interpretation" in text
     assert "## Temporal Robustness Stress Test" in text
+    assert "### Temporal Robustness Design" in text
+    assert "### Temporal Model Selection Summary" in text
+    assert "#### Selector Ranking and Modal Configurations" in text
+    assert "### Temporal Lockbox Results" in text
+    assert "### Drift and Claim Restrictions" in text
     assert "## Industrialization Gaps" in text
     assert "### Supporting Benchmark Metrics" in text
-    assert "### Lockbox Metrics" in text
-    assert "### Illustrative Cost Curves" in text
+    assert "### MSPC Comparison" in text
+    assert "### Illustrative Operational Framing" in text
+    assert "#### Cost Curves" in text
     assert "PRIMARY_STUDY_STATUS" not in text
     assert "| F-test | krr | strict |" in text
     assert "mean_ROC_AUC" in text
@@ -66,4 +83,5 @@ def test_report_skeleton_is_generated_from_active_artifacts(
     assert "mean_F2" in text
     assert "Leading original replication configuration" in text
     assert "Leading tuned benchmark configuration" in text
+    assert "#### Original Feature Stability and Interpretation" in text
     assert "| n/a | n/a |" not in text
