@@ -7,6 +7,7 @@ import pandas as pd
 
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.audit import run_study_audit
+from secom.workflows.benchmark_common import classifier_config_from_row, selector_config_from_row
 from secom.workflows.benchmark_replication import run_benchmark_replication
 from secom.workflows import benchmark_tuned
 
@@ -119,14 +120,14 @@ def test_benchmark_bundle_prepares_dataset_once(
     import secom.workflows.benchmark_replication as benchmark
 
     out_dir = workspace_tmp_dir / "out_benchmark_bundle_once"
-    original_prepare = benchmark._prepare_benchmark_dataset
+    original_prepare = benchmark.prepare_benchmark_dataset
     counter = {"count": 0}
 
     def counted_prepare(input_dir: Path) -> dict[str, object]:
         counter["count"] += 1
         return original_prepare(input_dir)
 
-    monkeypatch.setattr(benchmark, "_prepare_benchmark_dataset", counted_prepare)
+    monkeypatch.setattr(benchmark, "prepare_benchmark_dataset", counted_prepare)
 
     run_benchmark_replication(
         input_dir=synthetic_input_dir,
@@ -190,3 +191,21 @@ def test_tuned_inner_selector_views_reuse_selector_prep_across_classifier_config
     assert calls["count"] == prep_calls
     assert set(payload_a) == {"mean_inner_ROC_AUC", "mean_inner_BER"}
     assert set(payload_b) == {"mean_inner_ROC_AUC", "mean_inner_BER"}
+
+
+def test_config_row_denormalization_converts_nan_to_none() -> None:
+    row = pd.Series(
+        {
+            "k": 20,
+            "n_neighbors": np.nan,
+            "alpha": 1.0,
+            "gamma": np.nan,
+            "C": np.nan,
+        }
+    )
+
+    selector_config = selector_config_from_row(row)
+    classifier_config = classifier_config_from_row(row)
+
+    assert selector_config == {"k": 20, "n_neighbors": None}
+    assert classifier_config == {"alpha": 1.0, "gamma": None, "C": None}

@@ -113,6 +113,7 @@ class ArtifactName:
     TEMPORAL_COST_CURVES = "temporal_cost_curves.csv"
     TEMPORAL_MANAGER_OUTPUTS = "temporal_manager_outputs.csv"
     MANIFEST = "run_manifest.json"
+    FINAL_REPORT = "final_report.md"
     REPORT_SKELETON = "final_report_skeleton.md"
 
 

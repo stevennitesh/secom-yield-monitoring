@@ -22,25 +22,26 @@ from secom.config import (
 )
 from secom.metrics import (
     binary_metrics_at_threshold,
-    bootstrap_ci_for_mean,
-    bootstrap_resample_indices,
     find_ber_optimal_threshold,
-    safe_std,
 )
 from secom.preprocess import local_to_global_feature_indices, transformed_feature_metadata_from_imputer
 from secom.qa import validate_tuned_benchmark_artifacts
 from secom.selection.engine import fit_selector_pipeline
-from secom.workflows.benchmark_replication import (
-    _aggregate_primary_status,
-    _build_cluster_id_map,
-    _build_feature_report,
-    _classifier_param_grid,
-    _config_fields,
-    _config_tie_break_key,
-    _fit_classifier_scores,
-    _fit_full_dataset,
-    _prepare_benchmark_dataset,
-    _prepare_full_selector_view,
+from secom.workflows.benchmark_common import (
+    aggregate_primary_status,
+    build_benchmark_ablation_df,
+    build_cluster_id_map,
+    build_feature_report,
+    build_benchmark_summary_df,
+    classifier_param_grid,
+    classifier_config_from_row,
+    config_fields,
+    config_tie_break_key,
+    fit_classifier_scores,
+    fit_full_dataset,
+    prepare_benchmark_dataset,
+    prepare_full_selector_view,
+    selector_config_from_row,
 )
 
 
@@ -60,7 +61,7 @@ def _select_best_tuned_config(config_rows: list[dict[str, Any]]) -> dict[str, An
     tied = [row for row in near if np.isclose(float(row["mean_inner_BER"]), min_ber)]
     return min(
         tied,
-        key=lambda row: _config_tie_break_key(
+        key=lambda row: config_tie_break_key(
             selector=str(row["selector"]),
             classifier=str(row["classifier"]),
             selector_config={"k": int(row["k"]), "n_neighbors": row.get("n_neighbors")},
@@ -82,7 +83,7 @@ def _inner_cv_summary_for_config(
     aucs: list[float] = []
     bers: list[float] = []
     for x_train_sel, y_inner_train, x_val_sel, y_inner_val in prepared_inner_views:
-        train_scores, val_scores = _fit_classifier_scores(
+        train_scores, val_scores = fit_classifier_scores(
             classifier=classifier,
             x_train_sel=x_train_sel,
             y_train=y_inner_train,
@@ -170,7 +171,7 @@ def _evaluate_outer_fold_with_config(
         add_indicator=add_indicator,
         n_neighbors=selector_config.get("n_neighbors"),
     )
-    train_scores, test_scores = _fit_classifier_scores(
+    train_scores, test_scores = fit_classifier_scores(
         classifier=classifier,
         x_train_sel=x_train_sel,
         y_train=y_train,
@@ -213,7 +214,7 @@ def _evaluate_outer_fold_with_config(
         "classifier": classifier,
         "replication_mode": replication_mode,
         "fold": int(fold),
-        **_config_fields(selector_config=selector_config, classifier_config=classifier_config),
+        **config_fields(selector_config=selector_config, classifier_config=classifier_config),
         "BER": float(metrics["BER"]),
         "True+": float(metrics["True+"]),
         "True-": float(metrics["True-"]),
@@ -301,7 +302,7 @@ def run_tuned_benchmark_replication(
     _prepared_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     reports = ensure_reports_dir(output_dir)
-    prepared_data = _prepare_benchmark_dataset(input_dir) if _prepared_data is None else _prepared_data
+    prepared_data = prepare_benchmark_dataset(input_dir) if _prepared_data is None else _prepared_data
     project_root = prepared_data["project_root"]
     feature_columns = prepared_data["feature_columns"]
     x = prepared_data["x"]
@@ -321,7 +322,7 @@ def run_tuned_benchmark_replication(
         for replication_mode in (ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS):
             add_indicator = replication_mode == ReplicationMode.WITH_MISSING_INDICATORS
             for classifier in classifiers_run:
-                classifier_grid = _classifier_param_grid(classifier)
+                classifier_grid = classifier_param_grid(classifier)
                 for fold_i, (train_idx, test_idx) in enumerate(folds, start=1):
                     x_outer_train = x[train_idx]
                     y_outer_train = y[train_idx]
@@ -347,7 +348,7 @@ def run_tuned_benchmark_replication(
                                 "classifier": classifier,
                                 "replication_mode": replication_mode,
                                 "fold": int(fold_i),
-                                **_config_fields(selector_config=selector_config, classifier_config=classifier_config),
+                                **config_fields(selector_config=selector_config, classifier_config=classifier_config),
                                 **inner_payload,
                             }
                             config_rows.append(row)
@@ -357,8 +358,8 @@ def run_tuned_benchmark_replication(
                     best["is_selected_config"] = True
                     search_rows.extend(config_rows)
 
-                    selector_config = {"k": int(best["k"]), "n_neighbors": best.get("n_neighbors")}
-                    classifier_config = {"alpha": best.get("alpha"), "gamma": best.get("gamma"), "C": best.get("C")}
+                    selector_config = selector_config_from_row(best)
+                    classifier_config = classifier_config_from_row(best)
                     fold_row, feature_stability_df = _evaluate_outer_fold_with_config(
                         x_train_raw=x_outer_train,
                         y_train=y_outer_train,
@@ -380,7 +381,7 @@ def run_tuned_benchmark_replication(
                             "classifier": classifier,
                             "replication_mode": replication_mode,
                             "fold": int(fold_i),
-                            **_config_fields(selector_config=selector_config, classifier_config=classifier_config),
+                            **config_fields(selector_config=selector_config, classifier_config=classifier_config),
                             "mean_inner_ROC_AUC": float(best["mean_inner_ROC_AUC"]),
                             "mean_inner_BER": float(best["mean_inner_BER"]),
                             "BER": float(fold_row["BER"]),
@@ -398,89 +399,17 @@ def run_tuned_benchmark_replication(
     fold_metrics_df = pd.DataFrame(fold_rows)
     feature_stability_df = pd.concat(feature_stability_frames, ignore_index=True)
 
-    summary_rows: list[dict[str, Any]] = []
-    for (selector, classifier, mode), frame in fold_metrics_df.groupby(
-        ["selector", "classifier", "replication_mode"], sort=False
-    ):
-        ber_values = frame["BER"].to_numpy(dtype=float)
-        tp_values = frame["True+"].to_numpy(dtype=float)
-        tn_values = frame["True-"].to_numpy(dtype=float)
-        roc_values = frame["ROC_AUC"].to_numpy(dtype=float)
-        pr_values = frame["PR_AUC"].to_numpy(dtype=float)
-        mcc_values = frame["MCC"].to_numpy(dtype=float)
-        f2_values = frame["F2"].to_numpy(dtype=float)
-        draw_indices = bootstrap_resample_indices(n_values=len(frame), n_boot=1000, seed=42)
-        ber_lo, ber_hi = bootstrap_ci_for_mean(ber_values, alpha=0.95, draw_indices=draw_indices)
-        tp_lo, tp_hi = bootstrap_ci_for_mean(tp_values, alpha=0.95, draw_indices=draw_indices)
-        tn_lo, tn_hi = bootstrap_ci_for_mean(tn_values, alpha=0.95, draw_indices=draw_indices)
-        roc_lo, roc_hi = bootstrap_ci_for_mean(roc_values, alpha=0.95, draw_indices=draw_indices)
-        pr_lo, pr_hi = bootstrap_ci_for_mean(pr_values, alpha=0.95, draw_indices=draw_indices)
-        mcc_lo, mcc_hi = bootstrap_ci_for_mean(mcc_values, alpha=0.95, draw_indices=draw_indices)
-        f2_lo, f2_hi = bootstrap_ci_for_mean(f2_values, alpha=0.95, draw_indices=draw_indices)
-        summary_rows.append(
-            {
-                "selector": selector,
-                "classifier": classifier,
-                "replication_mode": mode,
-                "n_folds": int(len(frame)),
-                "n_boot": 1000,
-                "boot_seed": 42,
-                "mean_BER": float(np.mean(ber_values)),
-                "std_BER": safe_std(ber_values),
-                "CI_lower_BER": ber_lo,
-                "CI_upper_BER": ber_hi,
-                "mean_True+": float(np.mean(tp_values)),
-                "std_True+": safe_std(tp_values),
-                "CI_lower_True+": tp_lo,
-                "CI_upper_True+": tp_hi,
-                "mean_True-": float(np.mean(tn_values)),
-                "std_True-": safe_std(tn_values),
-                "CI_lower_True-": tn_lo,
-                "CI_upper_True-": tn_hi,
-                "mean_ROC_AUC": float(np.mean(roc_values)),
-                "std_ROC_AUC": safe_std(roc_values),
-                "CI_lower_ROC_AUC": roc_lo,
-                "CI_upper_ROC_AUC": roc_hi,
-                "mean_PR_AUC": float(np.mean(pr_values)),
-                "std_PR_AUC": safe_std(pr_values),
-                "CI_lower_PR_AUC": pr_lo,
-                "CI_upper_PR_AUC": pr_hi,
-                "mean_MCC": float(np.mean(mcc_values)),
-                "std_MCC": safe_std(mcc_values),
-                "CI_lower_MCC": mcc_lo,
-                "CI_upper_MCC": mcc_hi,
-                "mean_F2": float(np.mean(f2_values)),
-                "std_F2": safe_std(f2_values),
-                "CI_lower_F2": f2_lo,
-                "CI_upper_F2": f2_hi,
-            }
-        )
-    summary_df = pd.DataFrame(summary_rows)
-
-    ablation_rows: list[dict[str, Any]] = []
-    for (selector, classifier), frame in fold_metrics_df.groupby(["selector", "classifier"], sort=False):
-        strict_frame = frame[frame["replication_mode"] == ReplicationMode.STRICT].sort_values("fold")
-        mi_frame = frame[frame["replication_mode"] == ReplicationMode.WITH_MISSING_INDICATORS].sort_values("fold")
-        delta = strict_frame["BER"].to_numpy(dtype=float) - mi_frame["BER"].to_numpy(dtype=float)
-        ablation_rows.append(
-            {
-                "selector": selector,
-                "classifier": classifier,
-                "BER_reference": float(np.mean(strict_frame["BER"].to_numpy(dtype=float))),
-                "BER_missing_indicator": float(np.mean(mi_frame["BER"].to_numpy(dtype=float))),
-                "delta_BER": float(np.mean(delta)),
-            }
-        )
-    ablation_df = pd.DataFrame(ablation_rows)
+    summary_df = build_benchmark_summary_df(fold_metrics_df)
+    ablation_df = build_benchmark_ablation_df(fold_metrics_df)
 
     best_df = _modal_selected_config(selected_df)
 
     coefficient_maps: dict[tuple[str, str, str], dict[int, float]] = {}
     full_fit_rows: list[dict[str, Any]] = []
     for row in best_df.itertuples(index=False):
-        selector_config = {"k": int(row.k), "n_neighbors": row.n_neighbors}
-        classifier_config = {"alpha": row.alpha, "gamma": row.gamma, "C": row.C}
-        prepared_full = _prepare_full_selector_view(
+        selector_config = selector_config_from_row(row)
+        classifier_config = classifier_config_from_row(row)
+        prepared_full = prepare_full_selector_view(
             x=x,
             y=y,
             selector=str(row.selector),
@@ -489,7 +418,7 @@ def run_tuned_benchmark_replication(
             raw_feature_count=len(feature_columns),
             k=int(row.k),
         )
-        full_fit_payload = _fit_full_dataset(
+        full_fit_payload = fit_full_dataset(
             classifier=str(row.classifier),
             prepared_full=prepared_full,
             classifier_config=classifier_config,
@@ -522,8 +451,8 @@ def run_tuned_benchmark_replication(
         )
     full_fit_df = pd.DataFrame(full_fit_rows)
 
-    cluster_id_map = _build_cluster_id_map(x_raw=x)
-    feature_report_df = _build_feature_report(
+    cluster_id_map = build_cluster_id_map(x_raw=x)
+    feature_report_df = build_feature_report(
         feature_stability_df=feature_stability_df,
         benchmark_configs_df=best_df,
         coefficient_maps=coefficient_maps,
@@ -570,7 +499,7 @@ def run_tuned_benchmark_replication(
         }
 
     manifest["benchmark_tuned_status"] = StudyStatus.PASSED
-    manifest["primary_study_status"] = _aggregate_primary_status(
+    manifest["primary_study_status"] = aggregate_primary_status(
         str(manifest.get("benchmark_original_status", StudyStatus.NOT_RUN)),
         StudyStatus.PASSED,
     )
