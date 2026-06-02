@@ -13,9 +13,7 @@ from secom.reporting import write_final_report
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Generate the final markdown report from active artifacts"
-    )
+    parser = argparse.ArgumentParser(description="Generate the final markdown report from active artifacts")
     parser.add_argument("--output-dir", default="runs")
     parser.add_argument("--export-pdf", action="store_true")
     args = parser.parse_args()

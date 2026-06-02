@@ -56,4 +56,3 @@ def relief_rank_features(
     scores[~np.isfinite(scores)] = -np.inf
     order = _rank_desc_with_index_tiebreak(scores)
     return order, scores
-

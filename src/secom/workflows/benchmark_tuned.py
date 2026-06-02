@@ -180,9 +180,7 @@ def _evaluate_outer_fold_with_config(
     )
     threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
     metrics = binary_metrics_at_threshold(y_test, test_scores, threshold=float(threshold))
-    selected_global = set(
-        local_to_global_feature_indices(selected_local, feature_meta)
-    )
+    selected_global = set(local_to_global_feature_indices(selected_local, feature_meta))
 
     universe = transformed_feature_metadata_from_imputer(
         imputer=_imputer,

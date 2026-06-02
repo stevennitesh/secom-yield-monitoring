@@ -223,9 +223,7 @@ def prepare_selector_views(
     universe_feature_index = np.asarray([int(feature.feature_index) for feature in universe], dtype=int)
     universe_feature_type = np.asarray([feature.feature_type for feature in universe], dtype=object)
     universe_feature_name = np.asarray([feature.feature_name_or_source_col for feature in universe], dtype=object)
-    replication_mode = (
-        ReplicationMode.WITH_MISSING_INDICATORS if add_indicator else ReplicationMode.STRICT
-    )
+    replication_mode = ReplicationMode.WITH_MISSING_INDICATORS if add_indicator else ReplicationMode.STRICT
 
     for fold_i, (train_idx, test_idx) in enumerate(folds, start=1):
         x_train_raw = x[train_idx]
@@ -481,9 +479,7 @@ def build_feature_report(
             sort=False,
         )
 
-    report_df["expected_contribution"] = (
-        report_df["selection_frequency"] * report_df["conditional_effect_magnitude"]
-    )
+    report_df["expected_contribution"] = report_df["selection_frequency"] * report_df["conditional_effect_magnitude"]
     cluster_series = report_df["feature_index"].map(cluster_id_map)
     report_df["cluster_id"] = np.where(report_df["feature_type"].eq("value"), cluster_series, np.nan)
     return report_df[

@@ -205,9 +205,7 @@ def find_ber_optimal_threshold(
     }
 
 
-def extract_tpr_at_tnr(
-    y_true: np.ndarray, scores: np.ndarray, target_tnr: float = 0.90
-) -> tuple[float, float, float]:
+def extract_tpr_at_tnr(y_true: np.ndarray, scores: np.ndarray, target_tnr: float = 0.90) -> tuple[float, float, float]:
     best_threshold = None
     best_tpr = -np.inf
     best_tnr = 0.0

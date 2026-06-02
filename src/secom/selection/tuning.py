@@ -221,11 +221,7 @@ def select_best_inner_config(config_rows: list[dict[str, Any]]) -> dict[str, Any
     if not config_rows:
         raise ValueError("No configs to select")
     best_auc = max(r["mean_inner_ROC_AUC"] for r in config_rows)
-    near = [
-        r
-        for r in config_rows
-        if r["mean_inner_ROC_AUC"] >= best_auc - 0.01 - 1e-12
-    ]
+    near = [r for r in config_rows if r["mean_inner_ROC_AUC"] >= best_auc - 0.01 - 1e-12]
     min_ber = min(r["mean_inner_BER"] for r in near)
     tied = [r for r in near if np.isclose(r["mean_inner_BER"], min_ber)]
 

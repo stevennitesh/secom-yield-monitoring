@@ -496,7 +496,6 @@ def validate_schema_and_logic(
     elif temporal_status == StudyStatus.WARNING:
         warnings.append("temporal robustness status indicates warnings")
 
-    active_primary = primary_status != StudyStatus.NOT_RUN
     active_original = original_status != StudyStatus.NOT_RUN
     active_tuned = tuned_status != StudyStatus.NOT_RUN
     active_temporal = temporal_status != StudyStatus.NOT_RUN

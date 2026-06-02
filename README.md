@@ -27,6 +27,31 @@ The intent is deliberate:
 3. show what still breaks under temporal stress
 4. show what a real industrial study would still require
 
+## Development
+
+Create and populate a local virtual environment:
+
+```bash
+python -m venv .venv
+make PYTHON=.venv/bin/python install
+```
+
+Run the standard local gate:
+
+```bash
+make PYTHON=.venv/bin/python check
+```
+
+Useful focused commands:
+
+```bash
+make PYTHON=.venv/bin/python lint
+make PYTHON=.venv/bin/python format-check
+make PYTHON=.venv/bin/python format
+make PYTHON=.venv/bin/python test
+make PYTHON=.venv/bin/python coverage
+```
+
 ## Active Entry Points
 
 Original replication:

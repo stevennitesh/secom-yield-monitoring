@@ -32,9 +32,7 @@ def make_temporal_logreg_model(c_value: float) -> LogisticRegression:
     )
 
 
-def fit_temporal_logreg_model(
-    x_train: np.ndarray, y_train_bin: np.ndarray, c_value: float
-) -> LogisticRegression:
+def fit_temporal_logreg_model(x_train: np.ndarray, y_train_bin: np.ndarray, c_value: float) -> LogisticRegression:
     clf = make_temporal_logreg_model(c_value)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ConvergenceWarning)

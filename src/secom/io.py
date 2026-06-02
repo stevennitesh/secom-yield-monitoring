@@ -26,9 +26,7 @@ def load_raw_secom(input_dir: Path) -> LoadedSecom:
     labels["ts_raw"] = labels["ts_raw"].astype(str).str.replace('"', "", regex=False)
 
     if len(x) != len(labels):
-        raise ValueError(
-            f"Row count mismatch between features ({len(x)}) and labels ({len(labels)})"
-        )
+        raise ValueError(f"Row count mismatch between features ({len(x)}) and labels ({len(labels)})")
 
     feature_columns = [f"x{i}" for i in range(x.shape[1])]
     x.columns = feature_columns
@@ -41,9 +39,7 @@ def load_raw_secom(input_dir: Path) -> LoadedSecom:
 
 def parse_sort_and_label(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    out["timestamp"] = pd.to_datetime(
-        out["timestamp_raw"], dayfirst=True, errors="coerce", format="%d/%m/%Y %H:%M:%S"
-    )
+    out["timestamp"] = pd.to_datetime(out["timestamp_raw"], dayfirst=True, errors="coerce", format="%d/%m/%Y %H:%M:%S")
     out = out.dropna(subset=["timestamp"]).copy()
     out["y_bin"] = (out["y_raw"] == 1).astype(int)
 
@@ -56,4 +52,3 @@ def parse_sort_and_label(df: pd.DataFrame) -> pd.DataFrame:
 def write_dataframe_csv(df: pd.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
-
