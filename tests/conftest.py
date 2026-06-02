@@ -60,9 +60,9 @@ def _run_fast_temporal_study(input_dir: Path, output_dir: Path) -> dict[str, obj
 
     monkeypatch = pytest.MonkeyPatch()
     try:
-        monkeypatch.setattr(temporal, "SEEDS_STAGE_B", [42], raising=False)
-        monkeypatch.setattr(temporal, "SEEDS_PHASE2", [42], raising=False)
-        monkeypatch.setattr(temporal, "build_stage_b_config_grid", _small_temporal_grid, raising=False)
+        monkeypatch.setattr(temporal, "SEEDS_STAGE_B", [42])
+        monkeypatch.setattr(temporal, "SEEDS_PHASE2", [42])
+        monkeypatch.setattr(temporal, "build_stage_b_config_grid", _small_temporal_grid)
         return run_temporal_robustness(
             input_dir=input_dir,
             output_dir=output_dir,
@@ -70,11 +70,6 @@ def _run_fast_temporal_study(input_dir: Path, output_dir: Path) -> dict[str, obj
         )
     finally:
         monkeypatch.undo()
-
-
-def _copy_artifacts(src: Path, dest: Path) -> Path:
-    shutil.copytree(src, dest)
-    return dest
 
 
 def _write_active_artifact_contract(output_dir: Path) -> Path:
