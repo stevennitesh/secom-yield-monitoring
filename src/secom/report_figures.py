@@ -44,9 +44,7 @@ def write_benchmark_comparison_figure(
     original["study"] = "original"
     tuned["study"] = "tuned"
     frame = pd.concat([original, tuned], ignore_index=True)
-    frame["label"] = (
-        frame["study"] + ": " + frame["selector"] + " / " + frame["classifier"]
-    )
+    frame["label"] = frame["study"] + ": " + frame["selector"] + " / " + frame["classifier"]
     frame = frame.sort_values("mean_BER", ascending=True)
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -94,9 +92,7 @@ def write_tuned_delta_figure(
         return
 
     merged["delta_BER"] = merged["mean_BER_tuned"] - merged["mean_BER_original"]
-    merged["label"] = (
-        merged["selector"] + " / " + merged["classifier"] + " / " + merged["replication_mode"]
-    )
+    merged["label"] = merged["selector"] + " / " + merged["classifier"] + " / " + merged["replication_mode"]
     merged = merged.sort_values("delta_BER", ascending=True)
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -115,12 +111,7 @@ def write_feature_stability_figure(
     tuned_feature_report: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
-    if (
-        feature_report is None
-        or feature_report.empty
-        or tuned_feature_report is None
-        or tuned_feature_report.empty
-    ):
+    if feature_report is None or feature_report.empty or tuned_feature_report is None or tuned_feature_report.empty:
         _save_placeholder_figure(
             output_path,
             "Feature Stability",
@@ -136,9 +127,7 @@ def write_feature_stability_figure(
     frame["plot_score"] = frame["expected_contribution"].fillna(frame["selection_frequency"])
     frame = frame.sort_values("plot_score", ascending=False).head(12).copy()
     frame["label"] = frame["study"] + ": " + frame["feature_name_or_source_col"]
-    colors = frame["feature_type"].map(
-        {"value": "#457b9d", "missing_indicator": "#e76f51"}
-    ).fillna("#8d99ae")
+    colors = frame["feature_type"].map({"value": "#457b9d", "missing_indicator": "#e76f51"}).fillna("#8d99ae")
 
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.barh(frame["label"], frame["plot_score"], color=colors)
@@ -185,12 +174,7 @@ def write_lockbox_vs_mspc_figure(
     temporal_mspc: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
-    if (
-        temporal_lockbox is None
-        or temporal_lockbox.empty
-        or temporal_mspc is None
-        or temporal_mspc.empty
-    ):
+    if temporal_lockbox is None or temporal_lockbox.empty or temporal_mspc is None or temporal_mspc.empty:
         _save_placeholder_figure(
             output_path,
             "Lockbox Supervised vs MSPC",
@@ -199,8 +183,7 @@ def write_lockbox_vs_mspc_figure(
         return
 
     supervised = temporal_lockbox[
-        (temporal_lockbox["role"] == "primary")
-        & (temporal_lockbox["threshold_policy"] == "scientific")
+        (temporal_lockbox["role"] == "primary") & (temporal_lockbox["threshold_policy"] == "scientific")
     ]
     mspc = temporal_mspc[temporal_mspc["eval_scope"] == "lockbox"]
     if supervised.empty or mspc.empty:
@@ -234,12 +217,7 @@ def write_workload_cost_figure(
     temporal_cost: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
-    if (
-        temporal_manager is None
-        or temporal_manager.empty
-        or temporal_cost is None
-        or temporal_cost.empty
-    ):
+    if temporal_manager is None or temporal_manager.empty or temporal_cost is None or temporal_cost.empty:
         _save_placeholder_figure(
             output_path,
             "Workload and Cost Framing",

@@ -15,7 +15,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
-from secom.artifacts import config_hash, ensure_reports_dir, write_csv, write_manifest
+from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
 from secom.common.drift import psi_for_feature
 from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256
 from secom.common.thresholds import operational_threshold
@@ -260,10 +260,7 @@ def _prepare_inner_cv_views(
         add_indicator=True,
         n_neighbors=n_neighbors,
     )
-    return [
-        (view["x_train_sel"], view["y_train"], view["x_eval_sel"], view["y_eval"])
-        for view in prepared
-    ]
+    return [(view["x_train_sel"], view["y_train"], view["x_eval_sel"], view["y_eval"]) for view in prepared]
 
 
 def _score_prepared_inner_cv(
@@ -540,11 +537,7 @@ def _drift_gate_for_role(
 
     coef_abs = np.abs(model.clf.coef_[0])
     sel_meta = [model.feature_meta[int(i)] for i in model.selected_local_idx.tolist()]
-    candidates = [
-        (coef_abs[i], meta.raw_index)
-        for i, meta in enumerate(sel_meta)
-        if meta.feature_type == "value"
-    ]
+    candidates = [(coef_abs[i], meta.raw_index) for i, meta in enumerate(sel_meta) if meta.feature_type == "value"]
     candidates = sorted(candidates, key=lambda x: (-x[0], x[1]))
     top_raw_idx = [raw_idx for _, raw_idx in candidates[:PSI_MAX_FEATURES]]
     psi_vals = [psi_for_feature(x_dev_raw[:, idx], x_lock_raw[:, idx]) for idx in top_raw_idx]
@@ -637,9 +630,19 @@ def _manager_weekly_metrics(
     week_count = int(week_codes.max()) + 1 if week_codes.size else 0
     preds_float = preds.astype(float, copy=False)
     fail_mask = (y_true == 1).astype(float)
-    flagged_counts = np.bincount(week_codes, weights=preds_float, minlength=week_count) if week_count else np.array([], dtype=float)
-    tp_counts = np.bincount(week_codes, weights=(preds_float * fail_mask), minlength=week_count) if week_count else np.array([], dtype=float)
-    fn_counts = np.bincount(week_codes, weights=((1.0 - preds_float) * fail_mask), minlength=week_count) if week_count else np.array([], dtype=float)
+    flagged_counts = (
+        np.bincount(week_codes, weights=preds_float, minlength=week_count) if week_count else np.array([], dtype=float)
+    )
+    tp_counts = (
+        np.bincount(week_codes, weights=(preds_float * fail_mask), minlength=week_count)
+        if week_count
+        else np.array([], dtype=float)
+    )
+    fn_counts = (
+        np.bincount(week_codes, weights=((1.0 - preds_float) * fail_mask), minlength=week_count)
+        if week_count
+        else np.array([], dtype=float)
+    )
     sample_count = len(y_true)
     return {
         "predicted_flag_fraction": float(np.mean(preds)) if sample_count else 0.0,
@@ -699,9 +702,7 @@ def run_temporal_robustness(
     if not bundle.temporal_feasible or bundle.fold_plan is None:
         manifest["temporal_robustness_status"] = StudyStatus.NOT_RUN
         notes = list(manifest.get("industrialization_notes", []))
-        notes.append(
-            f"temporal robustness not run: {bundle.temporal_infeasible_reason or 'no_feasible_plan'}"
-        )
+        notes.append(f"temporal robustness not run: {bundle.temporal_infeasible_reason or 'no_feasible_plan'}")
         manifest["industrialization_notes"] = notes
         write_manifest(manifest, reports / ArtifactName.MANIFEST)
         return {
@@ -857,8 +858,7 @@ def run_temporal_robustness(
                 "modal_C": float(grp["C"].mode().min()),
                 "modal_scaler": (
                     ScalerName.STANDARD
-                    if (grp["scaler"] == ScalerName.STANDARD).sum()
-                    >= (grp["scaler"] == ScalerName.ROBUST).sum()
+                    if (grp["scaler"] == ScalerName.STANDARD).sum() >= (grp["scaler"] == ScalerName.ROBUST).sum()
                     else ScalerName.ROBUST
                 ),
                 "modal_n_neighbors": (
@@ -981,9 +981,7 @@ def run_temporal_robustness(
         for role in ["primary", "challenger"]:
             for policy in [ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPERATIONAL]:
                 key = f"{role}_{policy}"
-                sub = lockbox_df[
-                    (lockbox_df["role"] == role) & (lockbox_df["threshold_policy"] == policy)
-                ]
+                sub = lockbox_df[(lockbox_df["role"] == role) & (lockbox_df["threshold_policy"] == policy)]
                 if sub.empty:
                     row[key] = np.nan
                 else:

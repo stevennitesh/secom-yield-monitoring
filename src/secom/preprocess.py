@@ -92,4 +92,3 @@ def build_feature_universe(raw_feature_count: int) -> list[TransformedFeature]:
             )
         )
     return universe
-

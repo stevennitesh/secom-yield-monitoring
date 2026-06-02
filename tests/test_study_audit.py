@@ -179,7 +179,15 @@ def _write_temporal_artifacts(reports: Path) -> None:
     )
     write_csv(
         pd.DataFrame(
-            [{"selector": "ReliefF", "resample_id": "fold_1", "mean_inner_BER": 0.40, "mean_inner_ROC_AUC": 0.60, "is_selected_config": True}]
+            [
+                {
+                    "selector": "ReliefF",
+                    "resample_id": "fold_1",
+                    "mean_inner_BER": 0.40,
+                    "mean_inner_ROC_AUC": 0.60,
+                    "is_selected_config": True,
+                }
+            ]
         ),
         reports / ArtifactName.TEMPORAL_INNER_CV,
     )
@@ -189,7 +197,16 @@ def _write_temporal_artifacts(reports: Path) -> None:
     )
     write_csv(
         pd.DataFrame(
-            [{"role": "primary", "threshold_policy": "scientific", "BER": 0.42, "True+": 0.50, "True-": 0.75, "TPR_at_TNR90": 0.40}]
+            [
+                {
+                    "role": "primary",
+                    "threshold_policy": "scientific",
+                    "BER": 0.42,
+                    "True+": 0.50,
+                    "True-": 0.75,
+                    "TPR_at_TNR90": 0.40,
+                }
+            ]
         ),
         reports / ArtifactName.TEMPORAL_LOCKBOX,
     )
@@ -206,7 +223,16 @@ def _write_temporal_artifacts(reports: Path) -> None:
         reports / ArtifactName.TEMPORAL_COST_CURVES,
     )
     write_csv(
-        pd.DataFrame([{"role": "primary", "threshold_policy": "scientific", "predicted_flag_fraction": 0.15, "mean_weekly_flagged_wafers": 4.0}]),
+        pd.DataFrame(
+            [
+                {
+                    "role": "primary",
+                    "threshold_policy": "scientific",
+                    "predicted_flag_fraction": 0.15,
+                    "mean_weekly_flagged_wafers": 4.0,
+                }
+            ]
+        ),
         reports / ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
     )
 

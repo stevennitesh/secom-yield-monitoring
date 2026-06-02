@@ -2,6 +2,7 @@
 .claude/
 .serena/
 .vscode/
+.venv/
 
 # Data directories
 data/
@@ -11,10 +12,14 @@ runs/
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/

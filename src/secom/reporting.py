@@ -65,9 +65,7 @@ def _markdown_table(
 
 
 def _top_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
-    table = benchmark_summary.sort_values(
-        ["mean_BER", "selector", "classifier", "replication_mode"]
-    ).copy()
+    table = benchmark_summary.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
     return _markdown_table(
         table,
         [
@@ -85,9 +83,7 @@ def _top_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
 
 
 def _supporting_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
-    table = benchmark_summary.sort_values(
-        ["mean_BER", "selector", "classifier", "replication_mode"]
-    ).copy()
+    table = benchmark_summary.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
     return _markdown_table(
         table,
         [
@@ -108,7 +104,11 @@ def _original_search_space_table(benchmark_sweep: pd.DataFrame) -> list[str]:
     for (selector, classifier, mode), frame in benchmark_sweep.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
     ):
-        nn_values = frame["n_neighbors"].dropna().to_numpy(dtype=float) if "n_neighbors" in frame.columns else np.array([], dtype=float)
+        nn_values = (
+            frame["n_neighbors"].dropna().to_numpy(dtype=float)
+            if "n_neighbors" in frame.columns
+            else np.array([], dtype=float)
+        )
         summary_rows.append(
             {
                 "selector": selector,
@@ -139,9 +139,7 @@ def _original_search_space_table(benchmark_sweep: pd.DataFrame) -> list[str]:
 
 
 def _original_best_config_table(benchmark_best: pd.DataFrame) -> list[str]:
-    table = benchmark_best.sort_values(
-        ["mean_BER", "selector", "classifier", "replication_mode"]
-    ).copy()
+    table = benchmark_best.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
     cols = ["selector", "classifier", "replication_mode", "k", "C", "alpha", "gamma", "n_neighbors", "mean_BER"]
     existing_cols = [col for col in cols if col in table.columns]
     headers_map = {
@@ -167,7 +165,11 @@ def _tuned_search_space_table(benchmark_tuned_search: pd.DataFrame) -> list[str]
     for (selector, classifier, mode), frame in benchmark_tuned_search.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
     ):
-        nn_values = frame["n_neighbors"].dropna().to_numpy(dtype=float) if "n_neighbors" in frame.columns else np.array([], dtype=float)
+        nn_values = (
+            frame["n_neighbors"].dropna().to_numpy(dtype=float)
+            if "n_neighbors" in frame.columns
+            else np.array([], dtype=float)
+        )
         summary_rows.append(
             {
                 "selector": selector,
@@ -213,16 +215,16 @@ def _temporal_selection_summary_table(temporal_selection: pd.DataFrame) -> list[
     ]
     keep = [col for col in preferred if col in temporal_selection.columns]
     order = {"primary": 0, "challenger": 1, "supporting": 2}
-    table = temporal_selection.assign(
-        _status_rank=temporal_selection["status"].map(order).fillna(99)
-    ).sort_values(["_status_rank", "mean_BER", "selector"]).drop(columns="_status_rank")
+    table = (
+        temporal_selection.assign(_status_rank=temporal_selection["status"].map(order).fillna(99))
+        .sort_values(["_status_rank", "mean_BER", "selector"])
+        .drop(columns="_status_rank")
+    )
     return _markdown_table(table[keep], keep)
 
 
 def _tuned_best_config_table(benchmark_tuned_best: pd.DataFrame) -> list[str]:
-    table = benchmark_tuned_best.sort_values(
-        ["mean_BER", "selector", "classifier", "replication_mode"]
-    ).copy()
+    table = benchmark_tuned_best.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
     return _markdown_table(
         table,
         [
@@ -516,7 +518,9 @@ def write_report_skeleton(output_dir: Path) -> Path:
     lines.append("## Executive Summary")
     lines.append("")
     restrictions = manifest.get("temporal_claim_restrictions", [])
-    lines.append("- The benchmark studies support a credible yield-prediction signal in the SECOM sensor/process measurements.")
+    lines.append(
+        "- The benchmark studies support a credible yield-prediction signal in the SECOM sensor/process measurements."
+    )
     lines.append(f"- Temporal claim restrictions: `{len(restrictions)}`")
     if best_benchmark_row is not None:
         lines.append(
@@ -531,7 +535,9 @@ def write_report_skeleton(output_dir: Path) -> Path:
             f" `{best_tuned_benchmark_row['replication_mode']}` with mean BER `{_format_float(best_tuned_benchmark_row['mean_BER'])}`"
             f" and mean ROC_AUC `{_format_float(best_tuned_benchmark_row['mean_ROC_AUC'])}`"
         )
-        lines.append("- The tuned benchmark uses nested CV, so it should be read as the stricter and more conservative estimate of tuned-model performance.")
+        lines.append(
+            "- The tuned benchmark uses nested CV, so it should be read as the stricter and more conservative estimate of tuned-model performance."
+        )
     if modal_tuned_config_row is not None:
         lines.append(
             "- Most frequently selected tuned configuration:"
@@ -544,7 +550,9 @@ def write_report_skeleton(output_dir: Path) -> Path:
             "- Temporal primary selector:"
             f" `{primary_temporal_row['selector']}` with mean BER `{_format_float(primary_temporal_row['mean_BER'])}`"
         )
-        lines.append("- Temporal robustness should be treated as a stress test of stability under chronological shift, not as the primary source of project success.")
+        lines.append(
+            "- Temporal robustness should be treated as a stress test of stability under chronological shift, not as the primary source of project success."
+        )
     lines.append(f"- Primary study status: `{manifest.get('primary_study_status', StudyStatus.NOT_RUN)}`")
     lines.append(f"- Original replication status: `{manifest.get('benchmark_original_status', StudyStatus.NOT_RUN)}`")
     lines.append(f"- Tuned benchmark status: `{manifest.get('benchmark_tuned_status', StudyStatus.NOT_RUN)}`")
@@ -552,11 +560,15 @@ def write_report_skeleton(output_dir: Path) -> Path:
     lines.append("")
     lines.append("## Dataset and Study Scope")
     lines.append("")
-    lines.append("Summarize the SECOM benchmark context, the primary replication objective, and the role of temporal robustness as secondary evidence.")
+    lines.append(
+        "Summarize the SECOM benchmark context, the primary replication objective, and the role of temporal robustness as secondary evidence."
+    )
     lines.append("")
     lines.append("## Benchmark Replication Design")
     lines.append("")
-    lines.append("Describe the full-dataset replication protocol, in-fold preprocessing, in-fold feature selection, and missing-indicator ablation.")
+    lines.append(
+        "Describe the full-dataset replication protocol, in-fold preprocessing, in-fold feature selection, and missing-indicator ablation."
+    )
     lines.append("")
     lines.append("## Benchmark Replication Results")
     lines.append("")
@@ -567,7 +579,9 @@ def write_report_skeleton(output_dir: Path) -> Path:
     lines.append("- Use a fixed feature budget with the literature-style selector/classifier comparison.")
     lines.append("- Perform preprocessing and feature selection inside each training fold only.")
     lines.append("- Treat the missing-indicator comparison as a paired benchmark condition.")
-    lines.append("- Report final thresholded results through `BER`, `TPR`, and `TNR`, with supporting metrics shown separately.")
+    lines.append(
+        "- Report final thresholded results through `BER`, `TPR`, and `TNR`, with supporting metrics shown separately."
+    )
     lines.append("")
     lines.append("#### Original Replication Search Summary")
     lines.append("")
@@ -617,19 +631,23 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.append("")
         lines.append("- Original missing-indicator ablation summary:")
         for row in benchmark_ablation.itertuples(index=False):
-            lines.append(
-                f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}"
-            )
+            lines.append(f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}")
     lines.append("")
     lines.append("### Tuned Benchmark")
     lines.append("")
     lines.append("#### Tuned Benchmark Design")
     lines.append("")
     lines.append("- Use nested cross-validation inside each outer replication fold.")
-    lines.append("- Tune selector parameters, including feature budget `k` and `ReliefF` neighbor count where applicable.")
+    lines.append(
+        "- Tune selector parameters, including feature budget `k` and `ReliefF` neighbor count where applicable."
+    )
     lines.append("- Tune classifier parameters within the same nested search.")
-    lines.append("- Use `ROC_AUC` as the threshold-free inner selection objective, with `BER` as the secondary tie-break metric.")
-    lines.append("- Report final tuned benchmark performance with thresholded `BER`, `TPR`, and `TNR` plus supporting metrics.")
+    lines.append(
+        "- Use `ROC_AUC` as the threshold-free inner selection objective, with `BER` as the secondary tie-break metric."
+    )
+    lines.append(
+        "- Report final tuned benchmark performance with thresholded `BER`, `TPR`, and `TNR` plus supporting metrics."
+    )
     lines.append("")
     lines.append("#### Tuned Benchmark Search Summary")
     lines.append("")
@@ -679,13 +697,13 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.append("")
         lines.append("##### Missing-Indicator Ablation Summary")
         for row in benchmark_tuned_ablation.itertuples(index=False):
-            lines.append(
-                f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}"
-            )
+            lines.append(f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}")
     if best_tuned_benchmark_row is not None:
         lines.append("")
         lines.append("##### Interpretation")
-        lines.append("- The tuned benchmark is stricter than the original replication because hyperparameters are chosen inside nested CV rather than on the same folds used for final reporting.")
+        lines.append(
+            "- The tuned benchmark is stricter than the original replication because hyperparameters are chosen inside nested CV rather than on the same folds used for final reporting."
+        )
         lines.append(
             f"- The best tuned mean-BER row is `{best_tuned_benchmark_row['selector']}` / `{best_tuned_benchmark_row['classifier']}` / `{best_tuned_benchmark_row['replication_mode']}`."
         )
@@ -699,7 +717,9 @@ def write_report_skeleton(output_dir: Path) -> Path:
                 or str(modal_tuned_config_row["classifier"]) != str(best_tuned_benchmark_row["classifier"])
                 or str(modal_tuned_config_row["replication_mode"]) != str(best_tuned_benchmark_row["replication_mode"])
             ):
-                lines.append("- The best mean-BER tuned row and the modal tuned configuration differ, so the report should distinguish peak performance from stability of selection.")
+                lines.append(
+                    "- The best mean-BER tuned row and the modal tuned configuration differ, so the report should distinguish peak performance from stability of selection."
+                )
     if best_benchmark_row is not None and best_tuned_benchmark_row is not None:
         lines.append("")
         lines.append("### Original vs Tuned Benchmark Comparison")
@@ -733,7 +753,17 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.extend(
             _markdown_table(
                 comparison_df,
-                ["study", "selector", "classifier", "mode", "mean_BER", "mean_ROC_AUC", "mean_PR_AUC", "mean_MCC", "mean_F2"],
+                [
+                    "study",
+                    "selector",
+                    "classifier",
+                    "mode",
+                    "mean_BER",
+                    "mean_ROC_AUC",
+                    "mean_PR_AUC",
+                    "mean_MCC",
+                    "mean_F2",
+                ],
             )
         )
         lines.append("")
@@ -748,7 +778,9 @@ def write_report_skeleton(output_dir: Path) -> Path:
             )
         else:
             lines.append("- The best original and tuned benchmark rows are tied on mean BER.")
-        lines.append("- Original replication should be read as the benchmark-facing result, while the tuned benchmark is the more conservative estimate of what a tuned procedure achieves on unseen folds.")
+        lines.append(
+            "- Original replication should be read as the benchmark-facing result, while the tuned benchmark is the more conservative estimate of what a tuned procedure achieves on unseen folds."
+        )
     lines.append("")
     lines.append("## Feature Stability and Interpretation")
     lines.append("")
@@ -792,9 +824,15 @@ def write_report_skeleton(output_dir: Path) -> Path:
     lines.append("")
     lines.append("### Temporal Robustness Design")
     lines.append("")
-    lines.append("- This secondary study stress-tests whether the benchmark findings remain stable under chronological validation and future-looking holdout evaluation.")
-    lines.append("- Use a chronological DEV/LOCKBOX split with time-aware folds inside DEV, followed by selector screening, temporal model selection, config freeze, threshold freeze, lockbox evaluation, drift gating, and MSPC comparison.")
-    lines.append("- Interpret this section as secondary robustness evidence rather than the primary basis for project success.")
+    lines.append(
+        "- This secondary study stress-tests whether the benchmark findings remain stable under chronological validation and future-looking holdout evaluation."
+    )
+    lines.append(
+        "- Use a chronological DEV/LOCKBOX split with time-aware folds inside DEV, followed by selector screening, temporal model selection, config freeze, threshold freeze, lockbox evaluation, drift gating, and MSPC comparison."
+    )
+    lines.append(
+        "- Interpret this section as secondary robustness evidence rather than the primary basis for project success."
+    )
     lines.append("")
     lines.append("### Temporal Model Selection Summary")
     lines.append("")
@@ -876,10 +914,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
                 ]
                 if not primary_scientific.empty:
                     primary_scientific_lockbox = primary_scientific.iloc[0]
-            if (
-                primary_scientific_lockbox is not None
-                and "lockbox_fails" in primary_scientific_lockbox.index
-            ):
+            if primary_scientific_lockbox is not None and "lockbox_fails" in primary_scientific_lockbox.index:
                 lockbox_fails = int(primary_scientific_lockbox["lockbox_fails"])
                 lines.append("")
                 lines.append(
@@ -897,10 +932,14 @@ def write_report_skeleton(output_dir: Path) -> Path:
             lines.append("- Temporal claim restrictions:")
             for restriction in restrictions:
                 lines.append(f"  - `{restriction}`")
-            lines.append("- Lockbox evidence remains reportable, but restricted claims should be treated as descriptive rather than confirmatory.")
+            lines.append(
+                "- Lockbox evidence remains reportable, but restricted claims should be treated as descriptive rather than confirmatory."
+            )
         else:
             lines.append("- Temporal claim restrictions: `none`")
-            lines.append("- Temporal lockbox evidence can be interpreted directly within the limits of this secondary study.")
+            lines.append(
+                "- Temporal lockbox evidence can be interpreted directly within the limits of this secondary study."
+            )
     if mspc_lockbox_row is not None:
         lines.append("")
         lines.append("### MSPC Comparison")
@@ -908,8 +947,24 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.extend(
             _markdown_table(
                 temporal_mspc[temporal_mspc["eval_scope"] == "lockbox"],
-                ["eval_scope", "best_MSPC_source", "best_MSPC_TPR_at_TNR90", "T2_AUC", "Q_AUC", "alarm_rate", "empirical_ARL0"],
-                headers=["scope", "best_source", "best_TPR_at_TNR90", "T2_AUC", "Q_AUC", "alarm_rate", "empirical_ARL0"],
+                [
+                    "eval_scope",
+                    "best_MSPC_source",
+                    "best_MSPC_TPR_at_TNR90",
+                    "T2_AUC",
+                    "Q_AUC",
+                    "alarm_rate",
+                    "empirical_ARL0",
+                ],
+                headers=[
+                    "scope",
+                    "best_source",
+                    "best_TPR_at_TNR90",
+                    "T2_AUC",
+                    "Q_AUC",
+                    "alarm_rate",
+                    "empirical_ARL0",
+                ],
             )
         )
         if temporal_lockbox is not None and not temporal_lockbox.empty:
@@ -924,14 +979,18 @@ def write_report_skeleton(output_dir: Path) -> Path:
                     f"- The supervised primary model reaches `TPR_at_TNR90={_format_float(row['TPR_at_TNR90'])}`, versus `best_MSPC_TPR_at_TNR90={_format_float(mspc_lockbox_row['best_MSPC_TPR_at_TNR90'])}` for MSPC."
                 )
                 if restrictions:
-                    lines.append("- That numerical advantage remains descriptive only because the drift gate restricts lockbox superiority claims in this run.")
+                    lines.append(
+                        "- That numerical advantage remains descriptive only because the drift gate restricts lockbox superiority claims in this run."
+                    )
     if (temporal_manager is not None and not temporal_manager.empty) or (
         temporal_cost is not None and not temporal_cost.empty
     ):
         lines.append("")
         lines.append("### Illustrative Operational Framing")
         lines.append("")
-        lines.append("- These workload and cost summaries are illustrative consequences of the temporal thresholds, not production-validated operating recommendations.")
+        lines.append(
+            "- These workload and cost summaries are illustrative consequences of the temporal thresholds, not production-validated operating recommendations."
+        )
     if temporal_manager is not None and not temporal_manager.empty:
         lines.append("#### Workload Metrics")
         lines.append("")
@@ -981,10 +1040,16 @@ def write_report_skeleton(output_dir: Path) -> Path:
             f"- The tuned benchmark provides a stricter nested-CV estimate, with the best tuned row at mean BER `{_format_float(best_tuned_benchmark_row['mean_BER'])}`."
         )
     if restrictions:
-        lines.append("- The temporal stress test remains informative, but the current run is limited by both a small lockbox fail count and a `HIGH_SHIFT` drift result, so lockbox superiority claims should remain descriptive only.")
+        lines.append(
+            "- The temporal stress test remains informative, but the current run is limited by both a small lockbox fail count and a `HIGH_SHIFT` drift result, so lockbox superiority claims should remain descriptive only."
+        )
     else:
-        lines.append("- The temporal stress test provides secondary robustness evidence without active claim restrictions in this run.")
-    lines.append("- A true industrial deployment study would still require stable device or tool identifiers, intervention history, and richer process metadata.")
+        lines.append(
+            "- The temporal stress test provides secondary robustness evidence without active claim restrictions in this run."
+        )
+    lines.append(
+        "- A true industrial deployment study would still require stable device or tool identifiers, intervention history, and richer process metadata."
+    )
     lines.append("")
 
     out_path = reports / ArtifactName.REPORT_SKELETON
@@ -1174,9 +1239,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
             )
         )
         lines.append("")
-        ber_delta = float(ctx.best_tuned_benchmark_row["mean_BER"]) - float(
-            ctx.best_benchmark_row["mean_BER"]
-        )
+        ber_delta = float(ctx.best_tuned_benchmark_row["mean_BER"]) - float(ctx.best_benchmark_row["mean_BER"])
         if ber_delta > 0:
             lines.append(
                 f"- Relative to the best original replication row, the tuned benchmark is worse by `{_format_float(ber_delta)}` BER. "
@@ -1363,22 +1426,16 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     lines.append(f"- Python executable: `{ctx.manifest.get('python_executable', 'unknown')}`")
     lines.append(f"- Study spec path: `{ctx.manifest.get('study_spec_path', 'unknown')}`")
     lines.append(f"- Study spec hash: `{ctx.manifest.get('study_spec_sha256', 'unknown')}`")
-    lines.append(
-        f"- Primary study status: `{ctx.manifest.get('primary_study_status', StudyStatus.NOT_RUN)}`"
-    )
+    lines.append(f"- Primary study status: `{ctx.manifest.get('primary_study_status', StudyStatus.NOT_RUN)}`")
     lines.append(
         f"- Original replication status: `{ctx.manifest.get('benchmark_original_status', StudyStatus.NOT_RUN)}`"
     )
-    lines.append(
-        f"- Tuned benchmark status: `{ctx.manifest.get('benchmark_tuned_status', StudyStatus.NOT_RUN)}`"
-    )
+    lines.append(f"- Tuned benchmark status: `{ctx.manifest.get('benchmark_tuned_status', StudyStatus.NOT_RUN)}`")
     lines.append(
         f"- Temporal robustness status: `{ctx.manifest.get('temporal_robustness_status', StudyStatus.NOT_RUN)}`"
     )
     lines.append("- Library versions:")
-    for name, version in sorted(
-        dict(ctx.manifest.get("library_versions", {})).items(), key=lambda item: item[0]
-    ):
+    for name, version in sorted(dict(ctx.manifest.get("library_versions", {})).items(), key=lambda item: item[0]):
         lines.append(f"  - `{name}`: `{version}`")
     if restrictions:
         lines.append("- Temporal claim restrictions:")

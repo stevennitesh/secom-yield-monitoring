@@ -1,44 +1,16 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 
 from secom.config import ArtifactName
 from secom.workflows.audit import run_study_audit
-from secom.workflows.temporal_robustness import run_temporal_robustness
 
 
 def test_temporal_robustness_emits_temporal_artifacts_and_audit_is_non_blocking(
-    synthetic_input_dir: Path,
-    workspace_tmp_dir: Path,
-    monkeypatch,
+    temporal_artifacts_case: dict[str, object],
 ) -> None:
-    out_dir = workspace_tmp_dir / "out_temporal_robustness"
-
-    import secom.workflows.temporal_robustness as temporal
-
-    monkeypatch.setattr(temporal, "SEEDS_STAGE_B", [42], raising=False)
-    monkeypatch.setattr(temporal, "SEEDS_PHASE2", [42], raising=False)
-
-    def _small_grid(selector: str) -> list[dict[str, object]]:
-        return [
-            {
-                "selector": selector,
-                "k": 10,
-                "C": 1.0,
-                "scaler": "StandardScaler",
-                "n_neighbors": 5 if selector == "ReliefF" else None,
-            }
-        ]
-
-    monkeypatch.setattr(temporal, "build_stage_b_config_grid", _small_grid, raising=False)
-
-    result = run_temporal_robustness(
-        input_dir=synthetic_input_dir,
-        output_dir=out_dir,
-        selectors_run=["S2N", "F-test"],
-    )
+    out_dir = temporal_artifacts_case["out_dir"]
+    result = temporal_artifacts_case["result"]
 
     assert result["temporal_robustness_status"] in {"passed", "warning"}
 

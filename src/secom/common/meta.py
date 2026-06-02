@@ -8,14 +8,9 @@ from pathlib import Path
 
 def git_commit_and_dirty(project_root: Path) -> tuple[str, bool]:
     try:
-        git_base = ["git", f"-c", f"safe.directory={project_root.as_posix()}"]
-        commit = (
-            subprocess.check_output([*git_base, "rev-parse", "HEAD"], cwd=project_root, text=True)
-            .strip()
-        )
-        dirty = bool(
-            subprocess.check_output([*git_base, "status", "--porcelain"], cwd=project_root, text=True).strip()
-        )
+        git_base = ["git", "-c", f"safe.directory={project_root.as_posix()}"]
+        commit = subprocess.check_output([*git_base, "rev-parse", "HEAD"], cwd=project_root, text=True).strip()
+        dirty = bool(subprocess.check_output([*git_base, "status", "--porcelain"], cwd=project_root, text=True).strip())
         return commit, dirty
     except Exception:
         return "UNKNOWN", True

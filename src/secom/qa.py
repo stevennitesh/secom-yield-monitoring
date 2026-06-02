@@ -20,7 +20,11 @@ def validate_benchmark_replication_artifacts(
         ("benchmark_best_config", best_df, {"selector", "classifier", "replication_mode"}),
         ("benchmark_fold_metrics", fold_metrics_df, {"selector", "classifier", "replication_mode", "fold", "BER"}),
         ("benchmark_summary", summary_df, {"selector", "classifier", "replication_mode", "mean_BER"}),
-        ("benchmark_ablation", ablation_df, {"selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"}),
+        (
+            "benchmark_ablation",
+            ablation_df,
+            {"selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"},
+        ),
         ("benchmark_full_fit_summary", full_fit_df, {"selector", "classifier", "replication_mode", "BER_full_dataset"}),
     ):
         missing = required - set(df.columns)
@@ -93,10 +97,7 @@ def validate_benchmark_replication_artifacts(
         raise ValueError("benchmark artifacts: inconsistent triplet coverage across benchmark outputs")
 
     if {"BER_reference", "BER_missing_indicator", "delta_BER"}.issubset(ablation_df.columns):
-        diff = np.abs(
-            ablation_df["delta_BER"]
-            - (ablation_df["BER_reference"] - ablation_df["BER_missing_indicator"])
-        )
+        diff = np.abs(ablation_df["delta_BER"] - (ablation_df["BER_reference"] - ablation_df["BER_missing_indicator"]))
         if np.any(diff > 1e-9):
             raise ValueError("benchmark_ablation: delta_BER mismatch")
 
@@ -119,20 +120,49 @@ def validate_tuned_benchmark_artifacts(
         (
             "benchmark_tuned_search",
             search_df,
-            {"selector", "classifier", "replication_mode", "fold", "mean_inner_ROC_AUC", "mean_inner_BER", "is_selected_config"},
+            {
+                "selector",
+                "classifier",
+                "replication_mode",
+                "fold",
+                "mean_inner_ROC_AUC",
+                "mean_inner_BER",
+                "is_selected_config",
+            },
         ),
-        ("benchmark_tuned_best_config", best_df, {"selector", "classifier", "replication_mode", "mean_BER", "mean_ROC_AUC"}),
+        (
+            "benchmark_tuned_best_config",
+            best_df,
+            {"selector", "classifier", "replication_mode", "mean_BER", "mean_ROC_AUC"},
+        ),
         (
             "benchmark_tuned_fold_metrics",
             fold_metrics_df,
             {"selector", "classifier", "replication_mode", "fold", "BER", "ROC_AUC", "PR_AUC", "MCC", "F2"},
         ),
-        ("benchmark_tuned_summary", summary_df, {"selector", "classifier", "replication_mode", "mean_BER", "mean_ROC_AUC"}),
-        ("benchmark_tuned_ablation", ablation_df, {"selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"}),
+        (
+            "benchmark_tuned_summary",
+            summary_df,
+            {"selector", "classifier", "replication_mode", "mean_BER", "mean_ROC_AUC"},
+        ),
+        (
+            "benchmark_tuned_ablation",
+            ablation_df,
+            {"selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"},
+        ),
         (
             "benchmark_tuned_full_fit_summary",
             full_fit_df,
-            {"selector", "classifier", "replication_mode", "BER_full_dataset", "ROC_AUC_full_dataset", "PR_AUC_full_dataset", "MCC_full_dataset", "F2_full_dataset"},
+            {
+                "selector",
+                "classifier",
+                "replication_mode",
+                "BER_full_dataset",
+                "ROC_AUC_full_dataset",
+                "PR_AUC_full_dataset",
+                "MCC_full_dataset",
+                "F2_full_dataset",
+            },
         ),
     ):
         missing = required - set(df.columns)
@@ -191,7 +221,9 @@ def validate_tuned_benchmark_artifacts(
 
     search_group = search_df.groupby([*triplet_cols, "fold"], dropna=False)["is_selected_config"].sum()
     if not np.all(search_group.to_numpy(dtype=int) == 1):
-        raise ValueError("benchmark_tuned_search: each (selector,classifier,replication_mode,fold) must mark exactly one selected config")
+        raise ValueError(
+            "benchmark_tuned_search: each (selector,classifier,replication_mode,fold) must mark exactly one selected config"
+        )
 
     fold_group_sizes = fold_metrics_df.groupby(triplet_cols, dropna=False)["fold"].nunique()
     if not np.all(fold_group_sizes.to_numpy(dtype=int) == 10):
@@ -209,10 +241,7 @@ def validate_tuned_benchmark_artifacts(
         raise ValueError("benchmark_tuned artifacts: inconsistent triplet coverage across outputs")
 
     if {"BER_reference", "BER_missing_indicator", "delta_BER"}.issubset(ablation_df.columns):
-        diff = np.abs(
-            ablation_df["delta_BER"]
-            - (ablation_df["BER_reference"] - ablation_df["BER_missing_indicator"])
-        )
+        diff = np.abs(ablation_df["delta_BER"] - (ablation_df["BER_reference"] - ablation_df["BER_missing_indicator"]))
         if np.any(diff > 1e-9):
             raise ValueError("benchmark_tuned_ablation: delta_BER mismatch")
 

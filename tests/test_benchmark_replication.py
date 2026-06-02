@@ -13,16 +13,10 @@ from secom.workflows import benchmark_tuned
 
 
 def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
-    synthetic_input_dir: Path,
-    workspace_tmp_dir: Path,
+    benchmark_replication_case: dict[str, object],
 ) -> None:
-    out_dir = workspace_tmp_dir / "out_benchmark_replication"
-    result = run_benchmark_replication(
-        input_dir=synthetic_input_dir,
-        output_dir=out_dir,
-        classifiers_run=["krr"],
-        selectors_run=["F-test", "S2N"],
-    )
+    out_dir = benchmark_replication_case["out_dir"]
+    result = benchmark_replication_case["result"]
 
     assert result["primary_study_status"] == StudyStatus.PASSED
     assert result["benchmark_original_status"] == StudyStatus.PASSED
@@ -95,16 +89,9 @@ def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
 
 
 def test_benchmark_replication_feature_report_aligns_with_requested_classifier(
-    synthetic_input_dir: Path,
-    workspace_tmp_dir: Path,
+    benchmark_replication_case: dict[str, object],
 ) -> None:
-    out_dir = workspace_tmp_dir / "out_benchmark_replication_krr_only"
-    run_benchmark_replication(
-        input_dir=synthetic_input_dir,
-        output_dir=out_dir,
-        classifiers_run=["krr"],
-        selectors_run=["F-test", "S2N"],
-    )
+    out_dir = benchmark_replication_case["out_dir"]
 
     feature_report_df = pd.read_csv(out_dir / "reports" / ArtifactName.FEATURE_REPORT)
     assert set(feature_report_df["classifier"].dropna().astype(str).unique()) == {"krr"}
@@ -118,16 +105,31 @@ def test_benchmark_bundle_prepares_dataset_once(
     monkeypatch,
 ) -> None:
     import secom.workflows.benchmark_replication as benchmark
+    import secom.workflows.benchmark_tuned as tuned
 
     out_dir = workspace_tmp_dir / "out_benchmark_bundle_once"
-    original_prepare = benchmark.prepare_benchmark_dataset
     counter = {"count": 0}
+    prepared_payload = {"prepared": True}
+    phase_payloads: list[dict[str, object] | None] = []
 
     def counted_prepare(input_dir: Path) -> dict[str, object]:
         counter["count"] += 1
-        return original_prepare(input_dir)
+        return prepared_payload
+
+    def fake_original_benchmark(**kwargs) -> dict[str, object]:
+        phase_payloads.append(kwargs["_prepared_data"])
+        return {
+            "benchmark_original_status": StudyStatus.PASSED,
+            "primary_study_status": StudyStatus.PASSED,
+        }
+
+    def fake_tuned_benchmark(**kwargs) -> dict[str, object]:
+        phase_payloads.append(kwargs["_prepared_data"])
+        return {"benchmark_tuned_status": StudyStatus.PASSED}
 
     monkeypatch.setattr(benchmark, "prepare_benchmark_dataset", counted_prepare)
+    monkeypatch.setattr(benchmark, "run_original_benchmark_replication", fake_original_benchmark)
+    monkeypatch.setattr(tuned, "run_tuned_benchmark_replication", fake_tuned_benchmark)
 
     run_benchmark_replication(
         input_dir=synthetic_input_dir,
@@ -137,6 +139,7 @@ def test_benchmark_bundle_prepares_dataset_once(
     )
 
     assert counter["count"] == 1
+    assert phase_payloads == [prepared_payload, prepared_payload]
 
 
 def test_tuned_inner_selector_views_reuse_selector_prep_across_classifier_configs(monkeypatch) -> None:

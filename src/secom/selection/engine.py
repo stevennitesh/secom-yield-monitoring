@@ -69,9 +69,7 @@ def fit_selector_pipeline(
         k=int(k),
         n_neighbors=n_neighbors,
     )
-    feature_meta = transformed_feature_metadata_from_imputer(
-        imputer=imputer, raw_feature_count=x_train_raw.shape[1]
-    )
+    feature_meta = transformed_feature_metadata_from_imputer(imputer=imputer, raw_feature_count=x_train_raw.shape[1])
     x_train_sel = x_train_scaled[:, selected_local]
     x_eval_sel = x_eval_scaled[:, selected_local]  # type: ignore
     return x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler
