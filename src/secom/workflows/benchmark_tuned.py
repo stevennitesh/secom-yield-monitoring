@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +10,6 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
-from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256, study_spec_path
 from secom.config import (
     ArtifactName,
     BENCHMARK_INNER_SPLITS,
@@ -31,6 +28,9 @@ from secom.qa import validate_tuned_benchmark_artifacts
 from secom.selection.engine import fit_selector_pipeline
 from secom.workflows.benchmark_common import (
     aggregate_primary_status,
+    benchmark_full_dataset_fields,
+    benchmark_metric_fields,
+    build_feature_stability_frame,
     build_benchmark_ablation_df,
     build_cluster_id_map,
     build_feature_report,
@@ -45,6 +45,7 @@ from secom.workflows.benchmark_common import (
     prepare_full_selector_view,
     selector_config_from_row,
 )
+from secom.workflows.manifest import load_or_create_study_manifest
 
 
 def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
@@ -188,30 +189,16 @@ def _evaluate_outer_fold_with_config(
     threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
     metrics = binary_metrics_at_threshold(y_test, test_scores, threshold=float(threshold))
     selected_global = set(local_to_global_feature_indices(selected_local, feature_meta))
-
-    universe = transformed_feature_metadata_from_imputer(
-        imputer=_imputer,
-        raw_feature_count=raw_feature_count,
-    )
-    universe_idx = np.asarray([int(feature.feature_index) for feature in universe], dtype=int)
-    universe_type = np.asarray([feature.feature_type for feature in universe], dtype=object)
-    universe_name = np.asarray([feature.feature_name_or_source_col for feature in universe], dtype=object)
-    selected_mask = np.isin(
-        universe_idx,
-        np.fromiter(selected_global, dtype=int, count=len(selected_global)),
-        assume_unique=False,
-    ).astype(int)
-    feature_stability_df = pd.DataFrame(
-        {
-            "selector": selector,
-            "classifier": classifier,
-            "replication_mode": replication_mode,
-            "resample_id": f"fold_{fold}",
-            "feature_index": universe_idx,
-            "feature_type": universe_type,
-            "feature_name_or_source_col": universe_name,
-            "selected": selected_mask,
-        }
+    feature_stability_df = build_feature_stability_frame(
+        selector=selector,
+        classifier=classifier,
+        replication_mode=replication_mode,
+        resample_id=f"fold_{fold}",
+        feature_universe=transformed_feature_metadata_from_imputer(
+            imputer=_imputer,
+            raw_feature_count=raw_feature_count,
+        ),
+        selected_global=selected_global,
     )
 
     row = {
@@ -220,13 +207,7 @@ def _evaluate_outer_fold_with_config(
         "replication_mode": replication_mode,
         "fold": int(fold),
         **config_fields(selector_config=selector_config, classifier_config=classifier_config),
-        "BER": float(metrics["BER"]),
-        "True+": float(metrics["True+"]),
-        "True-": float(metrics["True-"]),
-        "ROC_AUC": float(metrics["ROC_AUC"]) if np.isfinite(metrics["ROC_AUC"]) else np.nan,
-        "PR_AUC": float(metrics["PR_AUC"]) if np.isfinite(metrics["PR_AUC"]) else np.nan,
-        "MCC": float(metrics["MCC"]),
-        "F2": float(metrics["F2"]),
+        **benchmark_metric_fields(metrics),
         "threshold_outer_train": float(threshold),
         "n_train": int(len(y_train)),
         "n_test": int(len(y_test)),
@@ -392,13 +373,7 @@ def run_tuned_benchmark_replication(
                             **config_fields(selector_config=selector_config, classifier_config=classifier_config),
                             "mean_inner_ROC_AUC": float(best["mean_inner_ROC_AUC"]),
                             "mean_inner_BER": float(best["mean_inner_BER"]),
-                            "BER": float(fold_row["BER"]),
-                            "True+": float(fold_row["True+"]),
-                            "True-": float(fold_row["True-"]),
-                            "ROC_AUC": float(fold_row["ROC_AUC"]) if np.isfinite(fold_row["ROC_AUC"]) else np.nan,
-                            "PR_AUC": float(fold_row["PR_AUC"]) if np.isfinite(fold_row["PR_AUC"]) else np.nan,
-                            "MCC": float(fold_row["MCC"]),
-                            "F2": float(fold_row["F2"]),
+                            **benchmark_metric_fields(fold_row),
                         }
                     )
 
@@ -445,16 +420,7 @@ def run_tuned_benchmark_replication(
                 "gamma": row.gamma,
                 "C": row.C,
                 "n_neighbors": row.n_neighbors,
-                "BER_full_dataset": float(full_fit_payload["BER_full_dataset"]),
-                "True+_full_dataset": float(full_fit_payload["True+_full_dataset"]),
-                "True-_full_dataset": float(full_fit_payload["True-_full_dataset"]),
-                "ROC_AUC_full_dataset": float(full_fit_payload["ROC_AUC_full_dataset"]),
-                "PR_AUC_full_dataset": float(full_fit_payload["PR_AUC_full_dataset"]),
-                "MCC_full_dataset": float(full_fit_payload["MCC_full_dataset"]),
-                "F2_full_dataset": float(full_fit_payload["F2_full_dataset"]),
-                "n_samples_full_dataset": int(full_fit_payload["n_samples_full_dataset"]),
-                "n_fails_full_dataset": int(full_fit_payload["n_fails_full_dataset"]),
-                "n_selected_features_full_dataset": int(full_fit_payload["n_selected_features_full_dataset"]),
+                **benchmark_full_dataset_fields(full_fit_payload),
             }
         )
     full_fit_df = pd.DataFrame(full_fit_rows)
@@ -486,25 +452,7 @@ def run_tuned_benchmark_replication(
     )
 
     manifest_path = reports / ArtifactName.MANIFEST
-    if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    else:
-        commit, dirty = git_commit_and_dirty(project_root)
-        manifest = {
-            "manifest_version": "2.0",
-            "study_spec_path": study_spec_path(),
-            "study_spec_sha256": strategy_sha256(project_root),
-            "git_commit": commit,
-            "git_dirty": dirty,
-            "python_executable": sys.executable,
-            "library_versions": library_versions(),
-            "primary_study_status": StudyStatus.NOT_RUN,
-            "benchmark_original_status": StudyStatus.NOT_RUN,
-            "benchmark_tuned_status": StudyStatus.NOT_RUN,
-            "temporal_robustness_status": StudyStatus.NOT_RUN,
-            "temporal_claim_restrictions": [],
-            "industrialization_notes": [],
-        }
+    manifest = load_or_create_study_manifest(manifest_path=manifest_path, project_root=project_root)
 
     manifest["benchmark_tuned_status"] = StudyStatus.PASSED
     manifest["primary_study_status"] = aggregate_primary_status(
