@@ -19,7 +19,7 @@ def _base_manifest(
 ) -> dict[str, object]:
     return {
         "manifest_version": "2.0",
-        "study_spec_path": "docs/spec/README.md",
+        "study_spec_path": "docs/spec",
         "study_spec_sha256": "test-sha256",
         "git_commit": "deadbeef",
         "git_dirty": False,

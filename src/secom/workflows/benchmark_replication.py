@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
-from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256
+from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256, study_spec_path
 from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, SelectorName, StudyStatus
 from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold
 from secom.qa import validate_benchmark_replication_artifacts
@@ -327,7 +327,7 @@ def run_original_benchmark_replication(
         commit, dirty = git_commit_and_dirty(project_root)
         manifest = {
             "manifest_version": "2.0",
-            "study_spec_path": "docs/spec/README.md",
+            "study_spec_path": study_spec_path(),
             "study_spec_sha256": strategy_sha256(project_root),
             "git_commit": commit,
             "git_dirty": dirty,

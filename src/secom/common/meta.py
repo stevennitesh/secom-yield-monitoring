@@ -7,10 +7,25 @@ import subprocess
 import sys
 from pathlib import Path
 
-_SPEC_PATH = Path("docs") / "spec" / "README.md"
+_SPEC_DIR = Path("docs") / "spec"
+_SPEC_FILENAMES = [
+    "01-study-goal.md",
+    "02-benchmark-replication-study.md",
+    "03-feature-stability-and-interpretation.md",
+    "04-temporal-robustness-study.md",
+    "05-industrialization-gap-analysis.md",
+    "06-report-structure.md",
+    "07-artifact-contracts.md",
+    "08-audit-and-claim-semantics.md",
+]
 _UNKNOWN_COMMIT = "UNKNOWN"
 _MISSING_SPEC = "MISSING"
 _UNAVAILABLE_VERSION = "UNAVAILABLE"
+
+
+def study_spec_path() -> str:
+    """Return the manifest path label for the canonical study contract."""
+    return _SPEC_DIR.as_posix()
 
 
 def git_commit_and_dirty(project_root: Path) -> tuple[str, bool]:
@@ -26,13 +41,14 @@ def git_commit_and_dirty(project_root: Path) -> tuple[str, bool]:
 
 
 def strategy_sha256(project_root: Path) -> str:
-    """Hash the active study spec used to interpret generated artifacts."""
-    strategy = project_root / _SPEC_PATH
-    if not strategy.exists():
+    """Hash the ordered study spec set used to interpret generated artifacts."""
+    spec_paths = [project_root / _SPEC_DIR / filename for filename in _SPEC_FILENAMES]
+    if any(not path.exists() for path in spec_paths):
         return _MISSING_SPEC
 
     digest = hashlib.sha256()
-    digest.update(strategy.read_bytes())
+    for path in spec_paths:
+        digest.update(path.read_bytes())
     return digest.hexdigest()
 
 
