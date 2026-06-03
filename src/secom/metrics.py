@@ -72,6 +72,15 @@ def ber_from_counts(counts: BinaryCounts) -> float:
     return 1.0 - 0.5 * (tpr + tnr)
 
 
+def _core_metrics_from_counts(counts: BinaryCounts) -> dict[str, float]:
+    """Return BER, sensitivity, and specificity from precomputed counts."""
+    return {
+        "BER": ber_from_counts(counts),
+        "True+": true_pos_rate(counts),
+        "True-": true_neg_rate(counts),
+    }
+
+
 def predict_from_threshold(scores: np.ndarray, threshold: float) -> np.ndarray:
     """Convert scores to binary predictions using score >= threshold."""
     return (np.asarray(scores, dtype=float) >= float(threshold)).astype(int)
@@ -132,11 +141,7 @@ def _find_ber_optimal_threshold_bruteforce(
         raise RuntimeError("Failed to find BER-optimal threshold")
     y_best = predict_from_threshold(scores, best_threshold)
     counts_best = confusion_counts(y_true, y_best)
-    return best_threshold, {
-        "BER": ber_from_counts(counts_best),
-        "True+": true_pos_rate(counts_best),
-        "True-": true_neg_rate(counts_best),
-    }
+    return best_threshold, _core_metrics_from_counts(counts_best)
 
 
 def find_ber_optimal_threshold(
@@ -216,11 +221,7 @@ def find_ber_optimal_threshold(
 
     if best_threshold is None or best_counts is None:
         raise RuntimeError("Failed to find BER-optimal threshold")
-    return best_threshold, {
-        "BER": ber_from_counts(best_counts),
-        "True+": true_pos_rate(best_counts),
-        "True-": true_neg_rate(best_counts),
-    }
+    return best_threshold, _core_metrics_from_counts(best_counts)
 
 
 def extract_tpr_at_tnr(y_true: np.ndarray, scores: np.ndarray, target_tnr: float = 0.90) -> tuple[float, float, float]:
@@ -339,11 +340,7 @@ def core_binary_metrics_at_threshold(
     y_arr = np.asarray(y_true, dtype=int)
     y_pred = predict_from_threshold(scores, threshold)
     counts = confusion_counts(y_arr, y_pred)
-    return {
-        "BER": ber_from_counts(counts),
-        "True+": true_pos_rate(counts),
-        "True-": true_neg_rate(counts),
-    }
+    return _core_metrics_from_counts(counts)
 
 
 def roc_auc_or_default(y_true: np.ndarray, scores: np.ndarray, default: float = 0.5) -> float:
@@ -360,14 +357,13 @@ def binary_metrics_at_threshold(
     threshold: float,
 ) -> dict[str, float]:
     """Return core and extended binary metrics for one threshold."""
-    core_metrics = core_binary_metrics_at_threshold(y_true=y_true, scores=scores, threshold=threshold)
     y_true = np.asarray(y_true, dtype=int)
     scores = np.asarray(scores, dtype=float)
     y_pred = predict_from_threshold(scores, threshold)
     counts = confusion_counts(y_true, y_pred)
 
     metrics = {
-        **core_metrics,
+        **_core_metrics_from_counts(counts),
         "ROC_AUC": np.nan,
         "PR_AUC": np.nan,
         "MCC": matthews_corrcoef(y_true, y_pred),

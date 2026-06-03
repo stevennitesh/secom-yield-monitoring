@@ -6,14 +6,7 @@ import pytest
 from secom.common.drift import psi_for_feature
 from secom.common.thresholds import operational_threshold, weekly_flag_fraction
 from secom.metrics import candidate_thresholds, confusion_counts, predict_from_threshold, true_pos_rate
-
-
-def _threshold_equal(a: float, b: float) -> bool:
-    if np.isnan(a) and np.isnan(b):
-        return True
-    if np.isinf(a) and np.isinf(b):
-        return bool(np.sign(a) == np.sign(b))
-    return bool(np.isclose(float(a), float(b), atol=1e-12))
+from tests.assertions import threshold_equal
 
 
 def _bruteforce_operational_threshold(scores: np.ndarray, y_true: np.ndarray, week_labels: np.ndarray) -> float:
@@ -84,7 +77,7 @@ def test_operational_threshold_matches_bruteforce_random() -> None:
         y_true = rng.integers(0, 2, size=scores.size, dtype=int)
         week_labels = rng.integers(1, 7, size=scores.size, dtype=int)
 
-        assert _threshold_equal(
+        assert threshold_equal(
             operational_threshold(scores, y_true, week_labels),
             _bruteforce_operational_threshold(scores, y_true, week_labels),
         )
@@ -95,7 +88,7 @@ def test_operational_threshold_nonfinite_scores_fallback_matches_bruteforce() ->
     y_true = np.asarray([1, 0, 1, 0, 0, 1, 0], dtype=int)
     week_labels = np.asarray([1, 1, 2, 2, 3, 3, 3], dtype=int)
 
-    assert _threshold_equal(
+    assert threshold_equal(
         operational_threshold(scores, y_true, week_labels),
         _bruteforce_operational_threshold(scores, y_true, week_labels),
     )

@@ -35,10 +35,8 @@ from secom.preprocess import (
     build_feature_universe,
     local_to_global_feature_indices,
     make_imputer,
-    make_scaler,
-    transformed_feature_metadata_from_imputer,
 )
-from secom.selection.engine import select_features
+from secom.selection.engine import fit_selector_pipeline
 
 BENCHMARK_FEATURE_BUDGET = 40
 BOOTSTRAP_N = 1000
@@ -207,6 +205,15 @@ def build_primary_feature_universe(raw_feature_count: int, add_indicator: bool) 
     return feature_universe[:raw_feature_count]
 
 
+def validate_raw_feature_count(x: np.ndarray, raw_feature_count: int) -> None:
+    """Ensure caller-provided feature metadata matches the raw matrix width."""
+    x_arr = np.asarray(x)
+    if x_arr.ndim != 2:
+        raise ValueError("benchmark feature matrix must be two-dimensional")
+    if x_arr.shape[1] != int(raw_feature_count):
+        raise ValueError(f"raw_feature_count must match x columns: {raw_feature_count} != {x_arr.shape[1]}")
+
+
 def benchmark_metric_fields(
     metrics: dict[str, Any],
     *,
@@ -279,24 +286,21 @@ def prepare_full_selector_view(
     k: int = BENCHMARK_FEATURE_BUDGET,
 ) -> dict[str, Any]:
     """Fit selector preprocessing on the full benchmark dataset for final summaries."""
+    validate_raw_feature_count(x=x, raw_feature_count=raw_feature_count)
     kwargs = selector_kwargs(selector=selector, selector_config=selector_config)
-    imputer = make_imputer(add_indicator=add_indicator)
-    x_imp = imputer.fit_transform(x)
-    scaler = make_scaler(ScalerName.STANDARD)
-    x_scaled = scaler.fit_transform(x_imp)
-    selected_local, _ = select_features(
-        method=selector,
-        x_train=x_scaled,
+    x_sel, _x_eval_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
+        x_train_raw=x,
         y_train=y,
+        x_eval_raw=x,
+        method=selector,
         k=int(k),
-        **kwargs,
+        scaler_name=ScalerName.STANDARD,
+        add_indicator=add_indicator,
+        n_neighbors=kwargs.get("n_neighbors"),
     )
-    if selected_local.size <= 0:
-        raise RuntimeError("Benchmark full-data fit produced zero selected features")
-    meta = transformed_feature_metadata_from_imputer(imputer=imputer, raw_feature_count=raw_feature_count)
     selected_global = local_to_global_feature_indices(selected_local, meta)
     return {
-        "x_sel": x_scaled[:, selected_local],
+        "x_sel": x_sel,
         "y": y,
         "selected_global": selected_global,
         "feature_meta": meta,
@@ -317,6 +321,7 @@ def prepare_selector_views(
     k: int = BENCHMARK_FEATURE_BUDGET,
 ) -> dict[str, Any]:
     """Prepare fold-specific selected matrices and feature-stability rows."""
+    validate_raw_feature_count(x=x, raw_feature_count=raw_feature_count)
     kwargs = selector_kwargs(selector=selector, selector_config=selector_config)
     fold_views: list[dict[str, Any]] = []
     feature_stability_frames: list[pd.DataFrame] = []
@@ -329,34 +334,23 @@ def prepare_selector_views(
         x_test_raw = x[test_idx]
         y_test = y[test_idx]
 
-        imputer = make_imputer(add_indicator=add_indicator)
-        x_train_imp = imputer.fit_transform(x_train_raw)
-        x_test_imp = imputer.transform(x_test_raw)
-        scaler = make_scaler(ScalerName.STANDARD)
-        x_train = scaler.fit_transform(x_train_imp)
-        x_test = scaler.transform(x_test_imp)
-
-        selected_local, _ = select_features(
-            method=selector,
-            x_train=x_train,
+        x_train_sel, x_test_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
+            x_train_raw=x_train_raw,
             y_train=y_train,
+            x_eval_raw=x_test_raw,
+            method=selector,
             k=int(k),
-            **kwargs,
-        )
-        if selected_local.size <= 0:
-            raise RuntimeError("Benchmark config produced zero selected features")
-
-        meta = transformed_feature_metadata_from_imputer(
-            imputer=imputer,
-            raw_feature_count=raw_feature_count,
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=add_indicator,
+            n_neighbors=kwargs.get("n_neighbors"),
         )
         selected_global = set(local_to_global_feature_indices(selected_local, meta))
         fold_views.append(
             {
                 "fold": int(fold_i),
-                "x_train_sel": x_train[:, selected_local],
+                "x_train_sel": x_train_sel,
                 "y_train": y_train,
-                "x_test_sel": x_test[:, selected_local],
+                "x_test_sel": x_test_sel,
                 "y_test": np.asarray(y_test, dtype=int),
                 "n_train": int(len(train_idx)),
                 "n_test": int(len(test_idx)),
