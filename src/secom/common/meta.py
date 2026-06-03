@@ -28,21 +28,29 @@ def study_spec_path() -> str:
     return _SPEC_DIR.as_posix()
 
 
+def _git_output(project_root: Path, *args: str) -> str:
+    git_base = ["git", "-c", f"safe.directory={project_root.as_posix()}"]
+    return subprocess.check_output([*git_base, *args], cwd=project_root, text=True).strip()
+
+
 def git_commit_and_dirty(project_root: Path) -> tuple[str, bool]:
     """Return the current Git commit and dirty-tree flag for a project root."""
     try:
-        git_base = ["git", "-c", f"safe.directory={project_root.as_posix()}"]
-        commit = subprocess.check_output([*git_base, "rev-parse", "HEAD"], cwd=project_root, text=True).strip()
-        dirty = bool(subprocess.check_output([*git_base, "status", "--porcelain"], cwd=project_root, text=True).strip())
+        commit = _git_output(project_root, "rev-parse", "HEAD")
+        dirty = bool(_git_output(project_root, "status", "--porcelain"))
         return commit, dirty
     except Exception:
         # Manifest metadata should fail closed when Git is unavailable or unsafe.
         return _UNKNOWN_COMMIT, True
 
 
+def _ordered_spec_paths(project_root: Path) -> list[Path]:
+    return [project_root / _SPEC_DIR / filename for filename in _SPEC_FILENAMES]
+
+
 def strategy_sha256(project_root: Path) -> str:
     """Hash the ordered study spec set used to interpret generated artifacts."""
-    spec_paths = [project_root / _SPEC_DIR / filename for filename in _SPEC_FILENAMES]
+    spec_paths = _ordered_spec_paths(project_root)
     if any(not path.exists() for path in spec_paths):
         return _MISSING_SPEC
 
