@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from secom.config import EPS_SELECTOR
+from secom.feature_select._ranking import rank_desc_with_index_tiebreak
 
 
 def gram_schmidt_rank_features(
@@ -29,9 +30,6 @@ def gram_schmidt_rank_features(
     raw_norms = np.linalg.norm(x_raw, axis=0)
     constant_mask = raw_norms <= eps
 
-    for feature_idx in np.where(constant_mask)[0]:
-        final_scores[int(feature_idx)] = -np.inf
-
     while remaining and len(selected) < k:
         residual_norm = np.linalg.norm(residual)
         if residual_norm < eps:
@@ -39,7 +37,7 @@ def gram_schmidt_rank_features(
 
         remaining_arr = np.asarray(remaining, dtype=int)
         scores = np.full(remaining_arr.shape[0], -np.inf, dtype=float)
-        for local_idx, feature_idx in enumerate(remaining_arr.tolist()):
+        for local_idx, feature_idx in enumerate(remaining_arr):
             if constant_mask[feature_idx]:
                 continue
 
@@ -51,8 +49,7 @@ def gram_schmidt_rank_features(
             scores[local_idx] = score
             final_scores[feature_idx] = score
 
-        # Deterministic tie-break by smallest feature index.
-        local_order = np.lexsort((remaining_arr, -scores))
+        local_order = rank_desc_with_index_tiebreak(scores, feature_indices=remaining_arr)
         best_feat = int(remaining_arr[local_order[0]])
         best_score = float(scores[local_order[0]])
         if not np.isfinite(best_score):
@@ -73,7 +70,5 @@ def gram_schmidt_rank_features(
 
     selected_arr = np.asarray(selected, dtype=int)
     if selected_arr.size == 0:
-        feature_indices = np.arange(n_features, dtype=int)
-        fallback_order = np.lexsort((feature_indices, -final_scores))
-        return fallback_order, final_scores
+        return rank_desc_with_index_tiebreak(final_scores), final_scores
     return selected_arr, final_scores
