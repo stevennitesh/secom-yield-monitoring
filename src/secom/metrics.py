@@ -227,6 +227,8 @@ def extract_tpr_at_tnr(y_true: np.ndarray, scores: np.ndarray, target_tnr: float
     """Return the threshold with best TPR among points meeting target TNR."""
     y_arr = np.asarray(y_true, dtype=int)
     scores_arr = np.asarray(scores, dtype=float)
+    if y_arr.size != scores_arr.size:
+        raise ValueError("y_true and scores must have identical length")
     if not np.all(np.isfinite(scores_arr)):
         return _extract_tpr_at_tnr_bruteforce(y_arr, scores_arr, target_tnr=target_tnr)
 

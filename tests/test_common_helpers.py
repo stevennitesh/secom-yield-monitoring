@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from secom.common.drift import psi_for_feature
 from secom.common.thresholds import operational_threshold, weekly_flag_fraction
@@ -65,6 +66,15 @@ def test_operational_threshold_returns_infinity_when_cap_cannot_be_satisfied() -
     week_labels = np.asarray([0, 0, 0], dtype=int)
 
     assert np.isinf(operational_threshold(scores, y_true, week_labels))
+
+
+def test_operational_threshold_rejects_mismatched_input_lengths() -> None:
+    scores = np.asarray([0.5, 0.4, 0.3], dtype=float)
+    y_true = np.asarray([1, 0], dtype=int)
+    week_labels = np.asarray([0, 0, 0], dtype=int)
+
+    with pytest.raises(ValueError, match="identical length"):
+        operational_threshold(scores, y_true, week_labels)
 
 
 def test_operational_threshold_matches_bruteforce_random() -> None:
