@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from itertools import product
 from typing import Any
 
@@ -23,6 +24,10 @@ from secom.models import (
     make_benchmark_krr_model,
     make_benchmark_logreg_model,
 )
+
+_FLOAT_TOLERANCE = 1e-12
+_NEAR_BEST_AUC_BAND = 0.01
+_ScoreFn = Callable[[Any, np.ndarray], np.ndarray]
 
 
 def gamma_sort_key(gamma: float | None) -> float:
@@ -48,6 +53,21 @@ def _inner_cv(n_splits: int) -> StratifiedKFold:
     )
 
 
+def _iter_inner_train_val_folds(
+    x_train_sel: np.ndarray,
+    y_train: np.ndarray,
+    n_splits: int,
+):
+    inner_cv = _inner_cv(n_splits)
+    for inner_train_idx, inner_val_idx in inner_cv.split(x_train_sel, y_train):
+        yield (
+            x_train_sel[inner_train_idx],
+            y_train[inner_train_idx],
+            x_train_sel[inner_val_idx],
+            y_train[inner_val_idx],
+        )
+
+
 def _ber_threshold_from_scores(y_true: np.ndarray, scores: np.ndarray) -> float:
     """Choose the BER-optimal threshold for already-computed scores."""
     threshold, _ = find_ber_optimal_threshold(y_true, scores)
@@ -58,6 +78,33 @@ def _ber_at_threshold(y_true: np.ndarray, scores: np.ndarray, threshold: float) 
     """Evaluate BER for scores at a frozen threshold."""
     metrics = binary_metrics_at_threshold(y_true, scores, threshold=threshold)
     return float(metrics["BER"])
+
+
+def _krr_scores(clf: Any, x: np.ndarray) -> np.ndarray:
+    return np.asarray(clf.predict(x), dtype=float)
+
+
+def _logreg_scores(clf: Any, x: np.ndarray) -> np.ndarray:
+    return np.asarray(clf.predict_proba(x)[:, 1], dtype=float)
+
+
+def _train_threshold(clf: Any, score_fn: _ScoreFn, x_train: np.ndarray, y_train: np.ndarray) -> float:
+    train_scores = score_fn(clf, x_train)
+    return _ber_threshold_from_scores(y_train, train_scores)
+
+
+def _validation_ber_with_train_threshold(
+    *,
+    clf: Any,
+    score_fn: _ScoreFn,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+) -> float:
+    threshold = _train_threshold(clf, score_fn, x_train, y_train)
+    val_scores = score_fn(clf, x_val)
+    return _ber_at_threshold(y_val, val_scores, threshold=threshold)
 
 
 def select_krr_config_with_inner_cv(
@@ -82,42 +129,37 @@ def select_krr_config_with_inner_cv(
             alpha=fallback_alpha,
             gamma=fallback_gamma,
         )
-        fallback_train_scores = np.asarray(fallback_clf.predict(x_train_sel), dtype=float)
-        fallback_threshold = _ber_threshold_from_scores(y_train, fallback_train_scores)
+        fallback_threshold = _train_threshold(fallback_clf, _krr_scores, x_train_sel, y_train)
         return fallback_alpha, fallback_gamma, fallback_clf, float(fallback_threshold), np.inf
 
-    inner_cv = _inner_cv(n_splits)
     best_alpha: float | None = None
     best_gamma: float | None = None
     best_inner_ber = np.inf
 
     for alpha, gamma in product(sorted_alphas, sorted_gammas):
         fold_bers: list[float] = []
-        for inner_train_idx, inner_val_idx in inner_cv.split(x_train_sel, y_train):
-            x_inner_train = x_train_sel[inner_train_idx]
-            y_inner_train = y_train[inner_train_idx]
-            x_inner_val = x_train_sel[inner_val_idx]
-            y_inner_val = y_train[inner_val_idx]
-
+        for x_inner_train, y_inner_train, x_inner_val, y_inner_val in _iter_inner_train_val_folds(
+            x_train_sel, y_train, n_splits
+        ):
             clf_inner = fit_benchmark_krr_model(
                 x_inner_train,
                 y_inner_train,
                 alpha=alpha,
                 gamma=gamma,
             )
-            inner_train_scores = np.asarray(clf_inner.predict(x_inner_train), dtype=float)
-            inner_threshold = _ber_threshold_from_scores(y_inner_train, inner_train_scores)
-            inner_val_scores = np.asarray(clf_inner.predict(x_inner_val), dtype=float)
             fold_bers.append(
-                _ber_at_threshold(
-                    y_inner_val,
-                    inner_val_scores,
-                    threshold=inner_threshold,
+                _validation_ber_with_train_threshold(
+                    clf=clf_inner,
+                    score_fn=_krr_scores,
+                    x_train=x_inner_train,
+                    y_train=y_inner_train,
+                    x_val=x_inner_val,
+                    y_val=y_inner_val,
                 )
             )
 
         mean_inner_ber = float(np.mean(fold_bers))
-        if mean_inner_ber < best_inner_ber - 1e-12:
+        if mean_inner_ber < best_inner_ber - _FLOAT_TOLERANCE:
             best_inner_ber = mean_inner_ber
             best_alpha = alpha
             best_gamma = gamma
@@ -138,8 +180,7 @@ def select_krr_config_with_inner_cv(
         alpha=float(best_alpha),
         gamma=best_gamma,
     )
-    final_train_scores = np.asarray(final_clf.predict(x_train_sel), dtype=float)
-    final_threshold = _ber_threshold_from_scores(y_train, final_train_scores)
+    final_threshold = _train_threshold(final_clf, _krr_scores, x_train_sel, y_train)
     return float(best_alpha), best_gamma, final_clf, float(final_threshold), float(best_inner_ber)
 
 
@@ -156,37 +197,32 @@ def select_logreg_config_with_inner_cv(
         fallback_c = float(sorted_c_values[0])
         fallback_clf = make_benchmark_logreg_model(c_value=fallback_c)
         fallback_clf.fit(x_train_sel, y_train)
-        fallback_train_scores = np.asarray(fallback_clf.predict_proba(x_train_sel)[:, 1], dtype=float)
-        fallback_threshold = _ber_threshold_from_scores(y_train, fallback_train_scores)
+        fallback_threshold = _train_threshold(fallback_clf, _logreg_scores, x_train_sel, y_train)
         return fallback_c, fallback_clf, float(fallback_threshold), np.inf
 
-    inner_cv = _inner_cv(n_splits)
     best_c: float | None = None
     best_inner_ber = np.inf
 
     for c_value in sorted_c_values:
         fold_bers: list[float] = []
-        for inner_train_idx, inner_val_idx in inner_cv.split(x_train_sel, y_train):
-            x_inner_train = x_train_sel[inner_train_idx]
-            y_inner_train = y_train[inner_train_idx]
-            x_inner_val = x_train_sel[inner_val_idx]
-            y_inner_val = y_train[inner_val_idx]
-
+        for x_inner_train, y_inner_train, x_inner_val, y_inner_val in _iter_inner_train_val_folds(
+            x_train_sel, y_train, n_splits
+        ):
             clf_inner = make_benchmark_logreg_model(c_value=c_value)
             clf_inner.fit(x_inner_train, y_inner_train)
-            inner_train_scores = np.asarray(clf_inner.predict_proba(x_inner_train)[:, 1], dtype=float)
-            inner_threshold = _ber_threshold_from_scores(y_inner_train, inner_train_scores)
-            inner_val_scores = np.asarray(clf_inner.predict_proba(x_inner_val)[:, 1], dtype=float)
             fold_bers.append(
-                _ber_at_threshold(
-                    y_inner_val,
-                    inner_val_scores,
-                    threshold=inner_threshold,
+                _validation_ber_with_train_threshold(
+                    clf=clf_inner,
+                    score_fn=_logreg_scores,
+                    x_train=x_inner_train,
+                    y_train=y_inner_train,
+                    x_val=x_inner_val,
+                    y_val=y_inner_val,
                 )
             )
 
         mean_inner_ber = float(np.mean(fold_bers))
-        if mean_inner_ber < best_inner_ber - 1e-12:
+        if mean_inner_ber < best_inner_ber - _FLOAT_TOLERANCE:
             best_inner_ber = mean_inner_ber
             best_c = c_value
         elif np.isclose(mean_inner_ber, best_inner_ber):
@@ -198,8 +234,7 @@ def select_logreg_config_with_inner_cv(
 
     final_clf = make_benchmark_logreg_model(c_value=float(best_c))
     final_clf.fit(x_train_sel, y_train)
-    final_train_scores = np.asarray(final_clf.predict_proba(x_train_sel)[:, 1], dtype=float)
-    final_threshold = _ber_threshold_from_scores(y_train, final_train_scores)
+    final_threshold = _train_threshold(final_clf, _logreg_scores, x_train_sel, y_train)
     return float(best_c), final_clf, float(final_threshold), float(best_inner_ber)
 
 
@@ -211,31 +246,34 @@ def inner_cv_ber_krr_strict(x_train_sel: np.ndarray, y_train: np.ndarray) -> flo
         clf = make_benchmark_krr_model(alpha=1.0, gamma=None)
         y_train_krr = 2 * y_train - 1
         clf.fit(x_train_sel, y_train_krr)
-        train_scores = np.asarray(clf.predict(x_train_sel), dtype=float)
-        threshold = _ber_threshold_from_scores(y_train, train_scores)
-        return _ber_at_threshold(y_train, train_scores, threshold=threshold)
+        threshold = _train_threshold(clf, _krr_scores, x_train_sel, y_train)
+        return _ber_at_threshold(y_train, _krr_scores(clf, x_train_sel), threshold=threshold)
 
-    inner_cv = _inner_cv(n_splits)
     fold_bers: list[float] = []
-    for inner_train_idx, inner_val_idx in inner_cv.split(x_train_sel, y_train):
-        x_inner_train = x_train_sel[inner_train_idx]
-        y_inner_train = y_train[inner_train_idx]
-        x_inner_val = x_train_sel[inner_val_idx]
-        y_inner_val = y_train[inner_val_idx]
+    for x_inner_train, y_inner_train, x_inner_val, y_inner_val in _iter_inner_train_val_folds(
+        x_train_sel, y_train, n_splits
+    ):
         clf = make_benchmark_krr_model(alpha=1.0, gamma=None)
         y_inner_train_krr = 2 * y_inner_train - 1
         clf.fit(x_inner_train, y_inner_train_krr)
-        inner_train_scores = np.asarray(clf.predict(x_inner_train), dtype=float)
-        threshold = _ber_threshold_from_scores(y_inner_train, inner_train_scores)
-        inner_val_scores = np.asarray(clf.predict(x_inner_val), dtype=float)
         fold_bers.append(
-            _ber_at_threshold(
-                y_inner_val,
-                inner_val_scores,
-                threshold=threshold,
+            _validation_ber_with_train_threshold(
+                clf=clf,
+                score_fn=_krr_scores,
+                x_train=x_inner_train,
+                y_train=y_inner_train,
+                x_val=x_inner_val,
+                y_val=y_inner_val,
             )
         )
     return float(np.mean(fold_bers))
+
+
+def _inner_config_simplicity_key(row: dict[str, Any]) -> tuple[float, float, int, float]:
+    nn = row.get("n_neighbors")
+    nn_key = math.inf if nn is None else nn
+    scaler_pref = 0 if row["scaler"] == ScalerName.STANDARD else 1
+    return (row["k"], row["C"], scaler_pref, nn_key)
 
 
 def select_best_inner_config(config_rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -243,14 +281,10 @@ def select_best_inner_config(config_rows: list[dict[str, Any]]) -> dict[str, Any
     if not config_rows:
         raise ValueError("No configs to select")
     best_auc = max(row["mean_inner_ROC_AUC"] for row in config_rows)
-    near_best_auc = [row for row in config_rows if row["mean_inner_ROC_AUC"] >= best_auc - 0.01 - 1e-12]
+    near_best_auc = [
+        row for row in config_rows if row["mean_inner_ROC_AUC"] >= best_auc - _NEAR_BEST_AUC_BAND - _FLOAT_TOLERANCE
+    ]
     min_ber = min(row["mean_inner_BER"] for row in near_best_auc)
     tied_on_ber = [row for row in near_best_auc if np.isclose(row["mean_inner_BER"], min_ber)]
 
-    def key(row: dict[str, Any]) -> tuple[float, float, int, float]:
-        nn = row.get("n_neighbors")
-        nn_key = math.inf if nn is None else nn
-        scaler_pref = 0 if row["scaler"] == ScalerName.STANDARD else 1
-        return (row["k"], row["C"], scaler_pref, nn_key)
-
-    return sorted(tied_on_ber, key=key)[0]
+    return sorted(tied_on_ber, key=_inner_config_simplicity_key)[0]
