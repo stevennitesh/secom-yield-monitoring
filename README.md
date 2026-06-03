@@ -141,8 +141,10 @@ The final generated report is designed to read like a professional study draft:
 
 - original replication first
 - tuned benchmark second
-- temporal robustness third
-- industrialization limits stated explicitly
+- original vs tuned comparison third
+- feature stability and interpretation fourth
+- temporal robustness fifth
+- industrialization gaps and conclusions stated explicitly
 
 ## Canonical Reading Order
 

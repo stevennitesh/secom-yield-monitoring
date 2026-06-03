@@ -4,10 +4,16 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.audit import run_study_audit
-from secom.workflows.benchmark_common import build_cluster_id_map, classifier_config_from_row, selector_config_from_row
+from secom.workflows.benchmark_common import (
+    build_cluster_id_map,
+    classifier_config_from_row,
+    selector_config_from_row,
+    validate_raw_feature_count,
+)
 from secom.workflows.benchmark_replication import run_benchmark_replication
 from secom.workflows import benchmark_common, benchmark_tuned
 from tests.assertions import assert_artifacts_exist, assert_columns_include
@@ -253,6 +259,11 @@ def test_build_cluster_id_map_groups_highly_correlated_value_features() -> None:
     assert cluster_id[3] != cluster_id[0]
     assert cluster_id[4] != cluster_id[0]
     assert set(cluster_id) == set(range(x.shape[1]))
+
+
+def test_validate_raw_feature_count_rejects_metadata_width_mismatch() -> None:
+    with pytest.raises(ValueError, match="raw_feature_count"):
+        validate_raw_feature_count(np.zeros((3, 4), dtype=float), raw_feature_count=5)
 
 
 def test_benchmark_summary_reuses_bootstrap_draws_for_equal_fold_counts(monkeypatch) -> None:

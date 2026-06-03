@@ -312,6 +312,26 @@ class ReportContext:
     mspc_lockbox_row: pd.Series | None
 
 
+_REPORT_CONTEXT_ARTIFACTS: dict[str, str] = {
+    "benchmark_sweep": ArtifactName.BENCHMARK_SWEEP,
+    "benchmark_best": ArtifactName.BENCHMARK_BEST_CONFIG,
+    "benchmark_summary": ArtifactName.BENCHMARK_SUMMARY,
+    "benchmark_ablation": ArtifactName.BENCHMARK_ABLATION,
+    "feature_report": ArtifactName.FEATURE_REPORT,
+    "benchmark_tuned_search": ArtifactName.BENCHMARK_TUNED_SEARCH,
+    "benchmark_tuned_best": ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+    "benchmark_tuned_summary": ArtifactName.BENCHMARK_TUNED_SUMMARY,
+    "benchmark_tuned_ablation": ArtifactName.BENCHMARK_TUNED_ABLATION,
+    "benchmark_tuned_feature_report": ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+    "temporal_selection": ArtifactName.TEMPORAL_MODEL_SELECTION,
+    "temporal_lockbox": ArtifactName.TEMPORAL_LOCKBOX,
+    "temporal_drift": ArtifactName.TEMPORAL_DRIFT,
+    "temporal_mspc": ArtifactName.TEMPORAL_MSPC,
+    "temporal_manager": ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+    "temporal_cost": ArtifactName.TEMPORAL_COST_CURVES,
+}
+
+
 def _first_row(frame: pd.DataFrame | None, mask: pd.Series | None = None) -> pd.Series | None:
     """Return the first row from an optional artifact frame."""
     if frame is None or frame.empty:
@@ -330,22 +350,16 @@ def _load_report_context(output_dir: Path) -> ReportContext:
         raise FileNotFoundError(f"Missing manifest: {manifest_path}")
 
     manifest = read_manifest(manifest_path)
-    benchmark_sweep = read_csv_if_exists(reports / ArtifactName.BENCHMARK_SWEEP)
-    benchmark_best = read_csv_if_exists(reports / ArtifactName.BENCHMARK_BEST_CONFIG)
-    benchmark_summary = read_csv_if_exists(reports / ArtifactName.BENCHMARK_SUMMARY)
-    benchmark_ablation = read_csv_if_exists(reports / ArtifactName.BENCHMARK_ABLATION)
-    feature_report = read_csv_if_exists(reports / ArtifactName.FEATURE_REPORT)
-    benchmark_tuned_search = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_SEARCH)
-    benchmark_tuned_best = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_BEST_CONFIG)
-    benchmark_tuned_summary = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
-    benchmark_tuned_ablation = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_ABLATION)
-    benchmark_tuned_feature_report = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
-    temporal_selection = read_csv_if_exists(reports / ArtifactName.TEMPORAL_MODEL_SELECTION)
-    temporal_lockbox = read_csv_if_exists(reports / ArtifactName.TEMPORAL_LOCKBOX)
-    temporal_drift = read_csv_if_exists(reports / ArtifactName.TEMPORAL_DRIFT)
-    temporal_mspc = read_csv_if_exists(reports / ArtifactName.TEMPORAL_MSPC)
-    temporal_manager = read_csv_if_exists(reports / ArtifactName.TEMPORAL_MANAGER_OUTPUTS)
-    temporal_cost = read_csv_if_exists(reports / ArtifactName.TEMPORAL_COST_CURVES)
+    frames = {
+        field: read_csv_if_exists(reports / artifact_name) for field, artifact_name in _REPORT_CONTEXT_ARTIFACTS.items()
+    }
+    benchmark_summary = frames["benchmark_summary"]
+    benchmark_tuned_summary = frames["benchmark_tuned_summary"]
+    benchmark_tuned_best = frames["benchmark_tuned_best"]
+    temporal_selection = frames["temporal_selection"]
+    temporal_lockbox = frames["temporal_lockbox"]
+    temporal_drift = frames["temporal_drift"]
+    temporal_mspc = frames["temporal_mspc"]
 
     # These chosen rows are narrative anchors only; full evidence tables remain in the report.
     best_benchmark_row = None
@@ -388,22 +402,7 @@ def _load_report_context(output_dir: Path) -> ReportContext:
     return ReportContext(
         reports_dir=reports,
         manifest=manifest,
-        benchmark_sweep=benchmark_sweep,
-        benchmark_best=benchmark_best,
-        benchmark_summary=benchmark_summary,
-        benchmark_ablation=benchmark_ablation,
-        feature_report=feature_report,
-        benchmark_tuned_search=benchmark_tuned_search,
-        benchmark_tuned_best=benchmark_tuned_best,
-        benchmark_tuned_summary=benchmark_tuned_summary,
-        benchmark_tuned_ablation=benchmark_tuned_ablation,
-        benchmark_tuned_feature_report=benchmark_tuned_feature_report,
-        temporal_selection=temporal_selection,
-        temporal_lockbox=temporal_lockbox,
-        temporal_drift=temporal_drift,
-        temporal_mspc=temporal_mspc,
-        temporal_manager=temporal_manager,
-        temporal_cost=temporal_cost,
+        **frames,
         best_benchmark_row=best_benchmark_row,
         best_tuned_benchmark_row=best_tuned_benchmark_row,
         modal_tuned_config_row=modal_tuned_config_row,

@@ -11,12 +11,7 @@ from secom.metrics import (
     roc_auc_or_default,
     safe_std,
 )
-
-
-def _threshold_equal(a: float, b: float) -> bool:
-    if np.isinf(a) and np.isinf(b):
-        return bool(np.sign(a) == np.sign(b))
-    return bool(np.isclose(float(a), float(b), atol=1e-12))
+from tests.assertions import threshold_equal
 
 
 def _bruteforce_reference(y_true: np.ndarray, scores: np.ndarray) -> tuple[float, dict[str, float]]:
@@ -55,7 +50,7 @@ def _assert_fast_threshold_search_matches_bruteforce(y_true: np.ndarray, scores:
     threshold_fast, metrics_fast = find_ber_optimal_threshold(y_true, scores)
     threshold_brute, metrics_brute = _bruteforce_reference(y_true, scores)
 
-    assert _threshold_equal(float(threshold_fast), float(threshold_brute))
+    assert threshold_equal(float(threshold_fast), float(threshold_brute))
     assert np.isclose(float(metrics_fast["BER"]), float(metrics_brute["BER"]), atol=1e-12)
     assert np.isclose(float(metrics_fast["True+"]), float(metrics_brute["True+"]), atol=1e-12)
     assert np.isclose(float(metrics_fast["True-"]), float(metrics_brute["True-"]), atol=1e-12)
@@ -99,7 +94,7 @@ def _assert_fast_tpr_at_tnr_matches_bruteforce(y_true: np.ndarray, scores: np.nd
     threshold_fast, tnr_fast, tpr_fast = extract_tpr_at_tnr(y_true, scores, target_tnr=target_tnr)
     threshold_brute, tnr_brute, tpr_brute = _bruteforce_tpr_at_tnr(y_true, scores, target_tnr=target_tnr)
 
-    assert _threshold_equal(float(threshold_fast), float(threshold_brute))
+    assert threshold_equal(float(threshold_fast), float(threshold_brute))
     assert np.isclose(float(tnr_fast), float(tnr_brute), atol=1e-12)
     assert np.isclose(float(tpr_fast), float(tpr_brute), atol=1e-12)
 
