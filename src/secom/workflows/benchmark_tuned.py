@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,13 +10,11 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
-from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
-from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256, study_spec_path
+from secom.artifacts import ensure_reports_dir, write_csv
 from secom.config import (
     ArtifactName,
     BENCHMARK_INNER_SPLITS,
     BenchmarkClassifier,
-    ReplicationMode,
     ScalerName,
     SelectorName,
     StudyStatus,
@@ -29,8 +26,13 @@ from secom.metrics import (
 from secom.preprocess import local_to_global_feature_indices, transformed_feature_metadata_from_imputer
 from secom.qa import validate_tuned_benchmark_artifacts
 from secom.selection.engine import fit_selector_pipeline
+from secom.selection.tuning import select_near_best_auc_config
 from secom.workflows.benchmark_common import (
-    aggregate_primary_status,
+    BENCHMARK_REPLICATION_MODES,
+    add_indicator_for_replication_mode,
+    benchmark_full_dataset_fields,
+    benchmark_metric_fields,
+    build_feature_stability_frame,
     build_benchmark_ablation_df,
     build_cluster_id_map,
     build_feature_report,
@@ -41,10 +43,20 @@ from secom.workflows.benchmark_common import (
     config_tie_break_key,
     fit_classifier_scores,
     fit_full_dataset,
+    normalize_benchmark_run_filters,
     prepare_benchmark_dataset,
     prepare_full_selector_view,
     selector_config_from_row,
 )
+from secom.workflows.manifest import write_benchmark_status
+
+
+@dataclass(frozen=True)
+class _InnerSelectorView:
+    x_train_sel: np.ndarray
+    y_train: np.ndarray
+    x_eval_sel: np.ndarray
+    y_eval: np.ndarray
 
 
 def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
@@ -57,15 +69,10 @@ def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
 
 def _select_best_tuned_config(config_rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Select a tuned config by near-best AUC, BER, then deterministic config key."""
-    if not config_rows:
-        raise ValueError("No tuned benchmark configs to select")
-    best_auc = max(float(row["mean_inner_ROC_AUC"]) for row in config_rows)
-    near = [row for row in config_rows if float(row["mean_inner_ROC_AUC"]) >= best_auc - 0.01 - 1e-12]
-    min_ber = min(float(row["mean_inner_BER"]) for row in near)
-    tied = [row for row in near if np.isclose(float(row["mean_inner_BER"]), min_ber)]
-    return min(
-        tied,
-        key=lambda row: config_tie_break_key(
+    return select_near_best_auc_config(
+        config_rows,
+        empty_message="No tuned benchmark configs to select",
+        simplicity_key=lambda row: config_tie_break_key(
             selector=str(row["selector"]),
             classifier=str(row["classifier"]),
             selector_config={"k": int(row["k"]), "n_neighbors": row.get("n_neighbors")},
@@ -82,21 +89,21 @@ def _inner_cv_summary_for_config(
     *,
     classifier: str,
     classifier_config: dict[str, Any],
-    prepared_inner_views: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+    prepared_inner_views: list[_InnerSelectorView],
 ) -> dict[str, Any]:
     """Score one classifier config over prepared inner selector views."""
     aucs: list[float] = []
     bers: list[float] = []
-    for x_train_sel, y_inner_train, x_val_sel, y_inner_val in prepared_inner_views:
+    for prepared in prepared_inner_views:
         train_scores, val_scores = fit_classifier_scores(
             classifier=classifier,
-            x_train_sel=x_train_sel,
-            y_train=y_inner_train,
-            x_eval_sel=x_val_sel,
+            x_train_sel=prepared.x_train_sel,
+            y_train=prepared.y_train,
+            x_eval_sel=prepared.x_eval_sel,
             classifier_config=classifier_config,
         )
-        threshold, _ = find_ber_optimal_threshold(y_inner_train, train_scores)
-        metrics = binary_metrics_at_threshold(y_inner_val, val_scores, threshold=float(threshold))
+        threshold, _ = find_ber_optimal_threshold(prepared.y_train, train_scores)
+        metrics = binary_metrics_at_threshold(prepared.y_eval, val_scores, threshold=float(threshold))
         aucs.append(float(metrics["ROC_AUC"]) if np.isfinite(metrics["ROC_AUC"]) else 0.5)
         bers.append(float(metrics["BER"]))
     return {
@@ -112,44 +119,74 @@ def _prepare_inner_selector_views(
     selector: str,
     add_indicator: bool,
     selector_config: dict[str, Any],
-) -> list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+) -> list[_InnerSelectorView]:
     """Prepare inner-CV selected matrices for one outer benchmark training fold."""
     y_outer_train = np.asarray(y_outer_train, dtype=int)
+    n_neighbors = selector_config.get("n_neighbors")
+    k = int(selector_config["k"])
     n_fail = int(np.sum(y_outer_train == 1))
     n_pass = int(np.sum(y_outer_train == 0))
     n_splits = min(int(BENCHMARK_INNER_SPLITS), min(n_fail, n_pass))
     if n_splits < 2:
-        x_train_sel, x_eval_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
-            x_train_raw=x_outer_train_raw,
-            y_train=y_outer_train,
-            x_eval_raw=x_outer_train_raw,
-            method=selector,
-            k=int(selector_config["k"]),
-            scaler_name=ScalerName.STANDARD,
-            add_indicator=add_indicator,
-            n_neighbors=selector_config.get("n_neighbors"),
-        )
-        return [(x_train_sel, y_outer_train, x_eval_sel, y_outer_train)]
+        return [
+            _prepare_inner_selector_view(
+                x_train_raw=x_outer_train_raw,
+                y_train=y_outer_train,
+                x_eval_raw=x_outer_train_raw,
+                y_eval=y_outer_train,
+                selector=selector,
+                add_indicator=add_indicator,
+                k=k,
+                n_neighbors=n_neighbors,
+            )
+        ]
 
     inner_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-    prepared: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
+    prepared: list[_InnerSelectorView] = []
     for inner_train_idx, inner_val_idx in inner_cv.split(x_outer_train_raw, y_outer_train):
-        x_inner_train = x_outer_train_raw[inner_train_idx]
-        y_inner_train = y_outer_train[inner_train_idx]
-        x_inner_val = x_outer_train_raw[inner_val_idx]
-        y_inner_val = y_outer_train[inner_val_idx]
-        x_train_sel, x_val_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
-            x_train_raw=x_inner_train,
-            y_train=y_inner_train,
-            x_eval_raw=x_inner_val,
-            method=selector,
-            k=int(selector_config["k"]),
-            scaler_name=ScalerName.STANDARD,
-            add_indicator=add_indicator,
-            n_neighbors=selector_config.get("n_neighbors"),
+        prepared.append(
+            _prepare_inner_selector_view(
+                x_train_raw=x_outer_train_raw[inner_train_idx],
+                y_train=y_outer_train[inner_train_idx],
+                x_eval_raw=x_outer_train_raw[inner_val_idx],
+                y_eval=y_outer_train[inner_val_idx],
+                selector=selector,
+                add_indicator=add_indicator,
+                k=k,
+                n_neighbors=n_neighbors,
+            )
         )
-        prepared.append((x_train_sel, y_inner_train, x_val_sel, y_inner_val))
     return prepared
+
+
+def _prepare_inner_selector_view(
+    *,
+    x_train_raw: np.ndarray,
+    y_train: np.ndarray,
+    x_eval_raw: np.ndarray,
+    y_eval: np.ndarray,
+    selector: str,
+    add_indicator: bool,
+    k: int,
+    n_neighbors: int | None,
+) -> _InnerSelectorView:
+    """Prepare one tuned inner-CV selected train/eval view."""
+    x_train_sel, x_eval_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
+        x_train_raw=x_train_raw,
+        y_train=y_train,
+        x_eval_raw=x_eval_raw,
+        method=selector,
+        k=int(k),
+        scaler_name=ScalerName.STANDARD,
+        add_indicator=add_indicator,
+        n_neighbors=n_neighbors,
+    )
+    return _InnerSelectorView(
+        x_train_sel=x_train_sel,
+        y_train=y_train,
+        x_eval_sel=x_eval_sel,
+        y_eval=y_eval,
+    )
 
 
 def _evaluate_outer_fold_with_config(
@@ -167,7 +204,7 @@ def _evaluate_outer_fold_with_config(
     fold: int,
 ) -> tuple[dict[str, Any], pd.DataFrame]:
     """Evaluate a selected tuned config on one outer benchmark fold."""
-    add_indicator = replication_mode == ReplicationMode.WITH_MISSING_INDICATORS
+    add_indicator = add_indicator_for_replication_mode(replication_mode)
     x_train_sel, x_test_sel, feature_meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
         x_train_raw=x_train_raw,
         y_train=y_train,
@@ -188,30 +225,16 @@ def _evaluate_outer_fold_with_config(
     threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
     metrics = binary_metrics_at_threshold(y_test, test_scores, threshold=float(threshold))
     selected_global = set(local_to_global_feature_indices(selected_local, feature_meta))
-
-    universe = transformed_feature_metadata_from_imputer(
-        imputer=_imputer,
-        raw_feature_count=raw_feature_count,
-    )
-    universe_idx = np.asarray([int(feature.feature_index) for feature in universe], dtype=int)
-    universe_type = np.asarray([feature.feature_type for feature in universe], dtype=object)
-    universe_name = np.asarray([feature.feature_name_or_source_col for feature in universe], dtype=object)
-    selected_mask = np.isin(
-        universe_idx,
-        np.fromiter(selected_global, dtype=int, count=len(selected_global)),
-        assume_unique=False,
-    ).astype(int)
-    feature_stability_df = pd.DataFrame(
-        {
-            "selector": selector,
-            "classifier": classifier,
-            "replication_mode": replication_mode,
-            "resample_id": f"fold_{fold}",
-            "feature_index": universe_idx,
-            "feature_type": universe_type,
-            "feature_name_or_source_col": universe_name,
-            "selected": selected_mask,
-        }
+    feature_stability_df = build_feature_stability_frame(
+        selector=selector,
+        classifier=classifier,
+        replication_mode=replication_mode,
+        resample_id=f"fold_{fold}",
+        feature_universe=transformed_feature_metadata_from_imputer(
+            imputer=_imputer,
+            raw_feature_count=raw_feature_count,
+        ),
+        selected_global=selected_global,
     )
 
     row = {
@@ -220,13 +243,7 @@ def _evaluate_outer_fold_with_config(
         "replication_mode": replication_mode,
         "fold": int(fold),
         **config_fields(selector_config=selector_config, classifier_config=classifier_config),
-        "BER": float(metrics["BER"]),
-        "True+": float(metrics["True+"]),
-        "True-": float(metrics["True-"]),
-        "ROC_AUC": float(metrics["ROC_AUC"]) if np.isfinite(metrics["ROC_AUC"]) else np.nan,
-        "PR_AUC": float(metrics["PR_AUC"]) if np.isfinite(metrics["PR_AUC"]) else np.nan,
-        "MCC": float(metrics["MCC"]),
-        "F2": float(metrics["F2"]),
+        **benchmark_metric_fields(metrics),
         "threshold_outer_train": float(threshold),
         "n_train": int(len(y_train)),
         "n_test": int(len(y_test)),
@@ -306,6 +323,7 @@ def run_tuned_benchmark_replication(
     classifiers_run: list[str] | None = None,
     selectors_run: list[str] | None = None,
     _prepared_data: dict[str, Any] | None = None,
+    _cluster_id_map: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     """Run nested tuned benchmark replication and write tuned benchmark artifacts."""
     reports = ensure_reports_dir(output_dir)
@@ -316,8 +334,10 @@ def run_tuned_benchmark_replication(
     y = prepared_data["y"]
     folds = prepared_data["folds"]
 
-    classifiers_run = list(BenchmarkClassifier.ALL) if classifiers_run is None else [str(c) for c in classifiers_run]
-    selectors_run = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
+    classifiers_run, selectors_run = normalize_benchmark_run_filters(
+        classifiers_run=classifiers_run,
+        selectors_run=selectors_run,
+    )
 
     search_rows: list[dict[str, Any]] = []
     selected_rows: list[dict[str, Any]] = []
@@ -326,8 +346,8 @@ def run_tuned_benchmark_replication(
 
     for selector in selectors_run:
         selector_grid = _tuned_selector_param_grid(selector)
-        for replication_mode in (ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS):
-            add_indicator = replication_mode == ReplicationMode.WITH_MISSING_INDICATORS
+        for replication_mode in BENCHMARK_REPLICATION_MODES:
+            add_indicator = add_indicator_for_replication_mode(replication_mode)
             for classifier in classifiers_run:
                 classifier_grid = classifier_param_grid(classifier)
                 for fold_i, (train_idx, test_idx) in enumerate(folds, start=1):
@@ -392,13 +412,7 @@ def run_tuned_benchmark_replication(
                             **config_fields(selector_config=selector_config, classifier_config=classifier_config),
                             "mean_inner_ROC_AUC": float(best["mean_inner_ROC_AUC"]),
                             "mean_inner_BER": float(best["mean_inner_BER"]),
-                            "BER": float(fold_row["BER"]),
-                            "True+": float(fold_row["True+"]),
-                            "True-": float(fold_row["True-"]),
-                            "ROC_AUC": float(fold_row["ROC_AUC"]) if np.isfinite(fold_row["ROC_AUC"]) else np.nan,
-                            "PR_AUC": float(fold_row["PR_AUC"]) if np.isfinite(fold_row["PR_AUC"]) else np.nan,
-                            "MCC": float(fold_row["MCC"]),
-                            "F2": float(fold_row["F2"]),
+                            **benchmark_metric_fields(fold_row),
                         }
                     )
 
@@ -421,7 +435,7 @@ def run_tuned_benchmark_replication(
             x=x,
             y=y,
             selector=str(row.selector),
-            add_indicator=str(row.replication_mode) == ReplicationMode.WITH_MISSING_INDICATORS,
+            add_indicator=add_indicator_for_replication_mode(str(row.replication_mode)),
             selector_config=selector_config,
             raw_feature_count=len(feature_columns),
             k=int(row.k),
@@ -445,21 +459,12 @@ def run_tuned_benchmark_replication(
                 "gamma": row.gamma,
                 "C": row.C,
                 "n_neighbors": row.n_neighbors,
-                "BER_full_dataset": float(full_fit_payload["BER_full_dataset"]),
-                "True+_full_dataset": float(full_fit_payload["True+_full_dataset"]),
-                "True-_full_dataset": float(full_fit_payload["True-_full_dataset"]),
-                "ROC_AUC_full_dataset": float(full_fit_payload["ROC_AUC_full_dataset"]),
-                "PR_AUC_full_dataset": float(full_fit_payload["PR_AUC_full_dataset"]),
-                "MCC_full_dataset": float(full_fit_payload["MCC_full_dataset"]),
-                "F2_full_dataset": float(full_fit_payload["F2_full_dataset"]),
-                "n_samples_full_dataset": int(full_fit_payload["n_samples_full_dataset"]),
-                "n_fails_full_dataset": int(full_fit_payload["n_fails_full_dataset"]),
-                "n_selected_features_full_dataset": int(full_fit_payload["n_selected_features_full_dataset"]),
+                **benchmark_full_dataset_fields(full_fit_payload),
             }
         )
     full_fit_df = pd.DataFrame(full_fit_rows)
 
-    cluster_id_map = build_cluster_id_map(x_raw=x)
+    cluster_id_map = _cluster_id_map if _cluster_id_map is not None else build_cluster_id_map(x_raw=x)
     feature_report_df = build_feature_report(
         feature_stability_df=feature_stability_df,
         benchmark_configs_df=best_df,
@@ -485,33 +490,11 @@ def run_tuned_benchmark_replication(
         full_fit_df=full_fit_df,
     )
 
-    manifest_path = reports / ArtifactName.MANIFEST
-    if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    else:
-        commit, dirty = git_commit_and_dirty(project_root)
-        manifest = {
-            "manifest_version": "2.0",
-            "study_spec_path": study_spec_path(),
-            "study_spec_sha256": strategy_sha256(project_root),
-            "git_commit": commit,
-            "git_dirty": dirty,
-            "python_executable": sys.executable,
-            "library_versions": library_versions(),
-            "primary_study_status": StudyStatus.NOT_RUN,
-            "benchmark_original_status": StudyStatus.NOT_RUN,
-            "benchmark_tuned_status": StudyStatus.NOT_RUN,
-            "temporal_robustness_status": StudyStatus.NOT_RUN,
-            "temporal_claim_restrictions": [],
-            "industrialization_notes": [],
-        }
-
-    manifest["benchmark_tuned_status"] = StudyStatus.PASSED
-    manifest["primary_study_status"] = aggregate_primary_status(
-        str(manifest.get("benchmark_original_status", StudyStatus.NOT_RUN)),
-        StudyStatus.PASSED,
+    manifest = write_benchmark_status(
+        manifest_path=reports / ArtifactName.MANIFEST,
+        project_root=project_root,
+        tuned_status=StudyStatus.PASSED,
     )
-    write_manifest(manifest, manifest_path)
     return {
         "benchmark_tuned_status": StudyStatus.PASSED,
         "primary_study_status": manifest["primary_study_status"],

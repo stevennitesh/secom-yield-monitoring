@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import numpy as np
 
+from secom.feature_select._ranking import rank_desc_with_index_tiebreak, sanitize_scores
 
-def _rank_desc_with_index_tiebreak(scores: np.ndarray) -> np.ndarray:
-    """Rank higher scores first, with deterministic lower-index tie breaks."""
-    feature_indices = np.arange(scores.shape[0], dtype=int)
-    return np.lexsort((feature_indices, -scores))
+
+def _class_neighbor_candidates(y: np.ndarray, row_idx: int) -> tuple[np.ndarray, np.ndarray]:
+    hit_candidates = np.flatnonzero(y == y[row_idx])
+    hit_candidates = hit_candidates[hit_candidates != row_idx]
+    miss_candidates = np.flatnonzero(y != y[row_idx])
+    return hit_candidates, miss_candidates
+
+
+def _nearest_candidates(distances: np.ndarray, candidates: np.ndarray, n_neighbors: int) -> np.ndarray:
+    k = min(int(n_neighbors), candidates.size)
+    return candidates[np.argpartition(distances[candidates], k - 1)[:k]]
 
 
 def _fallback_relief_scores(x: np.ndarray, y: np.ndarray, n_neighbors: int) -> np.ndarray:
@@ -21,23 +29,18 @@ def _fallback_relief_scores(x: np.ndarray, y: np.ndarray, n_neighbors: int) -> n
     for row_idx in range(n_rows):
         row = x[row_idx]
         distances = np.linalg.norm(x - row, axis=1)
-        hit_candidates = np.where(y == y[row_idx])[0]
-        hit_candidates = hit_candidates[hit_candidates != row_idx]
-        miss_candidates = np.where(y != y[row_idx])[0]
+        hit_candidates, miss_candidates = _class_neighbor_candidates(y, row_idx)
 
         if hit_candidates.size == 0 or miss_candidates.size == 0:
             continue
 
-        k_hit = min(n_neighbors, hit_candidates.size)
-        k_miss = min(n_neighbors, miss_candidates.size)
-        nearest_hits = hit_candidates[np.argpartition(distances[hit_candidates], k_hit - 1)[:k_hit]]
-        nearest_misses = miss_candidates[np.argpartition(distances[miss_candidates], k_miss - 1)[:k_miss]]
+        nearest_hits = _nearest_candidates(distances, hit_candidates, n_neighbors)
+        nearest_misses = _nearest_candidates(distances, miss_candidates, n_neighbors)
         weights += np.mean(np.abs(row - x[nearest_misses]), axis=0)
         weights -= np.mean(np.abs(row - x[nearest_hits]), axis=0)
 
     weights = weights / max(n_rows, 1)
-    weights[~np.isfinite(weights)] = -np.inf
-    return weights
+    return sanitize_scores(weights)
 
 
 def relief_rank_features(
@@ -62,6 +65,6 @@ def relief_rank_features(
         # Keep the study runnable in minimal environments while preserving deterministic order.
         scores = _fallback_relief_scores(x, y, n_neighbors=int(n_neighbors))
 
-    scores[~np.isfinite(scores)] = -np.inf
-    order = _rank_desc_with_index_tiebreak(scores)
+    scores = sanitize_scores(scores)
+    order = rank_desc_with_index_tiebreak(scores)
     return order, scores

@@ -8,6 +8,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 from sklearn.model_selection import StratifiedKFold
 
 from secom.config import (
@@ -19,7 +21,6 @@ from secom.config import (
     ScalerName,
     SEED_BENCHMARK,
     SelectorName,
-    StudyStatus,
 )
 from secom.io import load_raw_secom, parse_sort_and_label
 from secom.metrics import (
@@ -29,7 +30,7 @@ from secom.metrics import (
     find_ber_optimal_threshold,
     safe_std,
 )
-from secom.models import fit_benchmark_krr_model, make_benchmark_krr_model, make_benchmark_logreg_model
+from secom.models import fit_benchmark_krr_model, make_benchmark_logreg_model
 from secom.preprocess import (
     build_feature_universe,
     local_to_global_feature_indices,
@@ -38,12 +39,27 @@ from secom.preprocess import (
     transformed_feature_metadata_from_imputer,
 )
 from secom.selection.engine import select_features
-from secom.selection.tuning import gamma_sort_key
 
 BENCHMARK_FEATURE_BUDGET = 40
 BOOTSTRAP_N = 1000
 BOOTSTRAP_SEED = 42
 VALUE_CLUSTER_CORR_THRESHOLD = 0.95
+BENCHMARK_METRICS = ("BER", "True+", "True-", "ROC_AUC", "PR_AUC", "MCC", "F2")
+AUC_METRICS = {"ROC_AUC", "PR_AUC"}
+FULL_DATASET_COUNT_FIELDS = (
+    "n_samples_full_dataset",
+    "n_fails_full_dataset",
+    "n_selected_features_full_dataset",
+)
+BENCHMARK_REPLICATION_MODES = (
+    ReplicationMode.STRICT,
+    ReplicationMode.WITH_MISSING_INDICATORS,
+)
+
+
+def gamma_sort_key(gamma: float | None) -> float:
+    """Sort ``None`` before numeric RBF gamma values."""
+    return -1.0 if gamma is None else float(gamma)
 
 
 def selector_param_grid(selector: str) -> list[dict[str, Any]]:
@@ -64,9 +80,23 @@ def classifier_param_grid(classifier: str) -> list[dict[str, Any]]:
         return [{"alpha": float(alpha), "gamma": gamma} for alpha, gamma in product(alphas, gammas)]
     if classifier == BenchmarkClassifier.LOGREG:
         return [{"C": float(v)} for v in sorted(float(c) for c in BENCHMARK_LOGREG_C_GRID)]
-    if classifier == BenchmarkClassifier.KRR_STRICT:
-        return [{"alpha": 1.0, "gamma": None}]
     raise ValueError(f"Unknown benchmark classifier mode: {classifier}")
+
+
+def add_indicator_for_replication_mode(replication_mode: str) -> bool:
+    """Return whether a benchmark replication mode includes missingness indicators."""
+    return str(replication_mode) == ReplicationMode.WITH_MISSING_INDICATORS
+
+
+def normalize_benchmark_run_filters(
+    *,
+    classifiers_run: list[str] | None,
+    selectors_run: list[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Return concrete classifier and selector lists for benchmark workflows."""
+    classifiers = list(BenchmarkClassifier.ALL) if classifiers_run is None else [str(c) for c in classifiers_run]
+    selectors = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
+    return classifiers, selectors
 
 
 def selector_kwargs(selector: str, selector_config: dict[str, Any]) -> dict[str, Any]:
@@ -142,18 +172,6 @@ def config_tie_break_key(
     return selector_key + classifier_key
 
 
-def aggregate_primary_status(original_status: str, tuned_status: str) -> str:
-    """Combine original and tuned benchmark statuses into the benchmark study status."""
-    statuses = [str(original_status), str(tuned_status)]
-    if any(status == StudyStatus.FAILED for status in statuses):
-        return StudyStatus.FAILED
-    if any(status == StudyStatus.WARNING for status in statuses):
-        return StudyStatus.WARNING
-    if any(status == StudyStatus.PASSED for status in statuses):
-        return StudyStatus.PASSED
-    return StudyStatus.NOT_RUN
-
-
 def prepare_cv(
     df: pd.DataFrame,
     feature_cols: list[str],
@@ -183,9 +201,71 @@ def prepare_benchmark_dataset(input_dir: Path) -> dict[str, Any]:
 
 def build_primary_feature_universe(raw_feature_count: int, add_indicator: bool) -> list[Any]:
     """Return the reportable feature universe for strict or missing-indicator modes."""
+    feature_universe = build_feature_universe(raw_feature_count)
     if add_indicator:
-        return build_feature_universe(raw_feature_count)
-    return build_feature_universe(raw_feature_count)[:raw_feature_count]
+        return feature_universe
+    return feature_universe[:raw_feature_count]
+
+
+def benchmark_metric_fields(
+    metrics: dict[str, Any],
+    *,
+    prefix: str = "",
+    suffix: str = "",
+) -> dict[str, float]:
+    """Normalize core benchmark metrics into artifact-ready float fields."""
+    fields: dict[str, float] = {}
+    for metric in BENCHMARK_METRICS:
+        value = float(metrics[metric])
+        fields[f"{prefix}{metric}{suffix}"] = value if metric not in AUC_METRICS or np.isfinite(value) else np.nan
+    return fields
+
+
+def benchmark_full_dataset_fields(full_fit_payload: dict[str, Any]) -> dict[str, float | int]:
+    """Return full-dataset summary fields used by benchmark full-fit artifacts."""
+    return {
+        **{f"{metric}_full_dataset": float(full_fit_payload[f"{metric}_full_dataset"]) for metric in BENCHMARK_METRICS},
+        **{field: int(full_fit_payload[field]) for field in FULL_DATASET_COUNT_FIELDS},
+    }
+
+
+def prefixed_benchmark_metric_fields(payload: dict[str, Any], prefix: str) -> dict[str, float]:
+    """Read benchmark metric fields that already carry a shared prefix."""
+    return {f"{prefix}{metric}": float(payload[f"{prefix}{metric}"]) for metric in BENCHMARK_METRICS}
+
+
+def build_feature_stability_frame(
+    *,
+    selector: str,
+    replication_mode: str,
+    resample_id: str,
+    feature_universe: list[Any],
+    selected_global: set[int],
+    classifier: str | None = None,
+) -> pd.DataFrame:
+    """Build a feature-stability artifact frame for a selected-feature resample."""
+    universe_feature_index = np.asarray([int(feature.feature_index) for feature in feature_universe], dtype=int)
+    selected_mask = np.isin(
+        universe_feature_index,
+        np.fromiter(selected_global, dtype=int, count=len(selected_global)),
+        assume_unique=False,
+    ).astype(int)
+    data: dict[str, Any] = {"selector": selector}
+    if classifier is not None:
+        data["classifier"] = classifier
+    data.update(
+        {
+            "replication_mode": replication_mode,
+            "resample_id": resample_id,
+            "feature_index": universe_feature_index,
+            "feature_type": np.asarray([feature.feature_type for feature in feature_universe], dtype=object),
+            "feature_name_or_source_col": np.asarray(
+                [feature.feature_name_or_source_col for feature in feature_universe], dtype=object
+            ),
+            "selected": selected_mask,
+        }
+    )
+    return pd.DataFrame(data)
 
 
 def prepare_full_selector_view(
@@ -241,11 +321,6 @@ def prepare_selector_views(
     fold_views: list[dict[str, Any]] = []
     feature_stability_frames: list[pd.DataFrame] = []
     feature_universe = build_primary_feature_universe(raw_feature_count=raw_feature_count, add_indicator=add_indicator)
-    universe_feature_index = np.asarray([int(feature.feature_index) for feature in feature_universe], dtype=int)
-    universe_feature_type = np.asarray([feature.feature_type for feature in feature_universe], dtype=object)
-    universe_feature_name = np.asarray(
-        [feature.feature_name_or_source_col for feature in feature_universe], dtype=object
-    )
     replication_mode = ReplicationMode.WITH_MISSING_INDICATORS if add_indicator else ReplicationMode.STRICT
 
     for fold_i, (train_idx, test_idx) in enumerate(folds, start=1):
@@ -289,22 +364,13 @@ def prepare_selector_views(
                 "n_selected_features": int(selected_local.size),
             }
         )
-        selected_mask = np.isin(
-            universe_feature_index,
-            np.fromiter(selected_global, dtype=int, count=len(selected_global)),
-            assume_unique=False,
-        ).astype(int)
         feature_stability_frames.append(
-            pd.DataFrame(
-                {
-                    "selector": selector,
-                    "replication_mode": replication_mode,
-                    "resample_id": f"fold_{fold_i}",
-                    "feature_index": universe_feature_index,
-                    "feature_type": universe_feature_type,
-                    "feature_name_or_source_col": universe_feature_name,
-                    "selected": selected_mask,
-                }
+            build_feature_stability_frame(
+                selector=selector,
+                replication_mode=replication_mode,
+                resample_id=f"fold_{fold_i}",
+                feature_universe=feature_universe,
+                selected_global=selected_global,
             )
         )
 
@@ -352,14 +418,6 @@ def fit_classifier_scores(
             else np.empty(0, dtype=float)
         )
         eval_scores = np.asarray(clf.predict_proba(x_eval_sel)[:, 1], dtype=float)
-    elif classifier == BenchmarkClassifier.KRR_STRICT:
-        clf = make_benchmark_krr_model(alpha=1.0, gamma=None)
-        y_train_krr = 2 * np.asarray(y_train, dtype=int) - 1
-        clf.fit(x_train_sel, y_train_krr)
-        train_scores = (
-            np.asarray(clf.predict(x_train_sel), dtype=float) if include_train_scores else np.empty(0, dtype=float)
-        )
-        eval_scores = np.asarray(clf.predict(x_eval_sel), dtype=float)
     else:
         raise ValueError(f"Unknown benchmark classifier mode: {classifier}")
     return train_scores, eval_scores
@@ -397,13 +455,7 @@ def fit_full_dataset(
     metrics_full = binary_metrics_at_threshold(y_true=y, scores=scores, threshold=float(threshold_full))
     return {
         "threshold_oof_global": float(threshold_full),
-        "BER_full_dataset": float(metrics_full["BER"]),
-        "True+_full_dataset": float(metrics_full["True+"]),
-        "True-_full_dataset": float(metrics_full["True-"]),
-        "ROC_AUC_full_dataset": float(metrics_full["ROC_AUC"]) if np.isfinite(metrics_full["ROC_AUC"]) else np.nan,
-        "PR_AUC_full_dataset": float(metrics_full["PR_AUC"]) if np.isfinite(metrics_full["PR_AUC"]) else np.nan,
-        "MCC_full_dataset": float(metrics_full["MCC"]),
-        "F2_full_dataset": float(metrics_full["F2"]),
+        **benchmark_metric_fields(metrics_full, suffix="_full_dataset"),
         "n_samples_full_dataset": int(prepared_full["n_samples_full_dataset"]),
         "n_fails_full_dataset": int(prepared_full["n_fails_full_dataset"]),
         "n_selected_features_full_dataset": int(prepared_full["n_selected_features_full_dataset"]),
@@ -436,30 +488,11 @@ def build_cluster_id_map(x_raw: np.ndarray) -> dict[int, int]:
     value_x = imputer.fit_transform(x_raw)
     corr = safe_value_corrcoef(value_x)
     p = corr.shape[0]
-    adj = {i: set() for i in range(p)}
-    for i in range(p):
-        for j in range(i + 1, p):
-            cij = corr[i, j]
-            if np.isfinite(cij) and abs(cij) >= VALUE_CLUSTER_CORR_THRESHOLD:
-                adj[i].add(j)
-                adj[j].add(i)
-    cluster_id: dict[int, int] = {}
-    cid = 0
-    seen = set()
-    for i in range(p):
-        if i in seen:
-            continue
-        stack = [i]
-        seen.add(i)
-        while stack:
-            v = stack.pop()
-            cluster_id[v] = cid
-            for nb in adj[v]:
-                if nb not in seen:
-                    seen.add(nb)
-                    stack.append(nb)
-        cid += 1
-    return cluster_id
+    if p == 0:
+        return {}
+    adjacency = np.isfinite(corr) & (np.abs(corr) >= VALUE_CLUSTER_CORR_THRESHOLD)
+    _n_components, labels = connected_components(csr_matrix(adjacency), directed=False, return_labels=True)
+    return {idx: int(label) for idx, label in enumerate(labels)}
 
 
 def build_feature_report(
@@ -529,62 +562,34 @@ def build_feature_report(
 def build_benchmark_summary_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate fold metrics with bootstrap confidence intervals."""
     summary_rows: list[dict[str, Any]] = []
+    bootstrap_draws_by_n: dict[int, np.ndarray] = {}
     for (selector, classifier, mode), frame in fold_metrics_df.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
     ):
-        ber_values = frame["BER"].to_numpy(dtype=float)
-        tp_values = frame["True+"].to_numpy(dtype=float)
-        tn_values = frame["True-"].to_numpy(dtype=float)
-        roc_values = frame["ROC_AUC"].to_numpy(dtype=float)
-        pr_values = frame["PR_AUC"].to_numpy(dtype=float)
-        mcc_values = frame["MCC"].to_numpy(dtype=float)
-        f2_values = frame["F2"].to_numpy(dtype=float)
-        draw_indices = bootstrap_resample_indices(n_values=len(frame), n_boot=BOOTSTRAP_N, seed=BOOTSTRAP_SEED)
-        ber_lo, ber_hi = bootstrap_ci_for_mean(ber_values, alpha=0.95, draw_indices=draw_indices)
-        tp_lo, tp_hi = bootstrap_ci_for_mean(tp_values, alpha=0.95, draw_indices=draw_indices)
-        tn_lo, tn_hi = bootstrap_ci_for_mean(tn_values, alpha=0.95, draw_indices=draw_indices)
-        roc_lo, roc_hi = bootstrap_ci_for_mean(roc_values, alpha=0.95, draw_indices=draw_indices)
-        pr_lo, pr_hi = bootstrap_ci_for_mean(pr_values, alpha=0.95, draw_indices=draw_indices)
-        mcc_lo, mcc_hi = bootstrap_ci_for_mean(mcc_values, alpha=0.95, draw_indices=draw_indices)
-        f2_lo, f2_hi = bootstrap_ci_for_mean(f2_values, alpha=0.95, draw_indices=draw_indices)
-        summary_rows.append(
-            {
-                "selector": selector,
-                "classifier": classifier,
-                "replication_mode": mode,
-                "n_folds": int(len(frame)),
-                "n_boot": BOOTSTRAP_N,
-                "boot_seed": BOOTSTRAP_SEED,
-                "mean_BER": float(np.mean(ber_values)),
-                "std_BER": safe_std(ber_values),
-                "CI_lower_BER": ber_lo,
-                "CI_upper_BER": ber_hi,
-                "mean_True+": float(np.mean(tp_values)),
-                "std_True+": safe_std(tp_values),
-                "CI_lower_True+": tp_lo,
-                "CI_upper_True+": tp_hi,
-                "mean_True-": float(np.mean(tn_values)),
-                "std_True-": safe_std(tn_values),
-                "CI_lower_True-": tn_lo,
-                "CI_upper_True-": tn_hi,
-                "mean_ROC_AUC": float(np.mean(roc_values)),
-                "std_ROC_AUC": safe_std(roc_values),
-                "CI_lower_ROC_AUC": roc_lo,
-                "CI_upper_ROC_AUC": roc_hi,
-                "mean_PR_AUC": float(np.mean(pr_values)),
-                "std_PR_AUC": safe_std(pr_values),
-                "CI_lower_PR_AUC": pr_lo,
-                "CI_upper_PR_AUC": pr_hi,
-                "mean_MCC": float(np.mean(mcc_values)),
-                "std_MCC": safe_std(mcc_values),
-                "CI_lower_MCC": mcc_lo,
-                "CI_upper_MCC": mcc_hi,
-                "mean_F2": float(np.mean(f2_values)),
-                "std_F2": safe_std(f2_values),
-                "CI_lower_F2": f2_lo,
-                "CI_upper_F2": f2_hi,
-            }
-        )
+        n_values = int(len(frame))
+        if n_values not in bootstrap_draws_by_n:
+            bootstrap_draws_by_n[n_values] = bootstrap_resample_indices(
+                n_values=n_values,
+                n_boot=BOOTSTRAP_N,
+                seed=BOOTSTRAP_SEED,
+            )
+        draw_indices = bootstrap_draws_by_n[n_values]
+        row = {
+            "selector": selector,
+            "classifier": classifier,
+            "replication_mode": mode,
+            "n_folds": n_values,
+            "n_boot": BOOTSTRAP_N,
+            "boot_seed": BOOTSTRAP_SEED,
+        }
+        for metric in BENCHMARK_METRICS:
+            values = frame[metric].to_numpy(dtype=float)
+            ci_lo, ci_hi = bootstrap_ci_for_mean(values, alpha=0.95, draw_indices=draw_indices)
+            row[f"mean_{metric}"] = float(np.mean(values))
+            row[f"std_{metric}"] = safe_std(values)
+            row[f"CI_lower_{metric}"] = ci_lo
+            row[f"CI_upper_{metric}"] = ci_hi
+        summary_rows.append(row)
     return pd.DataFrame(summary_rows)
 
 

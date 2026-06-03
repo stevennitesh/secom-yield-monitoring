@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Final
 
 SEED_BENCHMARK: Final[int] = 42
 SEEDS_STAGE_B: Final[list[int]] = [42, 11, 23, 37, 59]
 SEEDS_PHASE2: Final[list[int]] = [42, 11, 23, 37, 59]
-SEED_PHASE3: Final[int] = 42
 
 LOCKBOX_FRAC: Final[float] = 0.15
 MIN_TEST_FAILS: Final[int] = 20
@@ -55,14 +52,6 @@ class ThresholdPolicy:
     OPERATIONAL = "operational"
 
 
-class EvalScope:
-    """Evaluation scope labels used by report-facing artifacts."""
-
-    BENCHMARK = "benchmark"
-    TEMPORAL = "temporal"
-    LOCKBOX = "lockbox"
-
-
 class ModelScope:
     """Temporal role labels that can be used for claim restrictions."""
 
@@ -82,9 +71,7 @@ class BenchmarkClassifier:
 
     KRR = "krr"
     LOGREG = "logreg"
-    KRR_STRICT = "krr_strict"
     ALL = [KRR, LOGREG]
-    OPTIONAL_BENCHMARK = [KRR_STRICT]
 
 
 class FoldPlanName:
@@ -171,20 +158,6 @@ REQUIRED_ARTIFACTS_TEMPORAL: Final[list[str]] = [
     ArtifactName.TEMPORAL_COST_CURVES,
     ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
 ]
-
-
-@dataclass(frozen=True)
-class Paths:
-    """Resolved project, input, and output paths for workflow callers."""
-
-    project_root: Path
-    input_dir: Path
-    output_dir: Path
-
-    @property
-    def reports_dir(self) -> Path:
-        """Return the canonical reports directory below the output root."""
-        return self.output_dir / "reports"
 
 
 MANIFEST_REQUIRED_KEYS: Final[list[str]] = [

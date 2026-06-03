@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -12,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from secom.artifacts import read_csv_if_exists, read_manifest
 from secom.config import ArtifactName, StudyStatus, ThresholdPolicy
 from secom.report_figures import (
     write_benchmark_comparison_figure,
@@ -21,13 +21,6 @@ from secom.report_figures import (
     write_tuned_delta_figure,
     write_workload_cost_figure,
 )
-
-
-def _read_csv(path: Path) -> pd.DataFrame | None:
-    """Read an artifact CSV when present."""
-    if not path.exists():
-        return None
-    return pd.read_csv(path)
 
 
 def _format_float(value: object) -> str:
@@ -65,8 +58,10 @@ def _markdown_table(
         "| " + " | ".join(header_row) + " |",
         "|" + "|".join(["---"] * len(columns)) + "|",
     ]
-    for row in table.itertuples(index=False, name=None):
-        lines.append("| " + " | ".join(_format_cell(value) for value in row) + " |")
+    lines.extend(
+        "| " + " | ".join(_format_cell(value) for value in row) + " |"
+        for row in table.itertuples(index=False, name=None)
+    )
     return lines
 
 
@@ -107,28 +102,29 @@ def _supporting_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
     )
 
 
-def _original_search_space_table(benchmark_sweep: pd.DataFrame) -> list[str]:
-    """Summarize original benchmark search-space breadth by selector/classifier/mode."""
+def _search_space_count(frame: pd.DataFrame, column: str) -> int:
+    if column == "n_neighbors":
+        values = frame[column].dropna().to_numpy(dtype=float) if column in frame.columns else np.array([], dtype=float)
+        return int(pd.unique(values).size) if values.size else 0
+    return int(frame[column].dropna().nunique()) if column in frame.columns else 0
+
+
+def _search_space_table(frame: pd.DataFrame, *, evaluated_columns: list[str]) -> list[str]:
     summary_rows = []
-    for (selector, classifier, mode), frame in benchmark_sweep.groupby(
+    for (selector, classifier, mode), group in frame.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
     ):
-        nn_values = (
-            frame["n_neighbors"].dropna().to_numpy(dtype=float)
-            if "n_neighbors" in frame.columns
-            else np.array([], dtype=float)
-        )
         summary_rows.append(
             {
                 "selector": selector,
                 "classifier": classifier,
                 "mode": mode,
-                "evaluated_configs": int(frame[["k", "alpha", "gamma", "C", "n_neighbors"]].drop_duplicates().shape[0]),
-                "k_values": int(frame["k"].nunique()) if "k" in frame.columns else 0,
-                "c_values": int(frame["C"].dropna().nunique()) if "C" in frame.columns else 0,
-                "alpha_values": int(frame["alpha"].dropna().nunique()) if "alpha" in frame.columns else 0,
-                "gamma_values": int(frame["gamma"].dropna().nunique()) if "gamma" in frame.columns else 0,
-                "n_neighbors_values": int(pd.unique(nn_values).size) if nn_values.size else 0,
+                "evaluated_configs": int(group[evaluated_columns].drop_duplicates().shape[0]),
+                "k_values": _search_space_count(group, "k"),
+                "c_values": _search_space_count(group, "C"),
+                "alpha_values": _search_space_count(group, "alpha"),
+                "gamma_values": _search_space_count(group, "gamma"),
+                "n_neighbors_values": _search_space_count(group, "n_neighbors"),
             }
         )
     return _markdown_table(
@@ -145,6 +141,11 @@ def _original_search_space_table(benchmark_sweep: pd.DataFrame) -> list[str]:
             "n_neighbors_values",
         ],
     )
+
+
+def _original_search_space_table(benchmark_sweep: pd.DataFrame) -> list[str]:
+    """Summarize original benchmark search-space breadth by selector/classifier/mode."""
+    return _search_space_table(benchmark_sweep, evaluated_columns=["k", "alpha", "gamma", "C", "n_neighbors"])
 
 
 def _original_best_config_table(benchmark_best: pd.DataFrame) -> list[str]:
@@ -172,43 +173,9 @@ def _original_best_config_table(benchmark_best: pd.DataFrame) -> list[str]:
 
 def _tuned_search_space_table(benchmark_tuned_search: pd.DataFrame) -> list[str]:
     """Summarize tuned benchmark nested-search breadth by selector/classifier/mode."""
-    summary_rows = []
-    for (selector, classifier, mode), frame in benchmark_tuned_search.groupby(
-        ["selector", "classifier", "replication_mode"], sort=False
-    ):
-        nn_values = (
-            frame["n_neighbors"].dropna().to_numpy(dtype=float)
-            if "n_neighbors" in frame.columns
-            else np.array([], dtype=float)
-        )
-        summary_rows.append(
-            {
-                "selector": selector,
-                "classifier": classifier,
-                "mode": mode,
-                "evaluated_configs": int(
-                    frame[["fold", "k", "alpha", "gamma", "C", "n_neighbors"]].drop_duplicates().shape[0]
-                ),
-                "k_values": int(frame["k"].nunique()),
-                "c_values": int(frame["C"].dropna().nunique()),
-                "alpha_values": int(frame["alpha"].dropna().nunique()),
-                "gamma_values": int(frame["gamma"].dropna().nunique()),
-                "n_neighbors_values": int(pd.unique(nn_values).size) if nn_values.size else 0,
-            }
-        )
-    return _markdown_table(
-        pd.DataFrame(summary_rows),
-        [
-            "selector",
-            "classifier",
-            "mode",
-            "evaluated_configs",
-            "k_values",
-            "c_values",
-            "alpha_values",
-            "gamma_values",
-            "n_neighbors_values",
-        ],
+    return _search_space_table(
+        benchmark_tuned_search,
+        evaluated_columns=["fold", "k", "alpha", "gamma", "C", "n_neighbors"],
     )
 
 
@@ -294,11 +261,11 @@ def _best_row_feature_table(
             "| feature | type | selection_frequency | cluster_id |",
             "|---|---|---:|---:|",
         ]
-        for row in rows.itertuples(index=False):
-            lines.append(
-                f"| {row.feature_name_or_source_col} | {row.feature_type} |"
-                f" {_format_float(row.selection_frequency)} | {_format_float(row.cluster_id)} |"
-            )
+        lines.extend(
+            f"| {row.feature_name_or_source_col} | {row.feature_type} |"
+            f" {_format_float(row.selection_frequency)} | {_format_float(row.cluster_id)} |"
+            for row in rows.itertuples(index=False)
+        )
         return lines
 
     lines = [
@@ -340,8 +307,19 @@ class ReportContext:
     best_tuned_benchmark_row: pd.Series | None
     modal_tuned_config_row: pd.Series | None
     primary_temporal_row: pd.Series | None
+    primary_scientific_lockbox_row: pd.Series | None
     drift_row: pd.Series | None
     mspc_lockbox_row: pd.Series | None
+
+
+def _first_row(frame: pd.DataFrame | None, mask: pd.Series | None = None) -> pd.Series | None:
+    """Return the first row from an optional artifact frame."""
+    if frame is None or frame.empty:
+        return None
+    rows = frame if mask is None else frame[mask]
+    if rows.empty:
+        return None
+    return rows.iloc[0]
 
 
 def _load_report_context(output_dir: Path) -> ReportContext:
@@ -351,23 +329,23 @@ def _load_report_context(output_dir: Path) -> ReportContext:
     if not manifest_path.exists():
         raise FileNotFoundError(f"Missing manifest: {manifest_path}")
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    benchmark_sweep = _read_csv(reports / ArtifactName.BENCHMARK_SWEEP)
-    benchmark_best = _read_csv(reports / ArtifactName.BENCHMARK_BEST_CONFIG)
-    benchmark_summary = _read_csv(reports / ArtifactName.BENCHMARK_SUMMARY)
-    benchmark_ablation = _read_csv(reports / ArtifactName.BENCHMARK_ABLATION)
-    feature_report = _read_csv(reports / ArtifactName.FEATURE_REPORT)
-    benchmark_tuned_search = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_SEARCH)
-    benchmark_tuned_best = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_BEST_CONFIG)
-    benchmark_tuned_summary = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
-    benchmark_tuned_ablation = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_ABLATION)
-    benchmark_tuned_feature_report = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
-    temporal_selection = _read_csv(reports / ArtifactName.TEMPORAL_MODEL_SELECTION)
-    temporal_lockbox = _read_csv(reports / ArtifactName.TEMPORAL_LOCKBOX)
-    temporal_drift = _read_csv(reports / ArtifactName.TEMPORAL_DRIFT)
-    temporal_mspc = _read_csv(reports / ArtifactName.TEMPORAL_MSPC)
-    temporal_manager = _read_csv(reports / ArtifactName.TEMPORAL_MANAGER_OUTPUTS)
-    temporal_cost = _read_csv(reports / ArtifactName.TEMPORAL_COST_CURVES)
+    manifest = read_manifest(manifest_path)
+    benchmark_sweep = read_csv_if_exists(reports / ArtifactName.BENCHMARK_SWEEP)
+    benchmark_best = read_csv_if_exists(reports / ArtifactName.BENCHMARK_BEST_CONFIG)
+    benchmark_summary = read_csv_if_exists(reports / ArtifactName.BENCHMARK_SUMMARY)
+    benchmark_ablation = read_csv_if_exists(reports / ArtifactName.BENCHMARK_ABLATION)
+    feature_report = read_csv_if_exists(reports / ArtifactName.FEATURE_REPORT)
+    benchmark_tuned_search = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_SEARCH)
+    benchmark_tuned_best = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_BEST_CONFIG)
+    benchmark_tuned_summary = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
+    benchmark_tuned_ablation = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_ABLATION)
+    benchmark_tuned_feature_report = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
+    temporal_selection = read_csv_if_exists(reports / ArtifactName.TEMPORAL_MODEL_SELECTION)
+    temporal_lockbox = read_csv_if_exists(reports / ArtifactName.TEMPORAL_LOCKBOX)
+    temporal_drift = read_csv_if_exists(reports / ArtifactName.TEMPORAL_DRIFT)
+    temporal_mspc = read_csv_if_exists(reports / ArtifactName.TEMPORAL_MSPC)
+    temporal_manager = read_csv_if_exists(reports / ArtifactName.TEMPORAL_MANAGER_OUTPUTS)
+    temporal_cost = read_csv_if_exists(reports / ArtifactName.TEMPORAL_COST_CURVES)
 
     # These chosen rows are narrative anchors only; full evidence tables remain in the report.
     best_benchmark_row = None
@@ -389,21 +367,23 @@ def _load_report_context(output_dir: Path) -> ReportContext:
             ascending=[False, True, True, True, True],
         ).iloc[0]
 
-    primary_temporal_row = None
-    if temporal_selection is not None and not temporal_selection.empty:
-        primary_rows = temporal_selection[temporal_selection["is_primary"].astype(bool)]
-        if not primary_rows.empty:
-            primary_temporal_row = primary_rows.iloc[0]
+    primary_temporal_row = _first_row(
+        temporal_selection,
+        temporal_selection["is_primary"].astype(bool) if temporal_selection is not None else None,
+    )
 
-    drift_row = None
-    if temporal_drift is not None and not temporal_drift.empty:
-        drift_row = temporal_drift.iloc[0]
+    primary_scientific_lockbox_row = _first_row(
+        temporal_lockbox,
+        ((temporal_lockbox["role"] == "primary") & (temporal_lockbox["threshold_policy"] == ThresholdPolicy.SCIENTIFIC))
+        if temporal_lockbox is not None
+        else None,
+    )
 
-    mspc_lockbox_row = None
-    if temporal_mspc is not None and not temporal_mspc.empty:
-        rows = temporal_mspc[temporal_mspc["eval_scope"] == "lockbox"]
-        if not rows.empty:
-            mspc_lockbox_row = rows.iloc[0]
+    drift_row = _first_row(temporal_drift)
+    mspc_lockbox_row = _first_row(
+        temporal_mspc,
+        temporal_mspc["eval_scope"] == "lockbox" if temporal_mspc is not None else None,
+    )
 
     return ReportContext(
         reports_dir=reports,
@@ -428,6 +408,7 @@ def _load_report_context(output_dir: Path) -> ReportContext:
         best_tuned_benchmark_row=best_tuned_benchmark_row,
         modal_tuned_config_row=modal_tuned_config_row,
         primary_temporal_row=primary_temporal_row,
+        primary_scientific_lockbox_row=primary_scientific_lockbox_row,
         drift_row=drift_row,
         mspc_lockbox_row=mspc_lockbox_row,
     )
@@ -435,8 +416,7 @@ def _load_report_context(output_dir: Path) -> ReportContext:
 
 def _append_bullet_list(lines: list[str], items: list[str]) -> None:
     """Append Markdown bullet lines in-place."""
-    for item in items:
-        lines.append(f"- {item}")
+    lines.extend(f"- {item}" for item in items)
 
 
 def _append_benchmark_summary_table(
@@ -477,6 +457,67 @@ def _append_figure(lines: list[str], alt_text: str, relative_path: str, caption:
     lines.append("")
 
 
+def _write_final_report_figures(ctx: ReportContext) -> None:
+    """Write all figures referenced by the canonical final report."""
+    figures_dir = ctx.reports_dir / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    write_benchmark_comparison_figure(
+        ctx.benchmark_summary,
+        ctx.benchmark_tuned_summary,
+        figures_dir / "benchmark_comparison.png",
+    )
+    write_tuned_delta_figure(
+        ctx.benchmark_summary,
+        ctx.benchmark_tuned_summary,
+        figures_dir / "tuned_vs_original_delta.png",
+    )
+    write_feature_stability_figure(
+        ctx.feature_report,
+        ctx.benchmark_tuned_feature_report,
+        figures_dir / "feature_stability.png",
+    )
+    write_temporal_drift_figure(ctx.temporal_drift, figures_dir / "temporal_drift.png")
+    write_lockbox_vs_mspc_figure(
+        ctx.temporal_lockbox,
+        ctx.temporal_mspc,
+        figures_dir / "lockbox_vs_mspc.png",
+    )
+    write_workload_cost_figure(
+        ctx.temporal_manager,
+        ctx.temporal_cost,
+        figures_dir / "workload_cost_framing.png",
+    )
+
+
+def _write_markdown_with_optional_pdf(final_path: Path, lines: list[str], *, export_pdf: bool) -> None:
+    """Write final Markdown and append PDF export status when requested."""
+    final_path.write_text("\n".join(lines), encoding="utf-8")
+    if not export_pdf:
+        return
+
+    pdf_path = final_path.with_suffix(".pdf")
+    pandoc_path = shutil.which("pandoc")
+    if pandoc_path is None:
+        pdf_note = "PDF export skipped because pandoc is not available."
+    else:
+        try:
+            subprocess.run(
+                [pandoc_path, str(final_path), "-o", str(pdf_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            pdf_note = f"PDF export written to `{pdf_path.name}`."
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr.strip() or exc.stdout.strip() or "unknown error"
+            pdf_note = f"PDF export skipped because pandoc failed: {detail}"
+
+    lines.append(f"- PDF export status: {pdf_note}")
+    lines.append("")
+    final_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def write_report_skeleton(output_dir: Path) -> Path:
     """Write a long-form report skeleton from whatever artifacts are currently present."""
     ctx = _load_report_context(output_dir)
@@ -502,6 +543,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
     best_tuned_benchmark_row = ctx.best_tuned_benchmark_row
     modal_tuned_config_row = ctx.modal_tuned_config_row
     primary_temporal_row = ctx.primary_temporal_row
+    primary_scientific_lockbox_row = ctx.primary_scientific_lockbox_row
     drift_row = ctx.drift_row
     mspc_lockbox_row = ctx.mspc_lockbox_row
 
@@ -624,8 +666,10 @@ def write_report_skeleton(output_dir: Path) -> Path:
     if benchmark_ablation is not None and not benchmark_ablation.empty:
         lines.append("")
         lines.append("- Original missing-indicator ablation summary:")
-        for row in benchmark_ablation.itertuples(index=False):
-            lines.append(f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}")
+        lines.extend(
+            f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}"
+            for row in benchmark_ablation.itertuples(index=False)
+        )
     lines.append("")
     lines.append("### Tuned Benchmark")
     lines.append("")
@@ -690,8 +734,10 @@ def write_report_skeleton(output_dir: Path) -> Path:
     if benchmark_tuned_ablation is not None and not benchmark_tuned_ablation.empty:
         lines.append("")
         lines.append("##### Missing-Indicator Ablation Summary")
-        for row in benchmark_tuned_ablation.itertuples(index=False):
-            lines.append(f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}")
+        lines.extend(
+            f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}"
+            for row in benchmark_tuned_ablation.itertuples(index=False)
+        )
     if best_tuned_benchmark_row is not None:
         lines.append("")
         lines.append("##### Interpretation")
@@ -900,16 +946,8 @@ def write_report_skeleton(output_dir: Path) -> Path:
                 if col in temporal_drift.columns
             ]
             lines.extend(_markdown_table(temporal_drift.sort_values("model_scope"), drift_columns))
-            primary_scientific_lockbox = None
-            if temporal_lockbox is not None and not temporal_lockbox.empty:
-                primary_scientific = temporal_lockbox[
-                    (temporal_lockbox["role"] == "primary")
-                    & (temporal_lockbox["threshold_policy"] == ThresholdPolicy.SCIENTIFIC)
-                ]
-                if not primary_scientific.empty:
-                    primary_scientific_lockbox = primary_scientific.iloc[0]
-            if primary_scientific_lockbox is not None and "lockbox_fails" in primary_scientific_lockbox.index:
-                lockbox_fails = int(primary_scientific_lockbox["lockbox_fails"])
+            if primary_scientific_lockbox_row is not None and "lockbox_fails" in primary_scientific_lockbox_row.index:
+                lockbox_fails = int(primary_scientific_lockbox_row["lockbox_fails"])
                 lines.append("")
                 lines.append(
                     f"- The lockbox contains only `{lockbox_fails}` failing samples, so recall-oriented quantities such as `TPR` are inherently unstable in this holdout."
@@ -924,8 +962,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
         if restrictions:
             lines.append("")
             lines.append("- Temporal claim restrictions:")
-            for restriction in restrictions:
-                lines.append(f"  - `{restriction}`")
+            lines.extend(f"  - `{restriction}`" for restriction in restrictions)
             lines.append(
                 "- Lockbox evidence remains reportable, but restricted claims should be treated as descriptive rather than confirmatory."
             )
@@ -961,21 +998,15 @@ def write_report_skeleton(output_dir: Path) -> Path:
                 ],
             )
         )
-        if temporal_lockbox is not None and not temporal_lockbox.empty:
-            primary_scientific = temporal_lockbox[
-                (temporal_lockbox["role"] == "primary")
-                & (temporal_lockbox["threshold_policy"] == ThresholdPolicy.SCIENTIFIC)
-            ]
-            if not primary_scientific.empty:
-                row = primary_scientific.iloc[0]
-                lines.append("")
+        if primary_scientific_lockbox_row is not None:
+            lines.append("")
+            lines.append(
+                f"- The supervised primary model reaches `TPR_at_TNR90={_format_float(primary_scientific_lockbox_row['TPR_at_TNR90'])}`, versus `best_MSPC_TPR_at_TNR90={_format_float(mspc_lockbox_row['best_MSPC_TPR_at_TNR90'])}` for MSPC."
+            )
+            if restrictions:
                 lines.append(
-                    f"- The supervised primary model reaches `TPR_at_TNR90={_format_float(row['TPR_at_TNR90'])}`, versus `best_MSPC_TPR_at_TNR90={_format_float(mspc_lockbox_row['best_MSPC_TPR_at_TNR90'])}` for MSPC."
+                    "- That numerical advantage remains descriptive only because the drift gate restricts lockbox superiority claims in this run."
                 )
-                if restrictions:
-                    lines.append(
-                        "- That numerical advantage remains descriptive only because the drift gate restricts lockbox superiority claims in this run."
-                    )
     if (temporal_manager is not None and not temporal_manager.empty) or (
         temporal_cost is not None and not temporal_cost.empty
     ):
@@ -1055,42 +1086,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     """Write the final Markdown report and optionally export it through pandoc."""
     ctx = _load_report_context(output_dir)
     restrictions = list(ctx.manifest.get("temporal_claim_restrictions", []))
-    figures_dir = ctx.reports_dir / "figures"
-    figures_dir.mkdir(parents=True, exist_ok=True)
-
-    benchmark_figure = figures_dir / "benchmark_comparison.png"
-    tuned_delta_figure = figures_dir / "tuned_vs_original_delta.png"
-    feature_stability_figure = figures_dir / "feature_stability.png"
-    temporal_drift_figure = figures_dir / "temporal_drift.png"
-    lockbox_mspc_figure = figures_dir / "lockbox_vs_mspc.png"
-    workload_cost_figure = figures_dir / "workload_cost_framing.png"
-
-    write_benchmark_comparison_figure(
-        ctx.benchmark_summary,
-        ctx.benchmark_tuned_summary,
-        benchmark_figure,
-    )
-    write_tuned_delta_figure(
-        ctx.benchmark_summary,
-        ctx.benchmark_tuned_summary,
-        tuned_delta_figure,
-    )
-    write_feature_stability_figure(
-        ctx.feature_report,
-        ctx.benchmark_tuned_feature_report,
-        feature_stability_figure,
-    )
-    write_temporal_drift_figure(ctx.temporal_drift, temporal_drift_figure)
-    write_lockbox_vs_mspc_figure(
-        ctx.temporal_lockbox,
-        ctx.temporal_mspc,
-        lockbox_mspc_figure,
-    )
-    write_workload_cost_figure(
-        ctx.temporal_manager,
-        ctx.temporal_cost,
-        workload_cost_figure,
-    )
+    _write_final_report_figures(ctx)
 
     # Final report text is artifact-driven and avoids asking readers to inspect raw CSVs first.
     lines: list[str] = []
@@ -1180,11 +1176,11 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     if ctx.benchmark_ablation is not None and not ctx.benchmark_ablation.empty:
         lines.append("### Missing-Indicator Ablation")
         lines.append("")
-        for row in ctx.benchmark_ablation.itertuples(index=False):
-            lines.append(
-                f"- `{row.selector}` / `{row.classifier}` changes mean BER by `{_format_float(row.delta_BER)}` "
-                "when missing indicators are added."
-            )
+        lines.extend(
+            f"- `{row.selector}` / `{row.classifier}` changes mean BER by `{_format_float(row.delta_BER)}` "
+            "when missing indicators are added."
+            for row in ctx.benchmark_ablation.itertuples(index=False)
+        )
         lines.append("")
     lines.append("## Tuned Benchmark")
     lines.append("")
@@ -1318,8 +1314,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         )
     if restrictions:
         lines.append("- Active temporal claim restrictions:")
-        for restriction in restrictions:
-            lines.append(f"  - `{restriction}`")
+        lines.extend(f"  - `{restriction}`" for restriction in restrictions)
     else:
         lines.append("- No temporal claim restrictions are active in this run.")
     lines.append("")
@@ -1435,35 +1430,11 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         lines.append(f"  - `{name}`: `{version}`")
     if restrictions:
         lines.append("- Temporal claim restrictions:")
-        for restriction in restrictions:
-            lines.append(f"  - `{restriction}`")
+        lines.extend(f"  - `{restriction}`" for restriction in restrictions)
     else:
         lines.append("- Temporal claim restrictions: `none`")
     lines.append("")
 
     final_path = ctx.reports_dir / ArtifactName.FINAL_REPORT
-    final_path.write_text("\n".join(lines), encoding="utf-8")
-
-    pdf_note: str | None = None
-    pdf_path = ctx.reports_dir / "final_report.pdf"
-    if export_pdf:
-        pandoc_path = shutil.which("pandoc")
-        if pandoc_path is None:
-            pdf_note = "PDF export skipped because pandoc is not available."
-        else:
-            try:
-                subprocess.run(
-                    [pandoc_path, str(final_path), "-o", str(pdf_path)],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                pdf_note = f"PDF export written to `{pdf_path.name}`."
-            except subprocess.CalledProcessError as exc:
-                detail = exc.stderr.strip() or exc.stdout.strip() or "unknown error"
-                pdf_note = f"PDF export skipped because pandoc failed: {detail}"
-    if pdf_note is not None:
-        lines.append(f"- PDF export status: {pdf_note}")
-        lines.append("")
-        final_path.write_text("\n".join(lines), encoding="utf-8")
+    _write_markdown_with_optional_pdf(final_path, lines, export_pdf=export_pdf)
     return final_path
