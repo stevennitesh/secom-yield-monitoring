@@ -81,7 +81,7 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
 
     manifest = {
         "manifest_version": "2.0",
-        "study_spec_path": "docs/spec/README.md",
+        "study_spec_path": "docs/spec",
         "study_spec_sha256": "test-spec",
         "git_commit": "test-commit",
         "git_dirty": True,
