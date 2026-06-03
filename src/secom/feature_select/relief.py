@@ -1,36 +1,43 @@
+"""ReliefF feature ranking with a deterministic local fallback."""
+
 from __future__ import annotations
 
 import numpy as np
 
 
 def _rank_desc_with_index_tiebreak(scores: np.ndarray) -> np.ndarray:
-    idx = np.arange(scores.shape[0], dtype=int)
-    return np.lexsort((idx, -scores))
+    """Rank higher scores first, with deterministic lower-index tie breaks."""
+    feature_indices = np.arange(scores.shape[0], dtype=int)
+    return np.lexsort((feature_indices, -scores))
 
 
 def _fallback_relief_scores(x: np.ndarray, y: np.ndarray, n_neighbors: int) -> np.ndarray:
-    # Deterministic ReliefF-like fallback when skrebate is unavailable.
+    """Compute deterministic ReliefF-like scores when skrebate is unavailable."""
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=int)
-    n, p = x.shape
-    w = np.zeros(p, dtype=float)
-    for i in range(n):
-        xi = x[i]
-        dist = np.linalg.norm(x - xi, axis=1)
-        same = np.where(y == y[i])[0]
-        same = same[same != i]
-        diff = np.where(y != y[i])[0]
-        if same.size == 0 or diff.size == 0:
+    n_rows, n_features = x.shape
+    weights = np.zeros(n_features, dtype=float)
+
+    for row_idx in range(n_rows):
+        row = x[row_idx]
+        distances = np.linalg.norm(x - row, axis=1)
+        hit_candidates = np.where(y == y[row_idx])[0]
+        hit_candidates = hit_candidates[hit_candidates != row_idx]
+        miss_candidates = np.where(y != y[row_idx])[0]
+
+        if hit_candidates.size == 0 or miss_candidates.size == 0:
             continue
-        k_hit = min(n_neighbors, same.size)
-        k_miss = min(n_neighbors, diff.size)
-        hit = same[np.argpartition(dist[same], k_hit - 1)[:k_hit]]
-        miss = diff[np.argpartition(dist[diff], k_miss - 1)[:k_miss]]
-        w += np.mean(np.abs(xi - x[miss]), axis=0)
-        w -= np.mean(np.abs(xi - x[hit]), axis=0)
-    w = w / max(n, 1)
-    w[~np.isfinite(w)] = -np.inf
-    return w
+
+        k_hit = min(n_neighbors, hit_candidates.size)
+        k_miss = min(n_neighbors, miss_candidates.size)
+        nearest_hits = hit_candidates[np.argpartition(distances[hit_candidates], k_hit - 1)[:k_hit]]
+        nearest_misses = miss_candidates[np.argpartition(distances[miss_candidates], k_miss - 1)[:k_miss]]
+        weights += np.mean(np.abs(row - x[nearest_misses]), axis=0)
+        weights -= np.mean(np.abs(row - x[nearest_hits]), axis=0)
+
+    weights = weights / max(n_rows, 1)
+    weights[~np.isfinite(weights)] = -np.inf
+    return weights
 
 
 def relief_rank_features(
@@ -38,22 +45,23 @@ def relief_rank_features(
     y_bin: np.ndarray,
     n_neighbors: int,
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Return ReliefF feature order and scores, falling back when skrebate is absent."""
     x = np.asarray(x, dtype=float)
     y = np.asarray(y_bin, dtype=int)
     try:
         from skrebate import ReliefF
 
-        rel = ReliefF(
+        estimator = ReliefF(
             n_features_to_select=x.shape[1],
             n_neighbors=int(n_neighbors),
             n_jobs=-1,
         )
-        rel.fit(x, y)
-        scores = np.asarray(rel.feature_importances_, dtype=float)
+        estimator.fit(x, y)
+        scores = np.asarray(estimator.feature_importances_, dtype=float)
     except Exception:
+        # Keep the study runnable in minimal environments while preserving deterministic order.
         scores = _fallback_relief_scores(x, y, n_neighbors=int(n_neighbors))
 
     scores[~np.isfinite(scores)] = -np.inf
     order = _rank_desc_with_index_tiebreak(scores)
     return order, scores
-

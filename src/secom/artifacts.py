@@ -1,3 +1,5 @@
+"""Artifact writing, manifest normalization, and audit validation helpers."""
+
 from __future__ import annotations
 
 import hashlib
@@ -14,6 +16,8 @@ from secom.config import ArtifactName, MANIFEST_REQUIRED_KEYS, REQUIRED_ARTIFACT
 
 @dataclass(frozen=True)
 class ValidationResult:
+    """Result returned by artifact and study-audit validation."""
+
     ok: bool
     errors: list[str]
     warnings: list[str]
@@ -255,17 +259,20 @@ _TEMPORAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
 
 
 def ensure_reports_dir(output_dir: Path) -> Path:
+    """Return the reports directory, creating it if needed."""
     reports = output_dir / "reports"
     reports.mkdir(parents=True, exist_ok=True)
     return reports
 
 
 def write_csv(df: pd.DataFrame, path: Path) -> None:
+    """Write a report artifact CSV with parent-directory creation."""
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
 
 
 def _normalize_float(x: float) -> float | None:
+    """Normalize non-finite floats to JSON null and round finite floats."""
     if x is None:
         return None
     if not np.isfinite(float(x)):
@@ -274,6 +281,7 @@ def _normalize_float(x: float) -> float | None:
 
 
 def normalize_for_manifest(value: Any) -> Any:
+    """Recursively convert numpy/pandas-adjacent values into stable JSON values."""
     if isinstance(value, dict):
         return {k: normalize_for_manifest(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -292,6 +300,7 @@ def normalize_for_manifest(value: Any) -> Any:
 
 
 def canonical_json_bytes(data: Any) -> bytes:
+    """Return deterministic JSON bytes for hashing normalized config payloads."""
     normalized = normalize_for_manifest(data)
     return json.dumps(
         normalized,
@@ -302,11 +311,13 @@ def canonical_json_bytes(data: Any) -> bytes:
 
 
 def config_hash(config: dict[str, Any]) -> str:
+    """Return a stable SHA256 hash for a config payload."""
     digest = hashlib.sha256(canonical_json_bytes(config)).hexdigest()
     return digest
 
 
 def write_manifest(manifest: dict[str, Any], path: Path) -> None:
+    """Validate and write the run manifest in deterministic JSON form."""
     payload = normalize_for_manifest(manifest)
     missing = [k for k in MANIFEST_REQUIRED_KEYS if k not in payload]
     if missing:
@@ -317,6 +328,7 @@ def write_manifest(manifest: dict[str, Any], path: Path) -> None:
 
 
 def _required_artifacts(primary_status: str, temporal_status: str) -> list[str]:
+    """Return legacy status-based required artifacts."""
     names = [ArtifactName.MANIFEST]
     if primary_status != StudyStatus.NOT_RUN:
         names.extend(
@@ -342,6 +354,7 @@ def _required_artifacts_by_study(
     benchmark_tuned_status: str,
     temporal_status: str,
 ) -> list[str]:
+    """Return required artifacts using separate original/tuned/temporal statuses."""
     names = [ArtifactName.MANIFEST]
     if benchmark_original_status != StudyStatus.NOT_RUN:
         names.extend(
@@ -382,6 +395,7 @@ def validate_required_artifacts(
     benchmark_tuned_status: str | None = None,
     temporal_status: str,
 ) -> list[str]:
+    """Return missing artifact errors for the manifest-declared active study layers."""
     reports = output_dir / "reports"
     errors: list[str] = []
     required = (
@@ -400,6 +414,7 @@ def validate_required_artifacts(
 
 
 def load_artifact_frames(output_dir: Path) -> dict[str, pd.DataFrame]:
+    """Load all present CSV report artifacts by artifact filename."""
     reports = output_dir / "reports"
     frames: dict[str, pd.DataFrame] = {}
     for name in _CSV_ARTIFACT_NAMES:
@@ -410,6 +425,7 @@ def load_artifact_frames(output_dir: Path) -> dict[str, pd.DataFrame]:
 
 
 def _read_csv_if_exists(path: Path) -> pd.DataFrame | None:
+    """Read a CSV when present, otherwise return ``None``."""
     if not path.exists():
         return None
     return pd.read_csv(path)
@@ -421,6 +437,7 @@ def _validate_required_columns(
     errors: list[str],
     file_name: str,
 ) -> None:
+    """Append a missing-column error for one artifact frame."""
     missing = required - set(df.columns)
     if missing:
         errors.append(f"{file_name}: missing columns {sorted(missing)}")
@@ -432,6 +449,7 @@ def _artifact_frame(
     reports: Path,
     artifact_frames: dict[str, pd.DataFrame] | None,
 ) -> pd.DataFrame | None:
+    """Return a cached artifact frame or load it directly from reports."""
     if artifact_frames is not None:
         return artifact_frames.get(name)
     return _read_csv_if_exists(reports / name)
@@ -442,6 +460,7 @@ def validate_schema_and_logic(
     artifact_frames: dict[str, pd.DataFrame] | None = None,
     manifest: dict[str, Any] | None = None,
 ) -> ValidationResult:
+    """Validate manifest status, required schemas, and artifact/status consistency."""
     reports = output_dir / "reports"
     errors: list[str] = []
     warnings: list[str] = []
@@ -496,7 +515,7 @@ def validate_schema_and_logic(
     elif temporal_status == StudyStatus.WARNING:
         warnings.append("temporal robustness status indicates warnings")
 
-    active_primary = primary_status != StudyStatus.NOT_RUN
+    # Active layers require artifacts; inactive layers only warn if stale artifacts remain.
     active_original = original_status != StudyStatus.NOT_RUN
     active_tuned = tuned_status != StudyStatus.NOT_RUN
     active_temporal = temporal_status != StudyStatus.NOT_RUN

@@ -1,3 +1,5 @@
+"""Figure generation helpers for final reports."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,14 +12,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+FIGURE_DPI = 180
+
 
 def _save_placeholder_figure(output_path: Path, title: str, message: str) -> None:
+    """Write a deterministic placeholder figure when source artifacts are unavailable."""
     fig, ax = plt.subplots(figsize=(8, 4.5))
     ax.axis("off")
     ax.set_title(title)
     ax.text(0.5, 0.5, message, ha="center", va="center", wrap=True)
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -26,6 +31,7 @@ def write_benchmark_comparison_figure(
     benchmark_tuned_summary: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
+    """Plot the best original and tuned benchmark rows by mean BER."""
     if (
         benchmark_summary is None
         or benchmark_summary.empty
@@ -44,9 +50,7 @@ def write_benchmark_comparison_figure(
     original["study"] = "original"
     tuned["study"] = "tuned"
     frame = pd.concat([original, tuned], ignore_index=True)
-    frame["label"] = (
-        frame["study"] + ": " + frame["selector"] + " / " + frame["classifier"]
-    )
+    frame["label"] = frame["study"] + ": " + frame["selector"] + " / " + frame["classifier"]
     frame = frame.sort_values("mean_BER", ascending=True)
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -58,7 +62,7 @@ def write_benchmark_comparison_figure(
     ax.set_xlabel("Mean BER")
     ax.invert_yaxis()
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -67,6 +71,7 @@ def write_tuned_delta_figure(
     benchmark_tuned_summary: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
+    """Plot tuned-minus-original BER deltas for shared benchmark rows."""
     if (
         benchmark_summary is None
         or benchmark_summary.empty
@@ -94,9 +99,7 @@ def write_tuned_delta_figure(
         return
 
     merged["delta_BER"] = merged["mean_BER_tuned"] - merged["mean_BER_original"]
-    merged["label"] = (
-        merged["selector"] + " / " + merged["classifier"] + " / " + merged["replication_mode"]
-    )
+    merged["label"] = merged["selector"] + " / " + merged["classifier"] + " / " + merged["replication_mode"]
     merged = merged.sort_values("delta_BER", ascending=True)
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -106,7 +109,7 @@ def write_tuned_delta_figure(
     ax.set_title("Tuned vs Original Mean BER Delta")
     ax.set_xlabel("delta BER (tuned - original)")
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -115,12 +118,8 @@ def write_feature_stability_figure(
     tuned_feature_report: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
-    if (
-        feature_report is None
-        or feature_report.empty
-        or tuned_feature_report is None
-        or tuned_feature_report.empty
-    ):
+    """Plot the highest-contribution stable features across benchmark studies."""
+    if feature_report is None or feature_report.empty or tuned_feature_report is None or tuned_feature_report.empty:
         _save_placeholder_figure(
             output_path,
             "Feature Stability",
@@ -136,9 +135,7 @@ def write_feature_stability_figure(
     frame["plot_score"] = frame["expected_contribution"].fillna(frame["selection_frequency"])
     frame = frame.sort_values("plot_score", ascending=False).head(12).copy()
     frame["label"] = frame["study"] + ": " + frame["feature_name_or_source_col"]
-    colors = frame["feature_type"].map(
-        {"value": "#457b9d", "missing_indicator": "#e76f51"}
-    ).fillna("#8d99ae")
+    colors = frame["feature_type"].map({"value": "#457b9d", "missing_indicator": "#e76f51"}).fillna("#8d99ae")
 
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.barh(frame["label"], frame["plot_score"], color=colors)
@@ -146,7 +143,7 @@ def write_feature_stability_figure(
     ax.set_xlabel("expected contribution or selection frequency")
     ax.invert_yaxis()
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -154,6 +151,7 @@ def write_temporal_drift_figure(
     temporal_drift: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
+    """Plot primary temporal drift quantities."""
     if temporal_drift is None or temporal_drift.empty:
         _save_placeholder_figure(
             output_path,
@@ -176,7 +174,7 @@ def write_temporal_drift_figure(
     ax.set_title(f"Temporal Drift Summary ({row.get('drift_gate_status', 'unknown')})")
     ax.set_ylabel("value")
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -185,12 +183,8 @@ def write_lockbox_vs_mspc_figure(
     temporal_mspc: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
-    if (
-        temporal_lockbox is None
-        or temporal_lockbox.empty
-        or temporal_mspc is None
-        or temporal_mspc.empty
-    ):
+    """Compare supervised lockbox TPR with the MSPC lockbox baseline at TNR90."""
+    if temporal_lockbox is None or temporal_lockbox.empty or temporal_mspc is None or temporal_mspc.empty:
         _save_placeholder_figure(
             output_path,
             "Lockbox Supervised vs MSPC",
@@ -199,8 +193,7 @@ def write_lockbox_vs_mspc_figure(
         return
 
     supervised = temporal_lockbox[
-        (temporal_lockbox["role"] == "primary")
-        & (temporal_lockbox["threshold_policy"] == "scientific")
+        (temporal_lockbox["role"] == "primary") & (temporal_lockbox["threshold_policy"] == "scientific")
     ]
     mspc = temporal_mspc[temporal_mspc["eval_scope"] == "lockbox"]
     if supervised.empty or mspc.empty:
@@ -225,7 +218,7 @@ def write_lockbox_vs_mspc_figure(
     ax.set_title("Lockbox TPR at Matched TNR90")
     ax.set_ylabel("TPR_at_TNR90")
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -234,12 +227,8 @@ def write_workload_cost_figure(
     temporal_cost: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
-    if (
-        temporal_manager is None
-        or temporal_manager.empty
-        or temporal_cost is None
-        or temporal_cost.empty
-    ):
+    """Plot workload framing and illustrative temporal cost curves."""
+    if temporal_manager is None or temporal_manager.empty or temporal_cost is None or temporal_cost.empty:
         _save_placeholder_figure(
             output_path,
             "Workload and Cost Framing",
@@ -265,5 +254,5 @@ def write_workload_cost_figure(
     axes[1].legend()
 
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)

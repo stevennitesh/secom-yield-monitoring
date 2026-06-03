@@ -1,3 +1,5 @@
+"""Original and combined benchmark replication workflows."""
+
 from __future__ import annotations
 
 import json
@@ -9,7 +11,7 @@ import numpy as np
 import pandas as pd
 
 from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
-from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256
+from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256, study_spec_path
 from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, SelectorName, StudyStatus
 from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold
 from secom.qa import validate_benchmark_replication_artifacts
@@ -37,6 +39,7 @@ def _evaluate_config_over_folds(
     replication_mode: str,
     classifier_config: dict[str, Any],
 ) -> dict[str, Any]:
+    """Evaluate one selected-feature view and classifier config across benchmark folds."""
     fold_scores: list[np.ndarray] = []
     fold_labels: list[np.ndarray] = []
     fold_rows: list[dict[str, Any]] = []
@@ -125,6 +128,7 @@ def run_original_benchmark_replication(
     selectors_run: list[str] | None = None,
     _prepared_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Run the fixed-grid original benchmark replication and write benchmark artifacts."""
     reports = ensure_reports_dir(output_dir)
     prepared_data = prepare_benchmark_dataset(input_dir) if _prepared_data is None else _prepared_data
     project_root = prepared_data["project_root"]
@@ -166,8 +170,8 @@ def run_original_benchmark_replication(
 
                 for classifier in classifiers_run:
                     classifier_grid = classifier_grids[classifier]
-                    best_payload: dict[str, Any] | None = None
                     best_classifier_config: dict[str, Any] | None = None
+                    best_payload: dict[str, Any] | None = None
                     best_obj = np.inf
                     best_tie_key: tuple[Any, ...] | None = None
 
@@ -251,6 +255,7 @@ def run_original_benchmark_replication(
                     for fold_row in best_payload["fold_rows"]:
                         fold_metric_rows.append({**fold_row, **best_fields})
 
+                    # Full-data fits support artifact summaries; fold scores remain the performance evidence.
                     full_fit_payload = fit_full_dataset(
                         classifier=classifier,
                         prepared_full=prepared_views["full_view"],
@@ -322,7 +327,7 @@ def run_original_benchmark_replication(
         commit, dirty = git_commit_and_dirty(project_root)
         manifest = {
             "manifest_version": "2.0",
-            "study_spec_path": "docs/spec/README.md",
+            "study_spec_path": study_spec_path(),
             "study_spec_sha256": strategy_sha256(project_root),
             "git_commit": commit,
             "git_dirty": dirty,
@@ -356,6 +361,7 @@ def run_benchmark_replication(
     classifiers_run: list[str] | None = None,
     selectors_run: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Run original and tuned benchmark workflows with one shared prepared dataset."""
     from secom.workflows.benchmark_tuned import run_tuned_benchmark_replication
 
     prepared_data = prepare_benchmark_dataset(input_dir)
