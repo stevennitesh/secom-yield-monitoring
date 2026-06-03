@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 
 from secom.config import SelectorName
@@ -11,6 +9,7 @@ from secom.feature_select.gram_schmidt import gram_schmidt_rank_features
 from secom.feature_select.relief import relief_rank_features
 from secom.feature_select.univariate import rank_features
 from secom.preprocess import (
+    TransformedFeature,
     make_imputer,
     make_scaler,
     transformed_feature_metadata_from_imputer,
@@ -29,6 +28,28 @@ def _top_k(order: np.ndarray, k: int) -> np.ndarray:
     return order[: min(int(k), order.shape[0])]
 
 
+def _selector_order_and_scores(
+    method: str,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    n_neighbors: int | None,
+    k: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Dispatch to the selector implementation and return full order plus scores."""
+    if method in _UNIVARIATE_SELECTORS:
+        return rank_features(method, x_train, y_train)
+
+    if method == SelectorName.RELIEFF:
+        if n_neighbors is None:
+            raise ValueError("ReliefF requires n_neighbors")
+        return relief_rank_features(x_train, y_train, n_neighbors=n_neighbors)
+
+    if method == SelectorName.GRAM_SCHMIDT:
+        return gram_schmidt_rank_features(x_train, y_train, k=k)
+
+    raise ValueError(f"Unknown selector {method}")
+
+
 def select_features(
     method: str,
     x_train: np.ndarray,
@@ -37,22 +58,14 @@ def select_features(
     n_neighbors: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return selected local feature indices and full selector scores."""
-    if method in _UNIVARIATE_SELECTORS:
-        order, scores = rank_features(method, x_train, y_train)
-        return _top_k(order, k), scores
-
-    if method == SelectorName.RELIEFF:
-        if n_neighbors is None:
-            raise ValueError("ReliefF requires n_neighbors")
-        order, scores = relief_rank_features(x_train, y_train, n_neighbors=n_neighbors)
-        return _top_k(order, k), scores
-
-    if method == SelectorName.GRAM_SCHMIDT:
-        # Gram-Schmidt may already stop at k, but keep the same caller contract as the other selectors.
-        order, scores = gram_schmidt_rank_features(x_train, y_train, k=k)
-        return _top_k(order, k), scores
-
-    raise ValueError(f"Unknown selector {method}")
+    order, scores = _selector_order_and_scores(
+        method=method,
+        x_train=x_train,
+        y_train=y_train,
+        n_neighbors=n_neighbors,
+        k=int(k),
+    )
+    return _top_k(order, k), scores
 
 
 def fit_selector_pipeline(
@@ -64,7 +77,7 @@ def fit_selector_pipeline(
     scaler_name: str,
     add_indicator: bool,
     n_neighbors: int | None,
-) -> tuple[np.ndarray, np.ndarray, list[Any], np.ndarray, Any, Any]:
+) -> tuple[np.ndarray, np.ndarray, list[TransformedFeature], np.ndarray, object, object]:
     """Fit imputer/scaler/selector on train data and transform train plus eval matrices."""
     imputer = make_imputer(add_indicator=add_indicator)
     x_train_imp = imputer.fit_transform(x_train_raw)
@@ -85,5 +98,5 @@ def fit_selector_pipeline(
     feature_meta = transformed_feature_metadata_from_imputer(imputer=imputer, raw_feature_count=x_train_raw.shape[1])
 
     x_train_sel = x_train_scaled[:, selected_local]
-    x_eval_sel = x_eval_scaled[:, selected_local]  # type: ignore
+    x_eval_sel = x_eval_scaled[:, selected_local]
     return x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler
