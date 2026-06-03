@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-
 from secom.reporting import write_report_skeleton
 from secom.workflows.audit import run_study_audit
 from secom.workflows.benchmark_replication import run_benchmark_replication
 from secom.workflows.temporal_robustness import run_temporal_robustness
 
 
-def run_full_study(input_dir: Path, output_dir: Path, **kwargs: Any) -> dict[str, Any]:
+def run_full_study(input_dir: Path, output_dir: Path) -> dict[str, object]:
     """Run all currently supported study workflows into a shared output directory."""
     benchmark_result = run_benchmark_replication(input_dir=input_dir, output_dir=output_dir)
     temporal_result = run_temporal_robustness(input_dir=input_dir, output_dir=output_dir)
