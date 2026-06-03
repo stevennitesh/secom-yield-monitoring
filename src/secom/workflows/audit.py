@@ -1,3 +1,5 @@
+"""Workflow wrapper for artifact-level study validation."""
+
 from __future__ import annotations
 
 import json
@@ -13,6 +15,7 @@ from secom.config import ArtifactName, StudyStatus
 
 
 def run_study_audit(output_dir: Path) -> ValidationResult:
+    """Validate generated study artifacts and merge schema, logic, and claim findings."""
     reports = output_dir / "reports"
     manifest_path = reports / ArtifactName.MANIFEST
     if not manifest_path.exists():
@@ -30,6 +33,7 @@ def run_study_audit(output_dir: Path) -> ValidationResult:
     temporal_status = str(manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN))
 
     artifact_frames = load_artifact_frames(output_dir)
+    # Required artifacts depend on manifest status, while schema checks inspect available frames.
     errors = validate_required_artifacts(
         output_dir=output_dir,
         primary_status=primary_status,

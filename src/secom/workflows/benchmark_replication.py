@@ -1,3 +1,5 @@
+"""Original and combined benchmark replication workflows."""
+
 from __future__ import annotations
 
 import json
@@ -37,6 +39,7 @@ def _evaluate_config_over_folds(
     replication_mode: str,
     classifier_config: dict[str, Any],
 ) -> dict[str, Any]:
+    """Evaluate one selected-feature view and classifier config across benchmark folds."""
     fold_scores: list[np.ndarray] = []
     fold_labels: list[np.ndarray] = []
     fold_rows: list[dict[str, Any]] = []
@@ -125,6 +128,7 @@ def run_original_benchmark_replication(
     selectors_run: list[str] | None = None,
     _prepared_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Run the fixed-grid original benchmark replication and write benchmark artifacts."""
     reports = ensure_reports_dir(output_dir)
     prepared_data = prepare_benchmark_dataset(input_dir) if _prepared_data is None else _prepared_data
     project_root = prepared_data["project_root"]
@@ -166,8 +170,8 @@ def run_original_benchmark_replication(
 
                 for classifier in classifiers_run:
                     classifier_grid = classifier_grids[classifier]
-                    best_payload: dict[str, Any] | None = None
                     best_classifier_config: dict[str, Any] | None = None
+                    best_payload: dict[str, Any] | None = None
                     best_obj = np.inf
                     best_tie_key: tuple[Any, ...] | None = None
 
@@ -251,6 +255,7 @@ def run_original_benchmark_replication(
                     for fold_row in best_payload["fold_rows"]:
                         fold_metric_rows.append({**fold_row, **best_fields})
 
+                    # Full-data fits support artifact summaries; fold scores remain the performance evidence.
                     full_fit_payload = fit_full_dataset(
                         classifier=classifier,
                         prepared_full=prepared_views["full_view"],
@@ -356,6 +361,7 @@ def run_benchmark_replication(
     classifiers_run: list[str] | None = None,
     selectors_run: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Run original and tuned benchmark workflows with one shared prepared dataset."""
     from secom.workflows.benchmark_tuned import run_tuned_benchmark_replication
 
     prepared_data = prepare_benchmark_dataset(input_dir)

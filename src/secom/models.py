@@ -1,3 +1,5 @@
+"""Model factories and fitting helpers for benchmark and temporal workflows."""
+
 from __future__ import annotations
 
 import warnings
@@ -9,10 +11,12 @@ from sklearn.linear_model import LogisticRegression
 
 
 def make_benchmark_krr_model(alpha: float = 1.0, gamma: float | None = None) -> KernelRidge:
+    """Create the benchmark RBF Kernel Ridge classifier surrogate."""
     return KernelRidge(kernel="rbf", alpha=float(alpha), gamma=gamma)
 
 
 def make_benchmark_logreg_model(c_value: float) -> LogisticRegression:
+    """Create the benchmark balanced logistic-regression classifier."""
     return LogisticRegression(
         C=float(c_value),
         class_weight="balanced",
@@ -23,6 +27,7 @@ def make_benchmark_logreg_model(c_value: float) -> LogisticRegression:
 
 
 def make_temporal_logreg_model(c_value: float) -> LogisticRegression:
+    """Create the temporal balanced logistic-regression classifier."""
     return LogisticRegression(
         C=float(c_value),
         class_weight="balanced",
@@ -33,6 +38,7 @@ def make_temporal_logreg_model(c_value: float) -> LogisticRegression:
 
 
 def fit_temporal_logreg_model(x_train: np.ndarray, y_train_bin: np.ndarray, c_value: float) -> LogisticRegression:
+    """Fit temporal logistic regression while suppressing convergence warnings."""
     clf = make_temporal_logreg_model(c_value)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", ConvergenceWarning)
@@ -41,6 +47,7 @@ def fit_temporal_logreg_model(x_train: np.ndarray, y_train_bin: np.ndarray, c_va
 
 
 def _balanced_sample_weight(y_train_bin: np.ndarray) -> np.ndarray:
+    """Return inverse-frequency weights for binary KRR targets."""
     y = np.asarray(y_train_bin, dtype=int)
     n = int(y.size)
     n_pos = int(np.sum(y == 1))
@@ -58,6 +65,7 @@ def fit_benchmark_krr_model(
     alpha: float = 1.0,
     gamma: float | None = None,
 ) -> KernelRidge:
+    """Fit benchmark KRR on -1/+1 labels with balanced sample weights."""
     y_krr = 2 * np.asarray(y_train_bin, dtype=int) - 1
     sample_weight = _balanced_sample_weight(y_train_bin)
     clf = make_benchmark_krr_model(alpha=alpha, gamma=gamma)

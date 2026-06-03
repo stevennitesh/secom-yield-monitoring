@@ -1,3 +1,5 @@
+"""Shared constants, controlled vocabularies, and artifact names."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,6 +26,8 @@ BENCHMARK_INNER_SPLITS: Final[int] = 3
 
 
 class SelectorName:
+    """Feature selector names used in artifacts and workflow dispatch."""
+
     S2N = "S2N"
     WELCH_T = "Welch-t"
     F_TEST = "F-test"
@@ -37,33 +41,45 @@ class SelectorName:
 
 
 class ScalerName:
+    """Supported scaler names used in selector pipelines."""
+
     STANDARD = "StandardScaler"
     ROBUST = "RobustScaler"
     ALL = [STANDARD, ROBUST]
 
 
 class ThresholdPolicy:
+    """Threshold policies emitted by temporal lockbox artifacts."""
+
     SCIENTIFIC = "scientific"
     OPERATIONAL = "operational"
 
 
 class EvalScope:
+    """Evaluation scope labels used by report-facing artifacts."""
+
     BENCHMARK = "benchmark"
     TEMPORAL = "temporal"
     LOCKBOX = "lockbox"
 
 
 class ModelScope:
+    """Temporal role labels that can be used for claim restrictions."""
+
     PRIMARY = "primary"
     CHALLENGER = "challenger"
 
 
 class ReplicationMode:
+    """Benchmark preprocessing variants for missing-value handling."""
+
     STRICT = "strict"
     WITH_MISSING_INDICATORS = "with_missing_indicators"
 
 
 class BenchmarkClassifier:
+    """Benchmark classifier modes used by original and tuned workflows."""
+
     KRR = "krr"
     LOGREG = "logreg"
     KRR_STRICT = "krr_strict"
@@ -72,12 +88,16 @@ class BenchmarkClassifier:
 
 
 class FoldPlanName:
+    """Temporal outer-fold plan labels, ordered from preferred to fallback."""
+
     PRIMARY_3FOLD = "primary_3fold"
     FALLBACK_3FOLD = "fallback_3fold"
     FALLBACK_2FOLD = "fallback_2fold"
 
 
 class StudyStatus:
+    """Manifest status vocabulary for study layers."""
+
     NOT_RUN = "not_run"
     PASSED = "passed"
     FAILED = "failed"
@@ -86,6 +106,8 @@ class StudyStatus:
 
 
 class ArtifactName:
+    """Stable filenames for report artifacts under ``outputs/**/reports``."""
+
     BENCHMARK_SWEEP = "benchmark_sweep.csv"
     BENCHMARK_BEST_CONFIG = "benchmark_best_config.csv"
     BENCHMARK_FOLD_METRICS = "benchmark_fold_metrics.csv"
@@ -153,12 +175,15 @@ REQUIRED_ARTIFACTS_TEMPORAL: Final[list[str]] = [
 
 @dataclass(frozen=True)
 class Paths:
+    """Resolved project, input, and output paths for workflow callers."""
+
     project_root: Path
     input_dir: Path
     output_dir: Path
 
     @property
     def reports_dir(self) -> Path:
+        """Return the canonical reports directory below the output root."""
         return self.output_dir / "reports"
 
 

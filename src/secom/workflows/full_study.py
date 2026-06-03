@@ -1,3 +1,5 @@
+"""Top-level workflow that runs benchmark, temporal, audit, and report steps."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,6 +12,7 @@ from secom.workflows.temporal_robustness import run_temporal_robustness
 
 
 def run_full_study(input_dir: Path, output_dir: Path, **kwargs: Any) -> dict[str, Any]:
+    """Run all currently supported study workflows into a shared output directory."""
     benchmark_result = run_benchmark_replication(input_dir=input_dir, output_dir=output_dir)
     temporal_result = run_temporal_robustness(input_dir=input_dir, output_dir=output_dir)
     audit_result = run_study_audit(output_dir=output_dir)
