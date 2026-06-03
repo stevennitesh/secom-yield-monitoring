@@ -36,7 +36,9 @@ def operational_threshold(scores: np.ndarray, y_true: np.ndarray, week_labels: n
     scores_arr = np.asarray(scores, dtype=float)
     y_arr = np.asarray(y_true, dtype=int)
     weeks = np.asarray(week_labels, dtype=int)
-    if weeks.size != scores_arr.size or not np.all(np.isfinite(scores_arr)):
+    if y_arr.size != scores_arr.size or weeks.size != scores_arr.size:
+        raise ValueError("scores, y_true, and week_labels must have identical length")
+    if not np.all(np.isfinite(scores_arr)):
         return _operational_threshold_bruteforce(scores_arr=scores_arr, y_arr=y_arr, weeks=weeks)
 
     _unique_weeks, week_codes = np.unique(weeks, return_inverse=True)

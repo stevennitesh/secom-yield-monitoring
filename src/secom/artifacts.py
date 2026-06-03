@@ -338,6 +338,7 @@ def read_manifest(path: Path) -> dict[str, Any]:
 
 def _required_artifacts_by_study(
     *,
+    primary_status: str,
     benchmark_original_status: str,
     benchmark_tuned_status: str,
     temporal_status: str,
@@ -346,7 +347,9 @@ def _required_artifacts_by_study(
     names = [ArtifactName.MANIFEST]
     if benchmark_original_status != StudyStatus.NOT_RUN:
         names.extend(_BENCHMARK_ORIGINAL_ARTIFACTS)
-    if benchmark_tuned_status != StudyStatus.NOT_RUN:
+    if benchmark_tuned_status != StudyStatus.NOT_RUN or (
+        primary_status != StudyStatus.NOT_RUN and benchmark_original_status != StudyStatus.NOT_RUN
+    ):
         names.extend(_BENCHMARK_TUNED_ARTIFACTS)
     if temporal_status != StudyStatus.NOT_RUN:
         names.extend(_TEMPORAL_ARTIFACTS)
@@ -356,6 +359,7 @@ def _required_artifacts_by_study(
 def validate_required_artifacts(
     output_dir: Path,
     *,
+    primary_status: str = StudyStatus.NOT_RUN,
     benchmark_original_status: str,
     benchmark_tuned_status: str,
     temporal_status: str,
@@ -363,6 +367,7 @@ def validate_required_artifacts(
     """Return missing artifact errors for the manifest-declared active study layers."""
     reports = output_dir / "reports"
     required = _required_artifacts_by_study(
+        primary_status=primary_status,
         benchmark_original_status=benchmark_original_status,
         benchmark_tuned_status=benchmark_tuned_status,
         temporal_status=temporal_status,
@@ -516,7 +521,9 @@ def validate_schema_and_logic(
 
     # Active layers require artifacts; inactive layers only warn if stale artifacts remain.
     active_original = state.original_status != StudyStatus.NOT_RUN
-    active_tuned = state.tuned_status != StudyStatus.NOT_RUN
+    active_tuned = state.tuned_status != StudyStatus.NOT_RUN or (
+        state.primary_status != StudyStatus.NOT_RUN and state.original_status != StudyStatus.NOT_RUN
+    )
     active_temporal = state.temporal_status != StudyStatus.NOT_RUN
 
     _validate_artifact_family(

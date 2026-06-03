@@ -12,14 +12,15 @@ def assert_artifacts_exist(reports_dir: Path, artifact_names: Iterable[str]) -> 
 
 
 def assert_columns_include(frame: pd.DataFrame, expected_columns: Iterable[str]) -> None:
-    assert set(expected_columns).issubset(frame.columns)
+    missing = set(expected_columns) - set(frame.columns)
+    assert not missing, f"missing columns: {sorted(missing)}"
 
 
 def assert_text_contains_all(text: str, expected_fragments: Iterable[str]) -> None:
     for fragment in expected_fragments:
-        assert fragment in text
+        assert fragment in text, f"missing text fragment: {fragment!r}"
 
 
 def assert_text_excludes_all(text: str, forbidden_fragments: Iterable[str]) -> None:
     for fragment in forbidden_fragments:
-        assert fragment not in text
+        assert fragment not in text, f"forbidden text fragment present: {fragment!r}"

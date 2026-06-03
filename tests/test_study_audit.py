@@ -380,16 +380,15 @@ def _write_tuned_artifacts(reports: Path) -> None:
     )
 
 
-def test_study_audit_primary_only_passes(workspace_tmp_dir: Path) -> None:
+def test_study_audit_primary_status_requires_tuned_artifacts(workspace_tmp_dir: Path) -> None:
     reports = ensure_reports_dir(workspace_tmp_dir)
     write_manifest(_base_manifest(), reports / ArtifactName.MANIFEST)
     _write_primary_artifacts(reports)
 
     result = run_study_audit(workspace_tmp_dir)
 
-    assert result.ok, result.errors
-    assert result.errors == []
-    assert result.claim_restrictions == []
+    assert not result.ok
+    assert any(ArtifactName.BENCHMARK_TUNED_SUMMARY in error for error in result.errors)
 
 
 def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_dir: Path) -> None:

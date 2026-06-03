@@ -156,6 +156,14 @@ def test_extract_tpr_at_tnr_nonfinite_scores_fallback_equivalence() -> None:
     _assert_fast_tpr_at_tnr_matches_bruteforce(y_true, scores, target_tnr=0.75)
 
 
+def test_extract_tpr_at_tnr_rejects_mismatched_input_lengths() -> None:
+    y_true = np.asarray([0, 1, 0], dtype=int)
+    scores = np.asarray([0.1, 0.9], dtype=float)
+
+    with pytest.raises(ValueError, match="identical length"):
+        extract_tpr_at_tnr(y_true, scores)
+
+
 def test_safe_std_accepts_arrays_and_iterators() -> None:
     values = np.asarray([1.0, 2.0, 3.0], dtype=float)
 
