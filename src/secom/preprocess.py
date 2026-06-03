@@ -1,3 +1,5 @@
+"""Preprocessing helpers and transformed-feature metadata."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +13,8 @@ from secom.config import ScalerName
 
 @dataclass(frozen=True)
 class TransformedFeature:
+    """Metadata for one transformed feature column."""
+
     feature_index: int
     feature_type: str
     feature_name_or_source_col: str
@@ -18,6 +22,7 @@ class TransformedFeature:
 
 
 def make_imputer(add_indicator: bool) -> SimpleImputer:
+    """Create the median imputer used before feature selection."""
     return SimpleImputer(
         strategy="median",
         add_indicator=add_indicator,
@@ -26,6 +31,7 @@ def make_imputer(add_indicator: bool) -> SimpleImputer:
 
 
 def make_scaler(name: str):
+    """Create a configured scaler by study scaler name."""
     if name == ScalerName.STANDARD:
         return StandardScaler(with_mean=True, with_std=True)
     if name == ScalerName.ROBUST:
@@ -40,6 +46,7 @@ def make_scaler(name: str):
 def transformed_feature_metadata_from_imputer(
     imputer: SimpleImputer, raw_feature_count: int
 ) -> list[TransformedFeature]:
+    """Return transformed-column metadata for value columns plus fitted indicators."""
     out: list[TransformedFeature] = []
     for raw_idx in range(raw_feature_count):
         out.append(
@@ -52,6 +59,7 @@ def transformed_feature_metadata_from_imputer(
         )
 
     if getattr(imputer, "indicator_", None) is not None:
+        # SimpleImputer exposes only indicators for raw columns that were missing at fit time.
         for raw_idx in imputer.indicator_.features_.tolist():
             out.append(
                 TransformedFeature(
@@ -68,10 +76,12 @@ def local_to_global_feature_indices(
     local_indices: np.ndarray,
     transformed_meta: list[TransformedFeature],
 ) -> list[int]:
+    """Map transformed local column indices back to reportable feature indices."""
     return [transformed_meta[int(i)].feature_index for i in local_indices.tolist()]
 
 
 def build_feature_universe(raw_feature_count: int) -> list[TransformedFeature]:
+    """Return the full reportable value-plus-missing-indicator feature universe."""
     universe = []
     for raw_idx in range(raw_feature_count):
         universe.append(

@@ -1,3 +1,5 @@
+"""Temporal splitting and outer-fold planning helpers."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,6 +12,8 @@ from secom.config import FoldPlanName, INNER_MIN_CLASS, LOCKBOX_FRAC, MIN_TEST_F
 
 @dataclass(frozen=True)
 class DevLockboxSplit:
+    """Chronological DEV/LOCKBOX split metadata."""
+
     dev: pd.DataFrame
     lockbox: pd.DataFrame
     n_total_after_nat_drop: int
@@ -19,6 +23,8 @@ class DevLockboxSplit:
 
 @dataclass(frozen=True)
 class OuterFold:
+    """One expanding-window temporal outer fold."""
+
     outer_fold: int
     train_start_week: int
     train_end_week: int
@@ -38,12 +44,15 @@ class OuterFold:
 
 @dataclass(frozen=True)
 class OuterFoldPlanResult:
+    """Selected temporal fold plan and its concrete folds."""
+
     plan_name: str
     folds: list[OuterFold]
     last_week: int
 
 
 def split_dev_lockbox(df: pd.DataFrame, lockbox_frac: float = LOCKBOX_FRAC) -> DevLockboxSplit:
+    """Split sorted data into DEV and the final chronological LOCKBOX fraction."""
     n = len(df)
     n_lockbox = int(np.floor(lockbox_frac * n))
     if n_lockbox <= 0 or n_lockbox >= n:
@@ -60,6 +69,7 @@ def split_dev_lockbox(df: pd.DataFrame, lockbox_frac: float = LOCKBOX_FRAC) -> D
 
 
 def add_dev_week_bins(dev: pd.DataFrame) -> pd.DataFrame:
+    """Add one-indexed week labels relative to the first DEV timestamp."""
     out = dev.copy()
     t_min = out["timestamp"].min()
     delta_days = (out["timestamp"] - t_min).dt.total_seconds() / (24 * 3600)
@@ -74,6 +84,7 @@ def _make_outer_fold(
     train_weeks: tuple[int, int],
     test_weeks: tuple[int, int],
 ) -> OuterFold:
+    """Create one outer fold from inclusive train/test week ranges."""
     train_mask = dev["week_label"].between(train_weeks[0], train_weeks[1], inclusive="both")
     test_mask = dev["week_label"].between(test_weeks[0], test_weeks[1], inclusive="both")
     train_idx = dev.index[train_mask].to_numpy(dtype=int)
@@ -104,6 +115,7 @@ def _make_outer_fold(
 
 
 def _plan_windows(last_week: int) -> dict[str, list[tuple[tuple[int, int], tuple[int, int]]]]:
+    """Return preferred and fallback expanding-window definitions."""
     return {
         FoldPlanName.PRIMARY_3FOLD: [
             ((1, 5), (6, last_week)),
@@ -123,6 +135,7 @@ def _plan_windows(last_week: int) -> dict[str, list[tuple[tuple[int, int], tuple
 
 
 def _build_plan(dev: pd.DataFrame, plan_name: str, windows) -> list[OuterFold]:
+    """Materialize outer fold windows into indexed fold objects."""
     folds: list[OuterFold] = []
     for i, (train_w, test_w) in enumerate(windows, start=1):
         folds.append(
@@ -140,6 +153,7 @@ def choose_outer_fold_plan(
     dev_with_weeks: pd.DataFrame,
     min_test_fails: int = MIN_TEST_FAILS,
 ) -> OuterFoldPlanResult | None:
+    """Choose the first temporal fold plan satisfying minimum test fails."""
     last_week = int(dev_with_weeks["week_label"].max())
     plans = _plan_windows(last_week)
     for plan_name in [
@@ -157,6 +171,7 @@ def check_inner_cv_feasible(
     y: np.ndarray,
     min_class_count: int = INNER_MIN_CLASS,
 ) -> bool:
+    """Return whether both classes have enough rows for inner CV."""
     y = np.asarray(y, dtype=int)
     n_fail = int(np.sum(y == 1))
     n_pass = int(np.sum(y == 0))
@@ -168,6 +183,7 @@ def temporal_feasibility_gate(
     plan: OuterFoldPlanResult | None,
     min_class_count: int = INNER_MIN_CLASS,
 ) -> tuple[bool, str | None]:
+    """Return temporal workflow feasibility and a manifest-safe reason when blocked."""
     if plan is None:
         return (False, "min_test_fails_lt_20_after_fallbacks")
     for fold in plan.folds:
@@ -180,6 +196,7 @@ def temporal_feasibility_gate(
 
 
 def fold_plan_manifest_ranges(plan: OuterFoldPlanResult) -> list[dict[str, object]]:
+    """Serialize fold week ranges for manifest/debug output."""
     out: list[dict[str, object]] = []
     for fold in plan.folds:
         out.append(
@@ -193,4 +210,5 @@ def fold_plan_manifest_ranges(plan: OuterFoldPlanResult) -> list[dict[str, objec
 
 
 def to_time_window_string(start_ts: pd.Timestamp, end_ts: pd.Timestamp) -> str:
+    """Format an inclusive timestamp window for artifact rows."""
     return f"{start_ts.strftime('%Y-%m-%dT%H:%M:%S')}/{end_ts.strftime('%Y-%m-%dT%H:%M:%S')}"

@@ -1,3 +1,5 @@
+"""Shared preparation, modeling, and artifact helpers for benchmark workflows."""
+
 from __future__ import annotations
 
 from itertools import product
@@ -38,14 +40,21 @@ from secom.preprocess import (
 from secom.selection.engine import select_features
 from secom.selection.tuning import gamma_sort_key
 
+BENCHMARK_FEATURE_BUDGET = 40
+BOOTSTRAP_N = 1000
+BOOTSTRAP_SEED = 42
+VALUE_CLUSTER_CORR_THRESHOLD = 0.95
+
 
 def selector_param_grid(selector: str) -> list[dict[str, Any]]:
+    """Return the fixed original-benchmark selector grid for one selector."""
     if selector == SelectorName.RELIEFF:
-        return [{"k": 40, "n_neighbors": 10}]
-    return [{"k": 40, "n_neighbors": None}]
+        return [{"k": BENCHMARK_FEATURE_BUDGET, "n_neighbors": 10}]
+    return [{"k": BENCHMARK_FEATURE_BUDGET, "n_neighbors": None}]
 
 
 def classifier_param_grid(classifier: str) -> list[dict[str, Any]]:
+    """Return the deterministic benchmark classifier hyperparameter grid."""
     if classifier == BenchmarkClassifier.KRR:
         alphas = sorted(float(v) for v in BENCHMARK_KRR_ALPHA_GRID)
         gammas = sorted(
@@ -61,16 +70,18 @@ def classifier_param_grid(classifier: str) -> list[dict[str, Any]]:
 
 
 def selector_kwargs(selector: str, selector_config: dict[str, Any]) -> dict[str, Any]:
+    """Translate selector config rows into keyword arguments for selection dispatch."""
     if selector == SelectorName.RELIEFF:
         return {"n_neighbors": int(selector_config.get("n_neighbors", 10))}
     return {}
 
 
 def config_fields(selector_config: dict[str, Any], classifier_config: dict[str, Any]) -> dict[str, Any]:
+    """Normalize selector/classifier config values into artifact columns."""
     gamma = classifier_config.get("gamma")
     n_neighbors = selector_config.get("n_neighbors")
     return {
-        "k": int(selector_config.get("k", 40)),
+        "k": int(selector_config.get("k", BENCHMARK_FEATURE_BUDGET)),
         "alpha": np.nan if classifier_config.get("alpha") is None else float(classifier_config["alpha"]),
         "gamma": np.nan if gamma is None else float(gamma),
         "C": np.nan if classifier_config.get("C") is None else float(classifier_config["C"]),
@@ -79,6 +90,7 @@ def config_fields(selector_config: dict[str, Any], classifier_config: dict[str, 
 
 
 def denormalize_optional(value: Any) -> Any:
+    """Map artifact null-like values back to Python ``None`` for config reuse."""
     if value is None:
         return None
     if isinstance(value, (float, np.floating)) and pd.isna(value):
@@ -87,6 +99,7 @@ def denormalize_optional(value: Any) -> Any:
 
 
 def selector_config_from_row(row: Any) -> dict[str, Any]:
+    """Read a selector config from either a dict row or pandas namedtuple row."""
     return {
         "k": int(row["k"]) if isinstance(row, dict) else int(row.k),
         "n_neighbors": denormalize_optional(row.get("n_neighbors") if isinstance(row, dict) else row.n_neighbors),
@@ -94,6 +107,7 @@ def selector_config_from_row(row: Any) -> dict[str, Any]:
 
 
 def classifier_config_from_row(row: Any) -> dict[str, Any]:
+    """Read a classifier config from either a dict row or pandas namedtuple row."""
     return {
         "alpha": denormalize_optional(row.get("alpha") if isinstance(row, dict) else row.alpha),
         "gamma": denormalize_optional(row.get("gamma") if isinstance(row, dict) else row.gamma),
@@ -107,8 +121,9 @@ def config_tie_break_key(
     selector_config: dict[str, Any],
     classifier_config: dict[str, Any],
 ) -> tuple[Any, ...]:
+    """Return the deterministic simplicity key used after metric ties."""
     selector_key: tuple[Any, ...]
-    selector_key = (int(selector_config.get("k", 40)),)
+    selector_key = (int(selector_config.get("k", BENCHMARK_FEATURE_BUDGET)),)
     if selector == SelectorName.RELIEFF:
         nn = selector_config.get("n_neighbors", 10)
         nn = 10 if nn is None or pd.isna(nn) else int(nn)
@@ -128,6 +143,7 @@ def config_tie_break_key(
 
 
 def aggregate_primary_status(original_status: str, tuned_status: str) -> str:
+    """Combine original and tuned benchmark statuses into the benchmark study status."""
     statuses = [str(original_status), str(tuned_status)]
     if any(status == StudyStatus.FAILED for status in statuses):
         return StudyStatus.FAILED
@@ -142,6 +158,7 @@ def prepare_cv(
     df: pd.DataFrame,
     feature_cols: list[str],
 ) -> tuple[np.ndarray, np.ndarray, list[tuple[np.ndarray, np.ndarray]]]:
+    """Build the fixed 10-fold shuffled benchmark CV split."""
     x = df[feature_cols].to_numpy(dtype=float)
     y = df["y_bin"].to_numpy(dtype=int)
     skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=SEED_BENCHMARK)
@@ -150,6 +167,7 @@ def prepare_cv(
 
 
 def prepare_benchmark_dataset(input_dir: Path) -> dict[str, Any]:
+    """Load raw SECOM data and prepare arrays shared by original and tuned benchmarks."""
     project_root = Path(__file__).resolve().parents[3]
     loaded = load_raw_secom(input_dir)
     df = parse_sort_and_label(loaded.frame)
@@ -164,6 +182,7 @@ def prepare_benchmark_dataset(input_dir: Path) -> dict[str, Any]:
 
 
 def build_primary_feature_universe(raw_feature_count: int, add_indicator: bool) -> list[Any]:
+    """Return the reportable feature universe for strict or missing-indicator modes."""
     if add_indicator:
         return build_feature_universe(raw_feature_count)
     return build_feature_universe(raw_feature_count)[:raw_feature_count]
@@ -177,8 +196,9 @@ def prepare_full_selector_view(
     add_indicator: bool,
     selector_config: dict[str, Any],
     raw_feature_count: int,
-    k: int = 40,
+    k: int = BENCHMARK_FEATURE_BUDGET,
 ) -> dict[str, Any]:
+    """Fit selector preprocessing on the full benchmark dataset for final summaries."""
     kwargs = selector_kwargs(selector=selector, selector_config=selector_config)
     imputer = make_imputer(add_indicator=add_indicator)
     x_imp = imputer.fit_transform(x)
@@ -214,15 +234,18 @@ def prepare_selector_views(
     add_indicator: bool,
     selector_config: dict[str, Any],
     raw_feature_count: int,
-    k: int = 40,
+    k: int = BENCHMARK_FEATURE_BUDGET,
 ) -> dict[str, Any]:
+    """Prepare fold-specific selected matrices and feature-stability rows."""
     kwargs = selector_kwargs(selector=selector, selector_config=selector_config)
     fold_views: list[dict[str, Any]] = []
     feature_stability_frames: list[pd.DataFrame] = []
-    universe = build_primary_feature_universe(raw_feature_count=raw_feature_count, add_indicator=add_indicator)
-    universe_feature_index = np.asarray([int(feature.feature_index) for feature in universe], dtype=int)
-    universe_feature_type = np.asarray([feature.feature_type for feature in universe], dtype=object)
-    universe_feature_name = np.asarray([feature.feature_name_or_source_col for feature in universe], dtype=object)
+    feature_universe = build_primary_feature_universe(raw_feature_count=raw_feature_count, add_indicator=add_indicator)
+    universe_feature_index = np.asarray([int(feature.feature_index) for feature in feature_universe], dtype=int)
+    universe_feature_type = np.asarray([feature.feature_type for feature in feature_universe], dtype=object)
+    universe_feature_name = np.asarray(
+        [feature.feature_name_or_source_col for feature in feature_universe], dtype=object
+    )
     replication_mode = ReplicationMode.WITH_MISSING_INDICATORS if add_indicator else ReplicationMode.STRICT
 
     for fold_i, (train_idx, test_idx) in enumerate(folds, start=1):
@@ -308,6 +331,7 @@ def fit_classifier_scores(
     classifier_config: dict[str, Any],
     include_train_scores: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
+    """Fit a benchmark classifier and return train/eval score vectors."""
     if classifier == BenchmarkClassifier.KRR:
         clf = fit_benchmark_krr_model(
             x_train_sel,
@@ -346,6 +370,7 @@ def fit_full_dataset(
     prepared_full: dict[str, Any],
     classifier_config: dict[str, Any],
 ) -> dict[str, Any]:
+    """Fit a selected full-dataset benchmark model and summarize in-sample metrics."""
     x_sel = prepared_full["x_sel"]
     y = prepared_full["y"]
     coefficient_by_feature_index: dict[int, float] = {}
@@ -387,6 +412,7 @@ def fit_full_dataset(
 
 
 def safe_value_corrcoef(value_x: np.ndarray) -> np.ndarray:
+    """Return a correlation matrix that leaves constant-column pairs as NaN."""
     value_x = np.asarray(value_x, dtype=float)
     p = value_x.shape[1]
     corr = np.full((p, p), np.nan, dtype=float)
@@ -405,6 +431,7 @@ def safe_value_corrcoef(value_x: np.ndarray) -> np.ndarray:
 
 
 def build_cluster_id_map(x_raw: np.ndarray) -> dict[int, int]:
+    """Group raw value features into high-correlation connected components."""
     imputer = make_imputer(add_indicator=False)
     value_x = imputer.fit_transform(x_raw)
     corr = safe_value_corrcoef(value_x)
@@ -413,7 +440,7 @@ def build_cluster_id_map(x_raw: np.ndarray) -> dict[int, int]:
     for i in range(p):
         for j in range(i + 1, p):
             cij = corr[i, j]
-            if np.isfinite(cij) and abs(cij) >= 0.95:
+            if np.isfinite(cij) and abs(cij) >= VALUE_CLUSTER_CORR_THRESHOLD:
                 adj[i].add(j)
                 adj[j].add(i)
     cluster_id: dict[int, int] = {}
@@ -441,6 +468,7 @@ def build_feature_report(
     coefficient_maps: dict[tuple[str, str, str], dict[int, float]],
     cluster_id_map: dict[int, int],
 ) -> pd.DataFrame:
+    """Build the benchmark feature report from selection stability and coefficients."""
     group_cols = [
         "selector",
         "replication_mode",
@@ -499,6 +527,7 @@ def build_feature_report(
 
 
 def build_benchmark_summary_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate fold metrics with bootstrap confidence intervals."""
     summary_rows: list[dict[str, Any]] = []
     for (selector, classifier, mode), frame in fold_metrics_df.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
@@ -510,7 +539,7 @@ def build_benchmark_summary_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
         pr_values = frame["PR_AUC"].to_numpy(dtype=float)
         mcc_values = frame["MCC"].to_numpy(dtype=float)
         f2_values = frame["F2"].to_numpy(dtype=float)
-        draw_indices = bootstrap_resample_indices(n_values=len(frame), n_boot=1000, seed=42)
+        draw_indices = bootstrap_resample_indices(n_values=len(frame), n_boot=BOOTSTRAP_N, seed=BOOTSTRAP_SEED)
         ber_lo, ber_hi = bootstrap_ci_for_mean(ber_values, alpha=0.95, draw_indices=draw_indices)
         tp_lo, tp_hi = bootstrap_ci_for_mean(tp_values, alpha=0.95, draw_indices=draw_indices)
         tn_lo, tn_hi = bootstrap_ci_for_mean(tn_values, alpha=0.95, draw_indices=draw_indices)
@@ -524,8 +553,8 @@ def build_benchmark_summary_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
                 "classifier": classifier,
                 "replication_mode": mode,
                 "n_folds": int(len(frame)),
-                "n_boot": 1000,
-                "boot_seed": 42,
+                "n_boot": BOOTSTRAP_N,
+                "boot_seed": BOOTSTRAP_SEED,
                 "mean_BER": float(np.mean(ber_values)),
                 "std_BER": safe_std(ber_values),
                 "CI_lower_BER": ber_lo,
@@ -560,6 +589,7 @@ def build_benchmark_summary_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_benchmark_ablation_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
+    """Compare strict versus missing-indicator BER for each selector/classifier pair."""
     ablation_rows: list[dict[str, Any]] = []
     for (selector, classifier), frame in fold_metrics_df.groupby(["selector", "classifier"], sort=False):
         strict_frame = frame[frame["replication_mode"] == ReplicationMode.STRICT].sort_values("fold")

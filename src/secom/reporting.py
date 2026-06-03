@@ -1,11 +1,13 @@
+"""Markdown report assembly from generated study artifacts."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 import json
-from pathlib import Path
 import shutil
 import subprocess
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -22,12 +24,14 @@ from secom.report_figures import (
 
 
 def _read_csv(path: Path) -> pd.DataFrame | None:
+    """Read an artifact CSV when present."""
     if not path.exists():
         return None
     return pd.read_csv(path)
 
 
 def _format_float(value: object) -> str:
+    """Format numeric report values with a compact missing-value fallback."""
     try:
         if value is None or (isinstance(value, float) and pd.isna(value)):
             return "n/a"
@@ -37,6 +41,7 @@ def _format_float(value: object) -> str:
 
 
 def _format_cell(value: object) -> str:
+    """Format one Markdown table cell."""
     if isinstance(value, (np.integer, int)) and not isinstance(value, bool):
         return str(int(value))
     if isinstance(value, (np.floating, float)):
@@ -51,6 +56,7 @@ def _markdown_table(
     headers: list[str] | None = None,
     max_rows: int | None = None,
 ) -> list[str]:
+    """Render a small DataFrame slice as Markdown table lines."""
     table = frame.loc[:, columns].copy()
     if max_rows is not None:
         table = table.head(max_rows)
@@ -65,6 +71,7 @@ def _markdown_table(
 
 
 def _top_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
+    """Render primary benchmark BER/TPR/TNR evidence."""
     table = benchmark_summary.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
     return _markdown_table(
         table,
@@ -83,6 +90,7 @@ def _top_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
 
 
 def _supporting_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
+    """Render threshold-independent and supporting benchmark metrics."""
     table = benchmark_summary.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
     return _markdown_table(
         table,
@@ -100,6 +108,7 @@ def _supporting_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
 
 
 def _original_search_space_table(benchmark_sweep: pd.DataFrame) -> list[str]:
+    """Summarize original benchmark search-space breadth by selector/classifier/mode."""
     summary_rows = []
     for (selector, classifier, mode), frame in benchmark_sweep.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
@@ -139,6 +148,7 @@ def _original_search_space_table(benchmark_sweep: pd.DataFrame) -> list[str]:
 
 
 def _original_best_config_table(benchmark_best: pd.DataFrame) -> list[str]:
+    """Render original benchmark selected configurations."""
     table = benchmark_best.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
     cols = ["selector", "classifier", "replication_mode", "k", "C", "alpha", "gamma", "n_neighbors", "mean_BER"]
     existing_cols = [col for col in cols if col in table.columns]
@@ -161,6 +171,7 @@ def _original_best_config_table(benchmark_best: pd.DataFrame) -> list[str]:
 
 
 def _tuned_search_space_table(benchmark_tuned_search: pd.DataFrame) -> list[str]:
+    """Summarize tuned benchmark nested-search breadth by selector/classifier/mode."""
     summary_rows = []
     for (selector, classifier, mode), frame in benchmark_tuned_search.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
@@ -202,6 +213,7 @@ def _tuned_search_space_table(benchmark_tuned_search: pd.DataFrame) -> list[str]
 
 
 def _temporal_selection_summary_table(temporal_selection: pd.DataFrame) -> list[str]:
+    """Render temporal selector roles in primary/challenger/supporting order."""
     preferred = [
         "selector",
         "status",
@@ -224,6 +236,7 @@ def _temporal_selection_summary_table(temporal_selection: pd.DataFrame) -> list[
 
 
 def _tuned_best_config_table(benchmark_tuned_best: pd.DataFrame) -> list[str]:
+    """Render modal tuned configurations selected across outer folds."""
     table = benchmark_tuned_best.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
     return _markdown_table(
         table,
@@ -262,6 +275,7 @@ def _best_row_feature_table(
     classifier: str,
     replication_mode: str,
 ) -> list[str]:
+    """Render the top feature rows for one selector/classifier/mode configuration."""
     rows = feature_report[
         (feature_report["selector"] == selector)
         & (feature_report["classifier"] == classifier)
@@ -302,6 +316,8 @@ def _best_row_feature_table(
 
 @dataclass(frozen=True)
 class ReportContext:
+    """All optional artifacts and preselected rows needed by final report assembly."""
+
     reports_dir: Path
     manifest: dict[str, object]
     benchmark_sweep: pd.DataFrame | None
@@ -329,6 +345,7 @@ class ReportContext:
 
 
 def _load_report_context(output_dir: Path) -> ReportContext:
+    """Load all report artifacts and compute the leading rows used by the narrative."""
     reports = output_dir / "reports"
     manifest_path = reports / ArtifactName.MANIFEST
     if not manifest_path.exists():
@@ -352,6 +369,7 @@ def _load_report_context(output_dir: Path) -> ReportContext:
     temporal_manager = _read_csv(reports / ArtifactName.TEMPORAL_MANAGER_OUTPUTS)
     temporal_cost = _read_csv(reports / ArtifactName.TEMPORAL_COST_CURVES)
 
+    # These chosen rows are narrative anchors only; full evidence tables remain in the report.
     best_benchmark_row = None
     if benchmark_summary is not None and not benchmark_summary.empty:
         best_benchmark_row = benchmark_summary.sort_values(
@@ -416,6 +434,7 @@ def _load_report_context(output_dir: Path) -> ReportContext:
 
 
 def _append_bullet_list(lines: list[str], items: list[str]) -> None:
+    """Append Markdown bullet lines in-place."""
     for item in items:
         lines.append(f"- {item}")
 
@@ -425,6 +444,7 @@ def _append_benchmark_summary_table(
     heading: str,
     frame: pd.DataFrame | None,
 ) -> None:
+    """Append a primary benchmark summary section."""
     lines.append(heading)
     lines.append("")
     if frame is None or frame.empty:
@@ -439,6 +459,7 @@ def _append_supporting_metrics_table(
     heading: str,
     frame: pd.DataFrame | None,
 ) -> None:
+    """Append a supporting metrics section."""
     lines.append(heading)
     lines.append("")
     if frame is None or frame.empty:
@@ -449,6 +470,7 @@ def _append_supporting_metrics_table(
 
 
 def _append_figure(lines: list[str], alt_text: str, relative_path: str, caption: str) -> None:
+    """Append a Markdown image reference and caption."""
     lines.append(f"![{alt_text}]({relative_path})")
     lines.append("")
     lines.append(caption)
@@ -456,62 +478,34 @@ def _append_figure(lines: list[str], alt_text: str, relative_path: str, caption:
 
 
 def write_report_skeleton(output_dir: Path) -> Path:
-    reports = output_dir / "reports"
-    manifest_path = reports / ArtifactName.MANIFEST
-    if not manifest_path.exists():
-        raise FileNotFoundError(f"Missing manifest: {manifest_path}")
+    """Write a long-form report skeleton from whatever artifacts are currently present."""
+    ctx = _load_report_context(output_dir)
+    reports = ctx.reports_dir
+    manifest = ctx.manifest
+    benchmark_sweep = ctx.benchmark_sweep
+    benchmark_best = ctx.benchmark_best
+    benchmark_summary = ctx.benchmark_summary
+    benchmark_ablation = ctx.benchmark_ablation
+    feature_report = ctx.feature_report
+    benchmark_tuned_search = ctx.benchmark_tuned_search
+    benchmark_tuned_best = ctx.benchmark_tuned_best
+    benchmark_tuned_summary = ctx.benchmark_tuned_summary
+    benchmark_tuned_ablation = ctx.benchmark_tuned_ablation
+    benchmark_tuned_feature_report = ctx.benchmark_tuned_feature_report
+    temporal_selection = ctx.temporal_selection
+    temporal_lockbox = ctx.temporal_lockbox
+    temporal_drift = ctx.temporal_drift
+    temporal_mspc = ctx.temporal_mspc
+    temporal_manager = ctx.temporal_manager
+    temporal_cost = ctx.temporal_cost
+    best_benchmark_row = ctx.best_benchmark_row
+    best_tuned_benchmark_row = ctx.best_tuned_benchmark_row
+    modal_tuned_config_row = ctx.modal_tuned_config_row
+    primary_temporal_row = ctx.primary_temporal_row
+    drift_row = ctx.drift_row
+    mspc_lockbox_row = ctx.mspc_lockbox_row
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    benchmark_sweep = _read_csv(reports / ArtifactName.BENCHMARK_SWEEP)
-    benchmark_best = _read_csv(reports / ArtifactName.BENCHMARK_BEST_CONFIG)
-    benchmark_summary = _read_csv(reports / ArtifactName.BENCHMARK_SUMMARY)
-    benchmark_ablation = _read_csv(reports / ArtifactName.BENCHMARK_ABLATION)
-    feature_report = _read_csv(reports / ArtifactName.FEATURE_REPORT)
-    benchmark_tuned_search = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_SEARCH)
-    benchmark_tuned_best = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_BEST_CONFIG)
-    benchmark_tuned_summary = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
-    benchmark_tuned_ablation = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_ABLATION)
-    benchmark_tuned_feature_report = _read_csv(reports / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
-    temporal_selection = _read_csv(reports / ArtifactName.TEMPORAL_MODEL_SELECTION)
-    temporal_lockbox = _read_csv(reports / ArtifactName.TEMPORAL_LOCKBOX)
-    temporal_drift = _read_csv(reports / ArtifactName.TEMPORAL_DRIFT)
-    temporal_mspc = _read_csv(reports / ArtifactName.TEMPORAL_MSPC)
-    temporal_manager = _read_csv(reports / ArtifactName.TEMPORAL_MANAGER_OUTPUTS)
-    temporal_cost = _read_csv(reports / ArtifactName.TEMPORAL_COST_CURVES)
-
-    best_benchmark_row = None
-    if benchmark_summary is not None and not benchmark_summary.empty:
-        best_benchmark_row = benchmark_summary.sort_values(
-            ["mean_BER", "selector", "classifier", "replication_mode"]
-        ).iloc[0]
-    best_tuned_benchmark_row = None
-    if benchmark_tuned_summary is not None and not benchmark_tuned_summary.empty:
-        best_tuned_benchmark_row = benchmark_tuned_summary.sort_values(
-            ["mean_BER", "selector", "classifier", "replication_mode"]
-        ).iloc[0]
-    modal_tuned_config_row = None
-    if benchmark_tuned_best is not None and not benchmark_tuned_best.empty:
-        modal_tuned_config_row = benchmark_tuned_best.sort_values(
-            ["selection_count", "mean_BER", "selector", "classifier", "replication_mode"],
-            ascending=[False, True, True, True, True],
-        ).iloc[0]
-
-    primary_temporal_row = None
-    if temporal_selection is not None and not temporal_selection.empty:
-        primary_rows = temporal_selection[temporal_selection["is_primary"].astype(bool)]
-        if not primary_rows.empty:
-            primary_temporal_row = primary_rows.iloc[0]
-
-    drift_row = None
-    if temporal_drift is not None and not temporal_drift.empty:
-        drift_row = temporal_drift.iloc[0]
-
-    mspc_lockbox_row = None
-    if temporal_mspc is not None and not temporal_mspc.empty:
-        rows = temporal_mspc[temporal_mspc["eval_scope"] == "lockbox"]
-        if not rows.empty:
-            mspc_lockbox_row = rows.iloc[0]
-
+    # Skeleton text intentionally keeps prompts and placeholder guidance for human completion.
     lines: list[str] = []
     lines.append("# Final Report Skeleton")
     lines.append("")
@@ -1058,6 +1052,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
 
 
 def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
+    """Write the final Markdown report and optionally export it through pandoc."""
     ctx = _load_report_context(output_dir)
     restrictions = list(ctx.manifest.get("temporal_claim_restrictions", []))
     figures_dir = ctx.reports_dir / "figures"
@@ -1097,6 +1092,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         workload_cost_figure,
     )
 
+    # Final report text is artifact-driven and avoids asking readers to inspect raw CSVs first.
     lines: list[str] = []
     lines.append("# SECOM Benchmark-First Yield Monitoring Study")
     lines.append("")

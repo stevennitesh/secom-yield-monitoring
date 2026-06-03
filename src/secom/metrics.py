@@ -1,3 +1,5 @@
+"""Binary classification metrics, threshold search, and bootstrap intervals."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,6 +16,8 @@ from sklearn.metrics import (
 
 @dataclass(frozen=True)
 class BinaryCounts:
+    """Confusion-matrix counts using fail as the positive class."""
+
     tn: int
     fp: int
     fn: int
@@ -21,6 +25,7 @@ class BinaryCounts:
 
 
 def safe_std(values: Iterable[float]) -> float:
+    """Return sample standard deviation, using zero for singleton inputs."""
     arr = np.asarray(list(values), dtype=float)
     if arr.size <= 1:
         return 0.0
@@ -28,6 +33,7 @@ def safe_std(values: Iterable[float]) -> float:
 
 
 def confusion_counts(y_true: np.ndarray, y_pred: np.ndarray) -> BinaryCounts:
+    """Return binary confusion counts with label 1 as fail/positive."""
     y_true = np.asarray(y_true, dtype=int)
     y_pred = np.asarray(y_pred, dtype=int)
 
@@ -39,6 +45,7 @@ def confusion_counts(y_true: np.ndarray, y_pred: np.ndarray) -> BinaryCounts:
 
 
 def true_pos_rate(counts: BinaryCounts) -> float:
+    """Return sensitivity with zero when no positives are present."""
     denom = counts.tp + counts.fn
     if denom == 0:
         return 0.0
@@ -46,6 +53,7 @@ def true_pos_rate(counts: BinaryCounts) -> float:
 
 
 def true_neg_rate(counts: BinaryCounts) -> float:
+    """Return specificity with zero when no negatives are present."""
     denom = counts.tn + counts.fp
     if denom == 0:
         return 0.0
@@ -53,16 +61,19 @@ def true_neg_rate(counts: BinaryCounts) -> float:
 
 
 def ber_from_counts(counts: BinaryCounts) -> float:
+    """Return balanced error rate from confusion counts."""
     tpr = true_pos_rate(counts)
     tnr = true_neg_rate(counts)
     return 1.0 - 0.5 * (tpr + tnr)
 
 
 def predict_from_threshold(scores: np.ndarray, threshold: float) -> np.ndarray:
+    """Convert scores to binary predictions using score >= threshold."""
     return (np.asarray(scores, dtype=float) >= float(threshold)).astype(int)
 
 
 def candidate_thresholds(scores: np.ndarray) -> np.ndarray:
+    """Return all observed score thresholds plus all-negative/all-positive sentinels."""
     uniq = np.unique(np.asarray(scores, dtype=float))
     return np.concatenate((np.array([-np.inf]), uniq, np.array([np.inf])))
 
@@ -75,6 +86,7 @@ def _is_better_threshold(
     best_tpr: float,
     best_threshold: float | None,
 ) -> bool:
+    """Apply BER, then TPR, then lower-threshold tie breaking."""
     if ber < best_ber:
         return True
     if np.isclose(ber, best_ber):
@@ -90,6 +102,7 @@ def _find_ber_optimal_threshold_bruteforce(
     y_true: np.ndarray,
     scores: np.ndarray,
 ) -> tuple[float, dict[str, float]]:
+    """Slow threshold search path that handles non-finite score sentinels."""
     best_threshold = None
     best_ber = np.inf
     best_tpr = -np.inf
@@ -126,6 +139,7 @@ def find_ber_optimal_threshold(
     y_true: np.ndarray,
     scores: np.ndarray,
 ) -> tuple[float, dict[str, float]]:
+    """Find the BER-optimal threshold with deterministic TPR/threshold ties."""
     y_arr = np.asarray(y_true, dtype=int)
     scores_arr = np.asarray(scores, dtype=float)
     if y_arr.size != scores_arr.size:
@@ -151,7 +165,7 @@ def find_ber_optimal_threshold(
     best_tpr = -np.inf
     best_counts: BinaryCounts | None = None
 
-    # threshold = +inf (predict all negatives)
+    # Start at threshold=+inf, which predicts all negatives before scores sweep down.
     tpr = 0.0 if (tp + fn) == 0 else float(tp / (tp + fn))
     tnr = 0.0 if (tn + fp) == 0 else float(tn / (tn + fp))
     ber = float(1.0 - 0.5 * (tpr + tnr))
@@ -188,7 +202,7 @@ def find_ber_optimal_threshold(
             best_counts = BinaryCounts(tn=tn, fp=fp, fn=fn, tp=tp)
         i = j
 
-    # threshold = -inf (predict all positives), ties break to smallest threshold
+    # End at threshold=-inf, which predicts all positives and wins exact lower-threshold ties.
     tpr = 0.0 if (tp + fn) == 0 else float(tp / (tp + fn))
     tnr = 0.0 if (tn + fp) == 0 else float(tn / (tn + fp))
     ber = float(1.0 - 0.5 * (tpr + tnr))
@@ -206,6 +220,7 @@ def find_ber_optimal_threshold(
 
 
 def extract_tpr_at_tnr(y_true: np.ndarray, scores: np.ndarray, target_tnr: float = 0.90) -> tuple[float, float, float]:
+    """Return the threshold with best TPR among points meeting target TNR."""
     best_threshold = None
     best_tpr = -np.inf
     best_tnr = 0.0
@@ -233,11 +248,28 @@ def extract_tpr_at_tnr(y_true: np.ndarray, scores: np.ndarray, target_tnr: float
     return best_threshold, float(best_tnr), float(best_tpr)
 
 
+def core_binary_metrics_at_threshold(
+    y_true: np.ndarray,
+    scores: np.ndarray,
+    threshold: float,
+) -> dict[str, float]:
+    """Return only BER, sensitivity, and specificity for one threshold."""
+    y_arr = np.asarray(y_true, dtype=int)
+    y_pred = predict_from_threshold(scores, threshold)
+    counts = confusion_counts(y_arr, y_pred)
+    return {
+        "BER": ber_from_counts(counts),
+        "True+": true_pos_rate(counts),
+        "True-": true_neg_rate(counts),
+    }
+
+
 def binary_metrics_at_threshold(
     y_true: np.ndarray,
     scores: np.ndarray,
     threshold: float,
 ) -> dict[str, float]:
+    """Return core and extended binary metrics for one threshold."""
     core_metrics = core_binary_metrics_at_threshold(y_true=y_true, scores=scores, threshold=threshold)
     y_true = np.asarray(y_true, dtype=int)
     scores = np.asarray(scores, dtype=float)
@@ -263,26 +295,12 @@ def binary_metrics_at_threshold(
     return metrics
 
 
-def core_binary_metrics_at_threshold(
-    y_true: np.ndarray,
-    scores: np.ndarray,
-    threshold: float,
-) -> dict[str, float]:
-    y_arr = np.asarray(y_true, dtype=int)
-    y_pred = predict_from_threshold(scores, threshold)
-    counts = confusion_counts(y_arr, y_pred)
-    return {
-        "BER": ber_from_counts(counts),
-        "True+": true_pos_rate(counts),
-        "True-": true_neg_rate(counts),
-    }
-
-
 def bootstrap_resample_indices(
     n_values: int,
     n_boot: int = 1000,
     seed: int = 42,
 ) -> np.ndarray:
+    """Return bootstrap index draws with shape ``(n_boot, n_values)``."""
     n = int(n_values)
     if n <= 0:
         return np.empty((0, 0), dtype=int)
@@ -297,6 +315,7 @@ def bootstrap_ci_for_mean(
     alpha: float = 0.95,
     draw_indices: np.ndarray | None = None,
 ) -> tuple[float, float]:
+    """Return a percentile bootstrap CI for a mean."""
     vals = np.asarray(values, dtype=float)
     if vals.size == 0:
         return (np.nan, np.nan)
@@ -319,6 +338,7 @@ def paired_bootstrap_delta_ci(
     seed: int = 42,
     alpha: float = 0.95,
 ) -> tuple[float, float]:
+    """Return a paired bootstrap CI for ``left - right`` mean deltas."""
     left = np.asarray(left, dtype=float)
     right = np.asarray(right, dtype=float)
     if left.shape != right.shape:
@@ -328,6 +348,7 @@ def paired_bootstrap_delta_ci(
 
 
 def expected_cost_per_wafer(fp: float, fn: float, n: float, cost_ratio: float) -> float:
+    """Return simple expected cost where false-negative cost is ``cost_ratio`` times FP."""
     if n <= 0:
         return np.nan
     c_fp = 1.0

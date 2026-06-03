@@ -1,3 +1,5 @@
+"""Raw SECOM file loading and canonical row ordering."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,11 +10,14 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class LoadedSecom:
+    """Raw feature frame with the generated feature-column names."""
+
     frame: pd.DataFrame
     feature_columns: list[str]
 
 
 def load_raw_secom(input_dir: Path) -> LoadedSecom:
+    """Load SECOM feature and label files from an input directory."""
     data_path = input_dir / "secom.data"
     labels_path = input_dir / "secom_labels.data"
 
@@ -38,17 +43,19 @@ def load_raw_secom(input_dir: Path) -> LoadedSecom:
 
 
 def parse_sort_and_label(df: pd.DataFrame) -> pd.DataFrame:
+    """Parse timestamps, convert labels to fail/pass binary values, and sort stably."""
     out = df.copy()
     out["timestamp"] = pd.to_datetime(out["timestamp_raw"], dayfirst=True, errors="coerce", format="%d/%m/%Y %H:%M:%S")
     out = out.dropna(subset=["timestamp"]).copy()
     out["y_bin"] = (out["y_raw"] == 1).astype(int)
 
-    # Stable deterministic sort contract.
+    # Stable deterministic sort contract used by chronological DEV/LOCKBOX splitting.
     out = out.sort_values(["timestamp", "raw_row_id"], kind="mergesort").reset_index(drop=True)
     out["sorted_row_id"] = pd.RangeIndex(start=0, stop=len(out), step=1, dtype="int64")
     return out
 
 
 def write_dataframe_csv(df: pd.DataFrame, path: Path) -> None:
+    """Write a DataFrame CSV, creating parent directories as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
