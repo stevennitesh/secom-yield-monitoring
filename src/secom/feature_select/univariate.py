@@ -4,18 +4,23 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 from sklearn.feature_selection import f_classif
 
 from secom.config import EPS_SELECTOR, SelectorName
+from secom.feature_select._ranking import rank_desc_with_index_tiebreak, sanitize_scores
 
 
-def _sanitize_scores(scores: np.ndarray) -> np.ndarray:
-    """Coerce unusable scores to the shared bottom-rank sentinel."""
-    sanitized = np.asarray(scores, dtype=float).copy()
-    sanitized[~np.isfinite(sanitized)] = -np.inf
-    return sanitized
+@dataclass(frozen=True)
+class _ClassStats:
+    mu_fail: np.ndarray
+    mu_pass: np.ndarray
+    sd_fail: np.ndarray
+    sd_pass: np.ndarray
+    n_fail: int
+    n_pass: int
 
 
 def _zero_variance_mask(x: np.ndarray) -> np.ndarray:
@@ -24,47 +29,44 @@ def _zero_variance_mask(x: np.ndarray) -> np.ndarray:
     return std <= 0
 
 
-def _rank_desc_with_index_tiebreak(scores: np.ndarray) -> np.ndarray:
-    """Rank higher scores first, with deterministic lower-index tie breaks."""
-    feature_indices = np.arange(scores.shape[0], dtype=int)
-    return np.lexsort((feature_indices, -scores))
+def _sanitize_univariate_scores(scores: np.ndarray, x: np.ndarray) -> np.ndarray:
+    sanitized = sanitize_scores(scores)
+    sanitized[_zero_variance_mask(x)] = -np.inf
+    return sanitized
+
+
+def _class_stats(x: np.ndarray, y_bin: np.ndarray) -> _ClassStats:
+    """Return fail/pass column means, standard deviations, and class counts."""
+    x_arr = np.asarray(x, dtype=float)
+    y = np.asarray(y_bin, dtype=int)
+    fail = y == 1
+    pass_ = y == 0
+
+    return _ClassStats(
+        mu_fail=np.nanmean(x_arr[fail], axis=0),
+        mu_pass=np.nanmean(x_arr[pass_], axis=0),
+        sd_fail=np.nanstd(x_arr[fail], axis=0, ddof=1),
+        sd_pass=np.nanstd(x_arr[pass_], axis=0, ddof=1),
+        n_fail=int(np.sum(fail)),
+        n_pass=int(np.sum(pass_)),
+    )
 
 
 def score_s2n(x: np.ndarray, y_bin: np.ndarray, eps: float = EPS_SELECTOR) -> np.ndarray:
     """Score features by signal-to-noise separation between fail and pass wafers."""
     x = np.asarray(x, dtype=float)
-    y = np.asarray(y_bin, dtype=int)
-    fail = y == 1
-    pass_ = y == 0
-
-    mu_fail = np.nanmean(x[fail], axis=0)
-    mu_pass = np.nanmean(x[pass_], axis=0)
-    sd_fail = np.nanstd(x[fail], axis=0, ddof=1)
-    sd_pass = np.nanstd(x[pass_], axis=0, ddof=1)
-    score = np.abs(mu_fail - mu_pass) / (sd_fail + sd_pass + eps)
-    score = _sanitize_scores(score)
-    score[_zero_variance_mask(x)] = -np.inf
-    return score
+    stats = _class_stats(x, y_bin)
+    score = np.abs(stats.mu_fail - stats.mu_pass) / (stats.sd_fail + stats.sd_pass + eps)
+    return _sanitize_univariate_scores(score, x)
 
 
 def score_welch_t(x: np.ndarray, y_bin: np.ndarray, eps: float = EPS_SELECTOR) -> np.ndarray:
     """Score features by absolute Welch t-style class separation."""
     x = np.asarray(x, dtype=float)
-    y = np.asarray(y_bin, dtype=int)
-    fail = y == 1
-    pass_ = y == 0
-    n_fail = int(np.sum(fail))
-    n_pass = int(np.sum(pass_))
-
-    mu_fail = np.nanmean(x[fail], axis=0)
-    mu_pass = np.nanmean(x[pass_], axis=0)
-    sd_fail = np.nanstd(x[fail], axis=0, ddof=1)
-    sd_pass = np.nanstd(x[pass_], axis=0, ddof=1)
-    denom = np.sqrt((sd_fail**2) / max(n_fail, 1) + (sd_pass**2) / max(n_pass, 1) + eps)
-    score = np.abs(mu_fail - mu_pass) / denom
-    score = _sanitize_scores(score)
-    score[_zero_variance_mask(x)] = -np.inf
-    return score
+    stats = _class_stats(x, y_bin)
+    denom = np.sqrt((stats.sd_fail**2) / max(stats.n_fail, 1) + (stats.sd_pass**2) / max(stats.n_pass, 1) + eps)
+    score = np.abs(stats.mu_fail - stats.mu_pass) / denom
+    return _sanitize_univariate_scores(score, x)
 
 
 def score_f_test(x: np.ndarray, y_bin: np.ndarray) -> np.ndarray:
@@ -90,7 +92,7 @@ def score_f_test(x: np.ndarray, y_bin: np.ndarray) -> np.ndarray:
         )
         with np.errstate(divide="ignore", invalid="ignore"):
             non_constant_scores, _ = f_classif(x[:, ~zero_var], y)
-    score[~zero_var] = _sanitize_scores(non_constant_scores)
+    score[~zero_var] = sanitize_scores(non_constant_scores)
     return score
 
 
@@ -100,15 +102,13 @@ def score_pearson(x: np.ndarray, y_bin: np.ndarray) -> np.ndarray:
     y = np.asarray(y_bin, dtype=float)
     yc = y - np.mean(y)
     denom_y = np.linalg.norm(yc)
+
+    x_centered = x - np.mean(x, axis=0)
+    denom = np.linalg.norm(x_centered, axis=0) * denom_y
     score = np.full(x.shape[1], -np.inf, dtype=float)
-    for j in range(x.shape[1]):
-        xj = x[:, j] - np.mean(x[:, j])
-        denom = np.linalg.norm(xj) * denom_y
-        if denom > 0:
-            score[j] = abs(float(np.dot(xj, yc) / denom))
-    score = _sanitize_scores(score)
-    score[_zero_variance_mask(x)] = -np.inf
-    return score
+    valid = denom > 0
+    score[valid] = np.abs(np.dot(yc, x_centered[:, valid]) / denom[valid])
+    return _sanitize_univariate_scores(score, x)
 
 
 _SCORERS: dict[str, Callable[[np.ndarray, np.ndarray], np.ndarray]] = {
@@ -130,5 +130,5 @@ def rank_features(
         raise ValueError(f"Unsupported univariate selector method={method}")
 
     scores = scorer(x, y_bin)
-    order = _rank_desc_with_index_tiebreak(scores)
+    order = rank_desc_with_index_tiebreak(scores)
     return order, scores
