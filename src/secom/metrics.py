@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 import numpy as np
 from sklearn.metrics import (
@@ -92,9 +92,8 @@ def _is_better_threshold(
     if np.isclose(ber, best_ber):
         if tpr > best_tpr:
             return True
-        if np.isclose(tpr, best_tpr):
-            if best_threshold is None or float(threshold) < float(best_threshold):
-                return True
+        if np.isclose(tpr, best_tpr) and (best_threshold is None or float(threshold) < float(best_threshold)):
+            return True
     return False
 
 
@@ -329,22 +328,6 @@ def bootstrap_ci_for_mean(
     lower_q = (1 - alpha) / 2.0
     upper_q = 1.0 - lower_q
     return (float(np.quantile(means, lower_q)), float(np.quantile(means, upper_q)))
-
-
-def paired_bootstrap_delta_ci(
-    left: np.ndarray,
-    right: np.ndarray,
-    n_boot: int = 1000,
-    seed: int = 42,
-    alpha: float = 0.95,
-) -> tuple[float, float]:
-    """Return a paired bootstrap CI for ``left - right`` mean deltas."""
-    left = np.asarray(left, dtype=float)
-    right = np.asarray(right, dtype=float)
-    if left.shape != right.shape:
-        raise ValueError("Paired arrays must have same shape")
-    deltas = left - right
-    return bootstrap_ci_for_mean(deltas, n_boot=n_boot, seed=seed, alpha=alpha)
 
 
 def expected_cost_per_wafer(fp: float, fn: float, n: float, cost_ratio: float) -> float:

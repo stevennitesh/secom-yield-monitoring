@@ -117,6 +117,7 @@ _SCORERS: dict[str, Callable[[np.ndarray, np.ndarray], np.ndarray]] = {
     SelectorName.F_TEST: score_f_test,
     SelectorName.PEARSON: score_pearson,
 }
+UNIVARIATE_SELECTORS = frozenset(_SCORERS)
 
 
 def rank_features(

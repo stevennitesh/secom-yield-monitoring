@@ -26,6 +26,7 @@ from secom.metrics import (
 from secom.preprocess import local_to_global_feature_indices, transformed_feature_metadata_from_imputer
 from secom.qa import validate_tuned_benchmark_artifacts
 from secom.selection.engine import fit_selector_pipeline
+from secom.selection.tuning import select_near_best_auc_config
 from secom.workflows.benchmark_common import (
     BENCHMARK_REPLICATION_MODES,
     add_indicator_for_replication_mode,
@@ -67,15 +68,10 @@ def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
 
 def _select_best_tuned_config(config_rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Select a tuned config by near-best AUC, BER, then deterministic config key."""
-    if not config_rows:
-        raise ValueError("No tuned benchmark configs to select")
-    best_auc = max(float(row["mean_inner_ROC_AUC"]) for row in config_rows)
-    near = [row for row in config_rows if float(row["mean_inner_ROC_AUC"]) >= best_auc - 0.01 - 1e-12]
-    min_ber = min(float(row["mean_inner_BER"]) for row in near)
-    tied = [row for row in near if np.isclose(float(row["mean_inner_BER"]), min_ber)]
-    return min(
-        tied,
-        key=lambda row: config_tie_break_key(
+    return select_near_best_auc_config(
+        config_rows,
+        empty_message="No tuned benchmark configs to select",
+        simplicity_key=lambda row: config_tie_break_key(
             selector=str(row["selector"]),
             classifier=str(row["classifier"]),
             selector_config={"k": int(row["k"]), "n_neighbors": row.get("n_neighbors")},

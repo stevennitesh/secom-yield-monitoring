@@ -53,9 +53,3 @@ def parse_sort_and_label(df: pd.DataFrame) -> pd.DataFrame:
     out = out.sort_values(["timestamp", "raw_row_id"], kind="mergesort").reset_index(drop=True)
     out["sorted_row_id"] = pd.RangeIndex(start=0, stop=len(out), step=1, dtype="int64")
     return out
-
-
-def write_dataframe_csv(df: pd.DataFrame, path: Path) -> None:
-    """Write a DataFrame CSV, creating parent directories as needed."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(path, index=False)

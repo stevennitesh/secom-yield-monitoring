@@ -195,12 +195,9 @@ def run_original_benchmark_replication(
                             selector_config=selector_config,
                             classifier_config=classifier_config,
                         )
-                        is_better = False
-                        if objective < best_obj - 1e-12:
-                            is_better = True
-                        elif np.isclose(objective, best_obj):
-                            if best_tie_key is None or tie_key < best_tie_key:
-                                is_better = True
+                        is_better = objective < best_obj - 1e-12 or (
+                            np.isclose(objective, best_obj) and (best_tie_key is None or tie_key < best_tie_key)
+                        )
                         if is_better:
                             best_obj = objective
                             best_tie_key = tie_key
