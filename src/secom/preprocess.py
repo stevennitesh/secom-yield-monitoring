@@ -67,14 +67,14 @@ def transformed_feature_metadata_from_imputer(
     imputer: SimpleImputer, raw_feature_count: int
 ) -> list[TransformedFeature]:
     """Return transformed-column metadata for value columns plus fitted indicators."""
-    out: list[TransformedFeature] = []
-    for raw_idx in range(raw_feature_count):
-        out.append(_value_feature(raw_idx))
+    out = [_value_feature(raw_idx) for raw_idx in range(raw_feature_count)]
 
     if getattr(imputer, "indicator_", None) is not None:
         # SimpleImputer exposes only indicators for raw columns that were missing at fit time.
-        for raw_idx in imputer.indicator_.features_.tolist():
-            out.append(_missing_indicator_feature(raw_idx=int(raw_idx), raw_feature_count=raw_feature_count))
+        out.extend(
+            _missing_indicator_feature(raw_idx=int(raw_idx), raw_feature_count=raw_feature_count)
+            for raw_idx in imputer.indicator_.features_.tolist()
+        )
     return out
 
 
@@ -88,9 +88,9 @@ def local_to_global_feature_indices(
 
 def build_feature_universe(raw_feature_count: int) -> list[TransformedFeature]:
     """Return the full reportable value-plus-missing-indicator feature universe."""
-    universe = []
-    for raw_idx in range(raw_feature_count):
-        universe.append(_value_feature(raw_idx))
-    for raw_idx in range(raw_feature_count):
-        universe.append(_missing_indicator_feature(raw_idx=raw_idx, raw_feature_count=raw_feature_count))
+    universe = [_value_feature(raw_idx) for raw_idx in range(raw_feature_count)]
+    universe.extend(
+        _missing_indicator_feature(raw_idx=raw_idx, raw_feature_count=raw_feature_count)
+        for raw_idx in range(raw_feature_count)
+    )
     return universe

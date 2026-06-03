@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
 import numpy as np
@@ -26,7 +26,12 @@ class BinaryCounts:
 
 def safe_std(values: Iterable[float]) -> float:
     """Return sample standard deviation, using zero for singleton inputs."""
-    arr = np.asarray(list(values), dtype=float)
+    if isinstance(values, np.ndarray):
+        arr = values.astype(float, copy=False)
+    elif isinstance(values, Iterator):
+        arr = np.fromiter(values, dtype=float)
+    else:
+        arr = np.asarray(values, dtype=float)
     if arr.size <= 1:
         return 0.0
     return float(np.std(arr, ddof=1))
@@ -220,6 +225,82 @@ def find_ber_optimal_threshold(
 
 def extract_tpr_at_tnr(y_true: np.ndarray, scores: np.ndarray, target_tnr: float = 0.90) -> tuple[float, float, float]:
     """Return the threshold with best TPR among points meeting target TNR."""
+    y_arr = np.asarray(y_true, dtype=int)
+    scores_arr = np.asarray(scores, dtype=float)
+    if not np.all(np.isfinite(scores_arr)):
+        return _extract_tpr_at_tnr_bruteforce(y_arr, scores_arr, target_tnr=target_tnr)
+
+    order = np.argsort(scores_arr, kind="mergesort")[::-1]
+    sorted_scores = scores_arr[order]
+    sorted_y = y_arr[order]
+
+    n_pos_total = int(np.sum(sorted_y == 1))
+    n_neg_total = int(sorted_y.size - n_pos_total)
+    tp = 0
+    fp = 0
+    fn = n_pos_total
+    tn = n_neg_total
+
+    best_threshold: float | None = None
+    best_tpr = -np.inf
+    best_tnr = 0.0
+
+    def consider(threshold: float, tpr: float, tnr: float) -> None:
+        nonlocal best_threshold, best_tpr, best_tnr
+        if tnr < target_tnr:
+            return
+        if tpr > best_tpr or (
+            np.isclose(tpr, best_tpr) and (best_threshold is None or float(threshold) < float(best_threshold))
+        ):
+            best_threshold = float(threshold)
+            best_tpr = float(tpr)
+            best_tnr = float(tnr)
+
+    # Start at threshold=+inf, which predicts all negatives before scores sweep down.
+    tpr = 0.0 if (tp + fn) == 0 else float(tp / (tp + fn))
+    tnr = 0.0 if (tn + fp) == 0 else float(tn / (tn + fp))
+    consider(float(np.inf), tpr, tnr)
+
+    i = 0
+    n = int(sorted_scores.size)
+    while i < n:
+        score_value = float(sorted_scores[i])
+        j = i
+        group_pos = 0
+        while j < n and float(sorted_scores[j]) == score_value:
+            group_pos += int(sorted_y[j] == 1)
+            j += 1
+        group_size = j - i
+        group_neg = group_size - group_pos
+
+        tp += group_pos
+        fp += group_neg
+        fn -= group_pos
+        tn -= group_neg
+
+        tpr = 0.0 if (tp + fn) == 0 else float(tp / (tp + fn))
+        tnr = 0.0 if (tn + fp) == 0 else float(tn / (tn + fp))
+        consider(score_value, tpr, tnr)
+        i = j
+
+    # End at threshold=-inf, which predicts all positives and wins exact lower-threshold ties.
+    tpr = 0.0 if (tp + fn) == 0 else float(tp / (tp + fn))
+    tnr = 0.0 if (tn + fp) == 0 else float(tn / (tn + fp))
+    consider(float(-np.inf), tpr, tnr)
+
+    if best_threshold is None:
+        # If no threshold reaches target, use highest-threshold fallback.
+        fallback = float(np.inf)
+        y_pred = predict_from_threshold(scores_arr, fallback)
+        c = confusion_counts(y_arr, y_pred)
+        return fallback, true_neg_rate(c), true_pos_rate(c)
+    return best_threshold, best_tnr, best_tpr
+
+
+def _extract_tpr_at_tnr_bruteforce(
+    y_true: np.ndarray, scores: np.ndarray, target_tnr: float
+) -> tuple[float, float, float]:
+    """Slow TNR-constrained threshold search path for non-finite score sentinels."""
     best_threshold = None
     best_tpr = -np.inf
     best_tnr = 0.0
@@ -263,6 +344,14 @@ def core_binary_metrics_at_threshold(
     }
 
 
+def roc_auc_or_default(y_true: np.ndarray, scores: np.ndarray, default: float = 0.5) -> float:
+    """Return ROC AUC when both classes are present, otherwise ``default``."""
+    y_arr = np.asarray(y_true, dtype=int)
+    if np.unique(y_arr).size != 2:
+        return float(default)
+    return float(roc_auc_score(y_true=y_arr, y_score=np.asarray(scores, dtype=float)))
+
+
 def binary_metrics_at_threshold(
     y_true: np.ndarray,
     scores: np.ndarray,
@@ -287,9 +376,8 @@ def binary_metrics_at_threshold(
         "FN": float(counts.fn),
     }
 
-    # AUC metrics need both classes to be present.
-    if np.unique(y_true).size == 2:
-        metrics["ROC_AUC"] = roc_auc_score(y_true=y_true, y_score=scores)
+    metrics["ROC_AUC"] = roc_auc_or_default(y_true=y_true, scores=scores, default=np.nan)
+    if np.isfinite(metrics["ROC_AUC"]):
         metrics["PR_AUC"] = average_precision_score(y_true=y_true, y_score=scores)
     return metrics
 

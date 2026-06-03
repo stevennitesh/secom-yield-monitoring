@@ -12,7 +12,6 @@ import pandas as pd
 from scipy.stats import ks_2samp
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
@@ -46,6 +45,7 @@ from secom.metrics import (
     extract_tpr_at_tnr,
     find_ber_optimal_threshold,
     predict_from_threshold,
+    roc_auc_or_default,
     safe_std,
 )
 from secom.models import fit_temporal_logreg_model
@@ -304,7 +304,7 @@ def _phase2_fold_metrics(y_true: np.ndarray, scores: np.ndarray, threshold: floa
     y_true = np.asarray(y_true, dtype=int)
     scores = np.asarray(scores, dtype=float)
     metrics = core_binary_metrics_at_threshold(y_true=y_true, scores=scores, threshold=threshold)
-    auc = float(roc_auc_score(y_true, scores)) if np.unique(y_true).size == 2 else 0.5
+    auc = roc_auc_or_default(y_true, scores)
     return float(metrics["BER"]), auc
 
 
@@ -606,12 +606,8 @@ def _mspc_fit_and_score(
     arl0 = np.nan if alarm_positions.size < 2 else float(np.mean(np.diff(alarm_positions)))
     best_tpr = max(float(t2_tpr90), float(q_tpr90))
     best_src = "T2" if np.isclose(best_tpr, float(t2_tpr90)) else "Q"
-    if np.unique(y_eval).size == 2:
-        t2_auc = float(roc_auc_score(y_eval, t2_eval))
-        q_auc = float(roc_auc_score(y_eval, q_eval))
-    else:
-        t2_auc = np.nan
-        q_auc = np.nan
+    t2_auc = roc_auc_or_default(y_eval, t2_eval, default=np.nan)
+    q_auc = roc_auc_or_default(y_eval, q_eval, default=np.nan)
     return {
         "T2_AUC": t2_auc,
         "Q_AUC": q_auc,
@@ -893,15 +889,15 @@ def _run_stage_b_model_selection(
                         config_scores.append(row)
 
                 best = select_best_inner_config(config_scores)
-                for row in config_scores:
-                    inner_rows.append(
-                        _stage_b_inner_artifact_row(
-                            selector=selector,
-                            resample_id=resample_id,
-                            row=row,
-                            best=best,
-                        )
+                inner_rows.extend(
+                    _stage_b_inner_artifact_row(
+                        selector=selector,
+                        resample_id=resample_id,
+                        row=row,
+                        best=best,
                     )
+                    for row in config_scores
+                )
 
                 metrics, threshold = _fit_eval_with_labels(
                     x_train_raw=x_outer_train,

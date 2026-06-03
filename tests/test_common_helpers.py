@@ -4,6 +4,31 @@ import numpy as np
 
 from secom.common.drift import psi_for_feature
 from secom.common.thresholds import operational_threshold, weekly_flag_fraction
+from secom.metrics import candidate_thresholds, confusion_counts, predict_from_threshold, true_pos_rate
+
+
+def _threshold_equal(a: float, b: float) -> bool:
+    if np.isnan(a) and np.isnan(b):
+        return True
+    if np.isinf(a) and np.isinf(b):
+        return bool(np.sign(a) == np.sign(b))
+    return bool(np.isclose(float(a), float(b), atol=1e-12))
+
+
+def _bruteforce_operational_threshold(scores: np.ndarray, y_true: np.ndarray, week_labels: np.ndarray) -> float:
+    best_threshold: float | None = None
+    best_tpr = -np.inf
+    for candidate in candidate_thresholds(scores):
+        threshold = float(candidate)
+        if weekly_flag_fraction(scores=scores, threshold=threshold, week_labels=week_labels) > 0.10:
+            continue
+
+        counts = confusion_counts(y_true, predict_from_threshold(scores, threshold))
+        tpr = true_pos_rate(counts)
+        if tpr > best_tpr or (np.isclose(tpr, best_tpr) and (best_threshold is None or threshold < best_threshold)):
+            best_tpr = tpr
+            best_threshold = threshold
+    return float(np.inf) if best_threshold is None else best_threshold
 
 
 def test_psi_for_feature_is_zero_for_matching_distributions() -> None:
@@ -40,3 +65,27 @@ def test_operational_threshold_returns_infinity_when_cap_cannot_be_satisfied() -
     week_labels = np.asarray([0, 0, 0], dtype=int)
 
     assert np.isinf(operational_threshold(scores, y_true, week_labels))
+
+
+def test_operational_threshold_matches_bruteforce_random() -> None:
+    rng = np.random.default_rng(42)
+    for _ in range(10):
+        scores = rng.normal(loc=0.0, scale=1.0, size=120).astype(float)
+        y_true = rng.integers(0, 2, size=scores.size, dtype=int)
+        week_labels = rng.integers(1, 7, size=scores.size, dtype=int)
+
+        assert _threshold_equal(
+            operational_threshold(scores, y_true, week_labels),
+            _bruteforce_operational_threshold(scores, y_true, week_labels),
+        )
+
+
+def test_operational_threshold_nonfinite_scores_fallback_matches_bruteforce() -> None:
+    scores = np.asarray([0.8, np.nan, 0.7, np.inf, -np.inf, 0.2, 0.1], dtype=float)
+    y_true = np.asarray([1, 0, 1, 0, 0, 1, 0], dtype=int)
+    week_labels = np.asarray([1, 1, 2, 2, 3, 3, 3], dtype=int)
+
+    assert _threshold_equal(
+        operational_threshold(scores, y_true, week_labels),
+        _bruteforce_operational_threshold(scores, y_true, week_labels),
+    )

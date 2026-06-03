@@ -7,9 +7,9 @@ import pandas as pd
 
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.audit import run_study_audit
-from secom.workflows.benchmark_common import classifier_config_from_row, selector_config_from_row
+from secom.workflows.benchmark_common import build_cluster_id_map, classifier_config_from_row, selector_config_from_row
 from secom.workflows.benchmark_replication import run_benchmark_replication
-from secom.workflows import benchmark_tuned
+from secom.workflows import benchmark_common, benchmark_tuned
 from tests.assertions import assert_artifacts_exist, assert_columns_include
 
 
@@ -119,16 +119,24 @@ def test_benchmark_bundle_prepares_dataset_once(
     import secom.workflows.benchmark_tuned as tuned
 
     out_dir = workspace_tmp_dir / "out_benchmark_bundle_once"
-    counter = {"count": 0}
-    prepared_payload = {"prepared": True}
+    counter = {"prepare": 0, "cluster": 0}
+    prepared_payload = {"prepared": True, "x": np.ones((4, 3), dtype=float)}
+    cluster_payload = {0: 0, 1: 1, 2: 2}
     phase_payloads: list[dict[str, object] | None] = []
+    cluster_payloads: list[dict[int, int] | None] = []
 
     def counted_prepare(input_dir: Path) -> dict[str, object]:
-        counter["count"] += 1
+        counter["prepare"] += 1
         return prepared_payload
+
+    def counted_cluster_map(x_raw: np.ndarray) -> dict[int, int]:
+        counter["cluster"] += 1
+        assert x_raw is prepared_payload["x"]
+        return cluster_payload
 
     def fake_original_benchmark(**kwargs) -> dict[str, object]:
         phase_payloads.append(kwargs["_prepared_data"])
+        cluster_payloads.append(kwargs["_cluster_id_map"])
         return {
             "benchmark_original_status": StudyStatus.PASSED,
             "primary_study_status": StudyStatus.PASSED,
@@ -136,9 +144,11 @@ def test_benchmark_bundle_prepares_dataset_once(
 
     def fake_tuned_benchmark(**kwargs) -> dict[str, object]:
         phase_payloads.append(kwargs["_prepared_data"])
+        cluster_payloads.append(kwargs["_cluster_id_map"])
         return {"benchmark_tuned_status": StudyStatus.PASSED}
 
     monkeypatch.setattr(benchmark, "prepare_benchmark_dataset", counted_prepare)
+    monkeypatch.setattr(benchmark, "build_cluster_id_map", counted_cluster_map)
     monkeypatch.setattr(benchmark, "run_original_benchmark_replication", fake_original_benchmark)
     monkeypatch.setattr(tuned, "run_tuned_benchmark_replication", fake_tuned_benchmark)
 
@@ -149,8 +159,9 @@ def test_benchmark_bundle_prepares_dataset_once(
         selectors_run=["F-test"],
     )
 
-    assert counter["count"] == 1
+    assert counter == {"prepare": 1, "cluster": 1}
     assert phase_payloads == [prepared_payload, prepared_payload]
+    assert cluster_payloads == [cluster_payload, cluster_payload]
 
 
 def test_tuned_inner_selector_views_reuse_selector_prep_across_classifier_configs(monkeypatch) -> None:
@@ -223,3 +234,56 @@ def test_config_row_denormalization_converts_nan_to_none() -> None:
 
     assert selector_config == {"k": 20, "n_neighbors": None}
     assert classifier_config == {"alpha": 1.0, "gamma": None, "C": None}
+
+
+def test_build_cluster_id_map_groups_highly_correlated_value_features() -> None:
+    x = np.asarray(
+        [
+            [1.0, 2.0, -2.0, 5.0, 7.0],
+            [2.0, 4.0, -4.0, 5.0, 6.0],
+            [3.0, 6.0, -6.0, 5.0, 9.0],
+            [4.0, 8.0, -8.0, 5.0, 8.0],
+        ]
+    )
+
+    cluster_id = build_cluster_id_map(x)
+
+    assert cluster_id[0] == cluster_id[1]
+    assert cluster_id[0] == cluster_id[2]
+    assert cluster_id[3] != cluster_id[0]
+    assert cluster_id[4] != cluster_id[0]
+    assert set(cluster_id) == set(range(x.shape[1]))
+
+
+def test_benchmark_summary_reuses_bootstrap_draws_for_equal_fold_counts(monkeypatch) -> None:
+    calls: list[int] = []
+    original = benchmark_common.bootstrap_resample_indices
+
+    def counted_bootstrap_resample_indices(*, n_values: int, n_boot: int = 1000, seed: int = 42) -> np.ndarray:
+        calls.append(n_values)
+        return original(n_values=n_values, n_boot=n_boot, seed=seed)
+
+    rows = [
+        {
+            "selector": selector,
+            "classifier": "krr",
+            "replication_mode": "strict",
+            "fold": fold,
+            "BER": 0.2 + fold / 100,
+            "True+": 0.6,
+            "True-": 0.8,
+            "ROC_AUC": 0.7,
+            "PR_AUC": 0.4,
+            "MCC": 0.3,
+            "F2": 0.5,
+        }
+        for selector in ["F-test", "S2N"]
+        for fold in range(1, 11)
+    ]
+
+    monkeypatch.setattr(benchmark_common, "bootstrap_resample_indices", counted_bootstrap_resample_indices)
+
+    summary = benchmark_common.build_benchmark_summary_df(pd.DataFrame(rows))
+
+    assert calls == [10]
+    assert summary["n_folds"].tolist() == [10, 10]

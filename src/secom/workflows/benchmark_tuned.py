@@ -43,6 +43,7 @@ from secom.workflows.benchmark_common import (
     config_tie_break_key,
     fit_classifier_scores,
     fit_full_dataset,
+    normalize_benchmark_run_filters,
     prepare_benchmark_dataset,
     prepare_full_selector_view,
     selector_config_from_row,
@@ -322,6 +323,7 @@ def run_tuned_benchmark_replication(
     classifiers_run: list[str] | None = None,
     selectors_run: list[str] | None = None,
     _prepared_data: dict[str, Any] | None = None,
+    _cluster_id_map: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     """Run nested tuned benchmark replication and write tuned benchmark artifacts."""
     reports = ensure_reports_dir(output_dir)
@@ -332,8 +334,10 @@ def run_tuned_benchmark_replication(
     y = prepared_data["y"]
     folds = prepared_data["folds"]
 
-    classifiers_run = list(BenchmarkClassifier.ALL) if classifiers_run is None else [str(c) for c in classifiers_run]
-    selectors_run = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
+    classifiers_run, selectors_run = normalize_benchmark_run_filters(
+        classifiers_run=classifiers_run,
+        selectors_run=selectors_run,
+    )
 
     search_rows: list[dict[str, Any]] = []
     selected_rows: list[dict[str, Any]] = []
@@ -460,7 +464,7 @@ def run_tuned_benchmark_replication(
         )
     full_fit_df = pd.DataFrame(full_fit_rows)
 
-    cluster_id_map = build_cluster_id_map(x_raw=x)
+    cluster_id_map = _cluster_id_map if _cluster_id_map is not None else build_cluster_id_map(x_raw=x)
     feature_report_df = build_feature_report(
         feature_stability_df=feature_stability_df,
         benchmark_configs_df=best_df,

@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 
 from secom.artifacts import ensure_reports_dir, write_csv
-from secom.config import ArtifactName, BenchmarkClassifier, SelectorName, StudyStatus
-from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold
+from secom.config import ArtifactName, BenchmarkClassifier, StudyStatus
+from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold, safe_std
 from secom.qa import validate_benchmark_replication_artifacts
 from secom.workflows.benchmark_common import (
     BENCHMARK_REPLICATION_MODES,
@@ -26,6 +26,7 @@ from secom.workflows.benchmark_common import (
     config_tie_break_key,
     fit_classifier_scores,
     fit_full_dataset,
+    normalize_benchmark_run_filters,
     prepare_benchmark_dataset,
     prepare_selector_views,
     prefixed_benchmark_metric_fields,
@@ -93,12 +94,11 @@ def _evaluate_config_over_folds(
         row["threshold_oof_global"] = float(threshold_oof)
         fold_ber_values.append(float(fold_metrics["BER"]))
 
-    std_ber = float(np.std(np.asarray(fold_ber_values, dtype=float), ddof=1)) if len(fold_ber_values) > 1 else 0.0
     n_selected = np.asarray(n_selected_per_fold, dtype=int)
     return {
         "threshold_oof_global": float(threshold_oof),
         **benchmark_metric_fields(oof_metrics, prefix="mean_"),
-        "std_BER_fold": std_ber,
+        "std_BER_fold": safe_std(fold_ber_values),
         "mean_n_selected_features": float(np.mean(n_selected)),
         "min_n_selected_features": int(np.min(n_selected)),
         "max_n_selected_features": int(np.max(n_selected)),
@@ -114,6 +114,7 @@ def run_original_benchmark_replication(
     classifiers_run: list[str] | None = None,
     selectors_run: list[str] | None = None,
     _prepared_data: dict[str, Any] | None = None,
+    _cluster_id_map: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     """Run the fixed-grid original benchmark replication and write benchmark artifacts."""
     reports = ensure_reports_dir(output_dir)
@@ -124,8 +125,10 @@ def run_original_benchmark_replication(
     y = prepared_data["y"]
     folds = prepared_data["folds"]
 
-    classifiers_run = list(BenchmarkClassifier.ALL) if classifiers_run is None else [str(c) for c in classifiers_run]
-    selectors_run = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
+    classifiers_run, selectors_run = normalize_benchmark_run_filters(
+        classifiers_run=classifiers_run,
+        selectors_run=selectors_run,
+    )
 
     sweep_rows: list[dict[str, Any]] = []
     best_rows: list[dict[str, Any]] = []
@@ -222,8 +225,7 @@ def run_original_benchmark_replication(
                         }
                     )
 
-                    for fold_row in best_payload["fold_rows"]:
-                        fold_metric_rows.append({**fold_row, **best_fields})
+                    fold_metric_rows.extend({**fold_row, **best_fields} for fold_row in best_payload["fold_rows"])
 
                     # Full-data fits support artifact summaries; fold scores remain the performance evidence.
                     full_fit_payload = fit_full_dataset(
@@ -253,7 +255,7 @@ def run_original_benchmark_replication(
     feature_stability_df = pd.concat(feature_stability_frames, ignore_index=True)
     summary_df = build_benchmark_summary_df(fold_metrics_df)
     ablation_df = build_benchmark_ablation_df(fold_metrics_df)
-    cluster_id_map = build_cluster_id_map(x_raw=x)
+    cluster_id_map = _cluster_id_map if _cluster_id_map is not None else build_cluster_id_map(x_raw=x)
     feature_report_df = build_feature_report(
         feature_stability_df=feature_stability_df,
         benchmark_configs_df=best_df,
@@ -302,13 +304,19 @@ def run_benchmark_replication(
     """Run original and tuned benchmark workflows with one shared prepared dataset."""
     from secom.workflows.benchmark_tuned import run_tuned_benchmark_replication
 
+    classifiers_run, selectors_run = normalize_benchmark_run_filters(
+        classifiers_run=classifiers_run,
+        selectors_run=selectors_run,
+    )
     prepared_data = prepare_benchmark_dataset(input_dir)
+    cluster_id_map = build_cluster_id_map(x_raw=prepared_data["x"])
     original_result = run_original_benchmark_replication(
         input_dir=input_dir,
         output_dir=output_dir,
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
         _prepared_data=prepared_data,
+        _cluster_id_map=cluster_id_map,
     )
     tuned_result = run_tuned_benchmark_replication(
         input_dir=input_dir,
@@ -316,6 +324,7 @@ def run_benchmark_replication(
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
         _prepared_data=prepared_data,
+        _cluster_id_map=cluster_id_map,
     )
     return {
         "primary_study_status": aggregate_primary_status(
@@ -324,6 +333,6 @@ def run_benchmark_replication(
         ),
         "benchmark_original_status": original_result["benchmark_original_status"],
         "benchmark_tuned_status": tuned_result["benchmark_tuned_status"],
-        "selectors_run": selectors_run if selectors_run is not None else list(SelectorName.ACTIVE),
-        "classifiers_run": classifiers_run if classifiers_run is not None else list(BenchmarkClassifier.ALL),
+        "selectors_run": selectors_run,
+        "classifiers_run": classifiers_run,
     }
