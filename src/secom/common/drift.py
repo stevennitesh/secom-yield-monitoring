@@ -19,16 +19,18 @@ def _decile_edges(reference_values: np.ndarray) -> np.ndarray:
     return np.unique(np.asarray(quantiles, dtype=float))
 
 
-def _psi_bin_index(value: float, edges: np.ndarray) -> int:
-    """Map a value to a PSI bin, reserving the final bin for missing values."""
-    if np.isnan(value):
-        return len(edges) + 1
-    if edges.size == 0:
-        return 0
-    for index, edge in enumerate(edges):
-        if value <= edge:
-            return index
-    return len(edges)
+def _psi_bin_counts(values: np.ndarray, edges: np.ndarray) -> np.ndarray:
+    """Count values into DEV-defined PSI bins plus one missing-value bin."""
+    arr = np.asarray(values, dtype=float)
+    n_bins = len(edges) + 2
+    if arr.size == 0:
+        return np.zeros(n_bins, dtype=float)
+
+    missing = np.isnan(arr)
+    bin_indices = np.searchsorted(edges, arr, side="left")
+    bin_indices = np.asarray(bin_indices, dtype=int)
+    bin_indices[missing] = len(edges) + 1
+    return np.bincount(bin_indices, minlength=n_bins).astype(float)
 
 
 def psi_for_feature(dev_vals: np.ndarray, lock_vals: np.ndarray) -> float:
@@ -38,13 +40,8 @@ def psi_for_feature(dev_vals: np.ndarray, lock_vals: np.ndarray) -> float:
     edges = _decile_edges(dev)
 
     # One bin per interval plus one explicit missing-value bin.
-    n_bins = (len(edges) + 1) + 1
-    dev_counts = np.zeros(n_bins, dtype=float)
-    lock_counts = np.zeros(n_bins, dtype=float)
-    for value in dev:
-        dev_counts[_psi_bin_index(float(value), edges)] += 1
-    for value in lock:
-        lock_counts[_psi_bin_index(float(value), edges)] += 1
+    dev_counts = _psi_bin_counts(dev, edges)
+    lock_counts = _psi_bin_counts(lock, edges)
 
     p = dev_counts / max(dev.shape[0], 1)
     q = lock_counts / max(lock.shape[0], 1)
