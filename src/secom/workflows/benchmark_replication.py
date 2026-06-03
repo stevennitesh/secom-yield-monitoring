@@ -8,12 +8,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
-from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, SelectorName, StudyStatus
+from secom.artifacts import ensure_reports_dir, write_csv
+from secom.config import ArtifactName, BenchmarkClassifier, SelectorName, StudyStatus
 from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold
 from secom.qa import validate_benchmark_replication_artifacts
 from secom.workflows.benchmark_common import (
-    aggregate_primary_status,
+    BENCHMARK_REPLICATION_MODES,
+    add_indicator_for_replication_mode,
     benchmark_full_dataset_fields,
     benchmark_metric_fields,
     build_benchmark_ablation_df,
@@ -30,7 +31,7 @@ from secom.workflows.benchmark_common import (
     prefixed_benchmark_metric_fields,
     selector_param_grid,
 )
-from secom.workflows.manifest import load_or_create_study_manifest
+from secom.workflows.manifest import aggregate_primary_status, write_benchmark_status
 
 
 def _evaluate_config_over_folds(
@@ -137,10 +138,8 @@ def run_original_benchmark_replication(
 
     for selector in selectors_run:
         selector_grid = selector_param_grid(selector)
-        for replication_mode, add_indicator in (
-            (ReplicationMode.STRICT, False),
-            (ReplicationMode.WITH_MISSING_INDICATORS, True),
-        ):
+        for replication_mode in BENCHMARK_REPLICATION_MODES:
+            add_indicator = add_indicator_for_replication_mode(replication_mode)
             for selector_config in selector_grid:
                 prepared_views = prepare_selector_views(
                     x=x,
@@ -283,14 +282,11 @@ def run_original_benchmark_replication(
         full_fit_df=full_fit_df,
     )
 
-    manifest_path = reports / ArtifactName.MANIFEST
-    manifest = load_or_create_study_manifest(manifest_path=manifest_path, project_root=project_root)
-    manifest["benchmark_original_status"] = StudyStatus.PASSED
-    manifest["primary_study_status"] = aggregate_primary_status(
-        StudyStatus.PASSED,
-        str(manifest.get("benchmark_tuned_status", StudyStatus.NOT_RUN)),
+    manifest = write_benchmark_status(
+        manifest_path=reports / ArtifactName.MANIFEST,
+        project_root=project_root,
+        original_status=StudyStatus.PASSED,
     )
-    write_manifest(manifest, manifest_path)
     return {
         "benchmark_original_status": StudyStatus.PASSED,
         "primary_study_status": manifest["primary_study_status"],

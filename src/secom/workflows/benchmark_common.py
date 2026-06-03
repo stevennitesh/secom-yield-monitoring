@@ -19,7 +19,6 @@ from secom.config import (
     ScalerName,
     SEED_BENCHMARK,
     SelectorName,
-    StudyStatus,
 )
 from secom.io import load_raw_secom, parse_sort_and_label
 from secom.metrics import (
@@ -51,6 +50,10 @@ FULL_DATASET_COUNT_FIELDS = (
     "n_fails_full_dataset",
     "n_selected_features_full_dataset",
 )
+BENCHMARK_REPLICATION_MODES = (
+    ReplicationMode.STRICT,
+    ReplicationMode.WITH_MISSING_INDICATORS,
+)
 
 
 def selector_param_grid(selector: str) -> list[dict[str, Any]]:
@@ -74,6 +77,11 @@ def classifier_param_grid(classifier: str) -> list[dict[str, Any]]:
     if classifier == BenchmarkClassifier.KRR_STRICT:
         return [{"alpha": 1.0, "gamma": None}]
     raise ValueError(f"Unknown benchmark classifier mode: {classifier}")
+
+
+def add_indicator_for_replication_mode(replication_mode: str) -> bool:
+    """Return whether a benchmark replication mode includes missingness indicators."""
+    return str(replication_mode) == ReplicationMode.WITH_MISSING_INDICATORS
 
 
 def selector_kwargs(selector: str, selector_config: dict[str, Any]) -> dict[str, Any]:
@@ -147,18 +155,6 @@ def config_tie_break_key(
     else:
         classifier_key = ()
     return selector_key + classifier_key
-
-
-def aggregate_primary_status(original_status: str, tuned_status: str) -> str:
-    """Combine original and tuned benchmark statuses into the benchmark study status."""
-    statuses = [str(original_status), str(tuned_status)]
-    if any(status == StudyStatus.FAILED for status in statuses):
-        return StudyStatus.FAILED
-    if any(status == StudyStatus.WARNING for status in statuses):
-        return StudyStatus.WARNING
-    if any(status == StudyStatus.PASSED for status in statuses):
-        return StudyStatus.PASSED
-    return StudyStatus.NOT_RUN
 
 
 def prepare_cv(

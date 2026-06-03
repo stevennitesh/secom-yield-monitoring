@@ -16,7 +16,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
-from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
+from secom.artifacts import ensure_reports_dir, write_csv
 from secom.common.drift import psi_for_feature
 from secom.common.thresholds import operational_threshold
 from secom.config import (
@@ -51,7 +51,7 @@ from secom.preprocess import make_imputer, make_scaler, transformed_feature_meta
 from secom.selection.engine import fit_selector_pipeline, select_features
 from secom.selection.tuning import select_best_inner_config
 from secom.types import DataBundle, FittedRoleModel, RoleConfig
-from secom.workflows.manifest import load_or_create_study_manifest
+from secom.workflows.manifest import write_temporal_status
 
 STAGE_A_FEATURE_BUDGET = 40
 STAGE_B_K_VALUES = [10, 20, 40]
@@ -63,6 +63,7 @@ PREVALENCE_SHIFT_CAUTION = 0.02
 SCORE_KS_PVALUE_CAUTION = 0.01
 MAX_PSI_CAUTION = 0.30
 MSPC_QUANTILE = 0.99
+THRESHOLD_POLICIES = (ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPERATIONAL)
 
 
 def _build_bundle(input_dir: Path) -> DataBundle:
@@ -490,6 +491,14 @@ def _prepare_lockbox_eval_context(
     }
 
 
+def _threshold_values_for_model(model: FittedRoleModel) -> tuple[tuple[str, float], ...]:
+    """Return role thresholds in artifact column order."""
+    return (
+        (ThresholdPolicy.SCIENTIFIC, model.scientific_threshold),
+        (ThresholdPolicy.OPERATIONAL, model.operational_threshold),
+    )
+
+
 def _score_lockbox_for_role(
     model: FittedRoleModel,
     y_lock: np.ndarray,
@@ -498,10 +507,7 @@ def _score_lockbox_for_role(
     """Score lockbox metrics for scientific and operational threshold policies."""
     lock_scores = np.asarray(lock_ctx["lock_scores"], dtype=float)
     rows = []
-    for policy, th in (
-        (ThresholdPolicy.SCIENTIFIC, model.scientific_threshold),
-        (ThresholdPolicy.OPERATIONAL, model.operational_threshold),
-    ):
+    for policy, th in _threshold_values_for_model(model):
         m = binary_metrics_at_threshold(y_lock, lock_scores, th)
         rows.append(
             {
@@ -797,14 +803,15 @@ def run_temporal_robustness(
 
     manifest_path = reports / ArtifactName.MANIFEST
     project_root = Path(__file__).resolve().parents[3]
-    manifest = load_or_create_study_manifest(manifest_path=manifest_path, project_root=project_root)
     if not bundle.temporal_feasible or bundle.fold_plan is None:
         # Still write split metadata so the audit explains why temporal artifacts are absent.
-        manifest["temporal_robustness_status"] = StudyStatus.NOT_RUN
-        notes = list(manifest.get("industrialization_notes", []))
-        notes.append(f"temporal robustness not run: {bundle.temporal_infeasible_reason or 'no_feasible_plan'}")
-        manifest["industrialization_notes"] = notes
-        write_manifest(manifest, manifest_path)
+        infeasible_reason = bundle.temporal_infeasible_reason or "no_feasible_plan"
+        write_temporal_status(
+            manifest_path=manifest_path,
+            project_root=project_root,
+            temporal_status=StudyStatus.NOT_RUN,
+            industrialization_note=f"temporal robustness not run: {infeasible_reason}",
+        )
         return {
             "temporal_robustness_status": StudyStatus.NOT_RUN,
             "reason": bundle.temporal_infeasible_reason,
@@ -1022,7 +1029,7 @@ def run_temporal_robustness(
     for ratio in COST_RATIOS:
         row: dict[str, Any] = {"cost_ratio": ratio}
         for role in ["primary", "challenger"]:
-            for policy in [ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPERATIONAL]:
+            for policy in THRESHOLD_POLICIES:
                 key = f"{role}_{policy}"
                 sub = lockbox_df[(lockbox_df["role"] == role) & (lockbox_df["threshold_policy"] == policy)]
                 if sub.empty:
@@ -1044,10 +1051,7 @@ def run_temporal_robustness(
 
     manager_rows = []
     for fitted in fitted_models:
-        for policy, threshold in (
-            (ThresholdPolicy.SCIENTIFIC, fitted.scientific_threshold),
-            (ThresholdPolicy.OPERATIONAL, fitted.operational_threshold),
-        ):
+        for policy, threshold in _threshold_values_for_model(fitted):
             weekly = _manager_weekly_metrics(
                 y_true=y_dev,
                 scores=fitted.dev_scores,
@@ -1079,9 +1083,12 @@ def run_temporal_robustness(
                 if status == "HIGH_SHIFT" and float(row.TPR_at_TNR90) > mspc_tpr:
                     restrictions.append(f"{scope}_high_shift_blocks_lockbox_superiority_claim")
 
-    manifest["temporal_robustness_status"] = StudyStatus.WARNING if restrictions else StudyStatus.PASSED
-    manifest["temporal_claim_restrictions"] = restrictions
-    write_manifest(manifest, manifest_path)
+    manifest = write_temporal_status(
+        manifest_path=manifest_path,
+        project_root=project_root,
+        temporal_status=StudyStatus.WARNING if restrictions else StudyStatus.PASSED,
+        claim_restrictions=restrictions,
+    )
     return {
         "temporal_robustness_status": manifest["temporal_robustness_status"],
         "primary_selector": primary,
