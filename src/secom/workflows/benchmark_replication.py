@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
-from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256, study_spec_path
-from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, SelectorName, StudyStatus
-from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold
+from secom.artifacts import ensure_reports_dir, write_csv
+from secom.config import ArtifactName, BenchmarkClassifier, StudyStatus
+from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold, safe_std
 from secom.qa import validate_benchmark_replication_artifacts
 from secom.workflows.benchmark_common import (
-    aggregate_primary_status,
+    BENCHMARK_REPLICATION_MODES,
+    add_indicator_for_replication_mode,
+    benchmark_full_dataset_fields,
+    benchmark_metric_fields,
     build_benchmark_ablation_df,
     build_benchmark_summary_df,
     build_cluster_id_map,
@@ -26,10 +26,13 @@ from secom.workflows.benchmark_common import (
     config_tie_break_key,
     fit_classifier_scores,
     fit_full_dataset,
+    normalize_benchmark_run_filters,
     prepare_benchmark_dataset,
     prepare_selector_views,
+    prefixed_benchmark_metric_fields,
     selector_param_grid,
 )
+from secom.workflows.manifest import aggregate_primary_status, write_benchmark_status
 
 
 def _evaluate_config_over_folds(
@@ -81,40 +84,24 @@ def _evaluate_config_over_folds(
     oof_metrics = binary_metrics_at_threshold(y_true=oof_labels, scores=oof_scores, threshold=float(threshold_oof))
 
     fold_ber_values: list[float] = []
-    fold_tp_values: list[float] = []
-    fold_tn_values: list[float] = []
     for row, y_fold, scores_fold in zip(fold_rows, fold_labels, fold_scores):
         fold_metrics = binary_metrics_at_threshold(
             y_true=y_fold,
             scores=scores_fold,
             threshold=float(threshold_oof),
         )
-        row["BER"] = float(fold_metrics["BER"])
-        row["True+"] = float(fold_metrics["True+"])
-        row["True-"] = float(fold_metrics["True-"])
-        row["ROC_AUC"] = float(fold_metrics["ROC_AUC"]) if np.isfinite(fold_metrics["ROC_AUC"]) else np.nan
-        row["PR_AUC"] = float(fold_metrics["PR_AUC"]) if np.isfinite(fold_metrics["PR_AUC"]) else np.nan
-        row["MCC"] = float(fold_metrics["MCC"])
-        row["F2"] = float(fold_metrics["F2"])
+        row.update(benchmark_metric_fields(fold_metrics))
         row["threshold_oof_global"] = float(threshold_oof)
         fold_ber_values.append(float(fold_metrics["BER"]))
-        fold_tp_values.append(float(fold_metrics["True+"]))
-        fold_tn_values.append(float(fold_metrics["True-"]))
 
-    std_ber = float(np.std(np.asarray(fold_ber_values, dtype=float), ddof=1)) if len(fold_ber_values) > 1 else 0.0
+    n_selected = np.asarray(n_selected_per_fold, dtype=int)
     return {
         "threshold_oof_global": float(threshold_oof),
-        "mean_BER": float(oof_metrics["BER"]),
-        "mean_True+": float(oof_metrics["True+"]),
-        "mean_True-": float(oof_metrics["True-"]),
-        "mean_ROC_AUC": float(oof_metrics["ROC_AUC"]) if np.isfinite(oof_metrics["ROC_AUC"]) else np.nan,
-        "mean_PR_AUC": float(oof_metrics["PR_AUC"]) if np.isfinite(oof_metrics["PR_AUC"]) else np.nan,
-        "mean_MCC": float(oof_metrics["MCC"]),
-        "mean_F2": float(oof_metrics["F2"]),
-        "std_BER_fold": std_ber,
-        "mean_n_selected_features": float(np.mean(np.asarray(n_selected_per_fold, dtype=float))),
-        "min_n_selected_features": int(np.min(np.asarray(n_selected_per_fold, dtype=int))),
-        "max_n_selected_features": int(np.max(np.asarray(n_selected_per_fold, dtype=int))),
+        **benchmark_metric_fields(oof_metrics, prefix="mean_"),
+        "std_BER_fold": safe_std(fold_ber_values),
+        "mean_n_selected_features": float(np.mean(n_selected)),
+        "min_n_selected_features": int(np.min(n_selected)),
+        "max_n_selected_features": int(np.max(n_selected)),
         "n_folds": int(len(prepared_views["fold_views"])),
         "fold_rows": fold_rows,
     }
@@ -127,6 +114,7 @@ def run_original_benchmark_replication(
     classifiers_run: list[str] | None = None,
     selectors_run: list[str] | None = None,
     _prepared_data: dict[str, Any] | None = None,
+    _cluster_id_map: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     """Run the fixed-grid original benchmark replication and write benchmark artifacts."""
     reports = ensure_reports_dir(output_dir)
@@ -137,8 +125,10 @@ def run_original_benchmark_replication(
     y = prepared_data["y"]
     folds = prepared_data["folds"]
 
-    classifiers_run = list(BenchmarkClassifier.ALL) if classifiers_run is None else [str(c) for c in classifiers_run]
-    selectors_run = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
+    classifiers_run, selectors_run = normalize_benchmark_run_filters(
+        classifiers_run=classifiers_run,
+        selectors_run=selectors_run,
+    )
 
     sweep_rows: list[dict[str, Any]] = []
     best_rows: list[dict[str, Any]] = []
@@ -151,10 +141,8 @@ def run_original_benchmark_replication(
 
     for selector in selectors_run:
         selector_grid = selector_param_grid(selector)
-        for replication_mode, add_indicator in (
-            (ReplicationMode.STRICT, False),
-            (ReplicationMode.WITH_MISSING_INDICATORS, True),
-        ):
+        for replication_mode in BENCHMARK_REPLICATION_MODES:
+            add_indicator = add_indicator_for_replication_mode(replication_mode)
             for selector_config in selector_grid:
                 prepared_views = prepare_selector_views(
                     x=x,
@@ -193,13 +181,7 @@ def run_original_benchmark_replication(
                                 "classifier": classifier,
                                 "replication_mode": replication_mode,
                                 **fields,
-                                "mean_BER": float(payload["mean_BER"]),
-                                "mean_True+": float(payload["mean_True+"]),
-                                "mean_True-": float(payload["mean_True-"]),
-                                "mean_ROC_AUC": float(payload["mean_ROC_AUC"]),
-                                "mean_PR_AUC": float(payload["mean_PR_AUC"]),
-                                "mean_MCC": float(payload["mean_MCC"]),
-                                "mean_F2": float(payload["mean_F2"]),
+                                **prefixed_benchmark_metric_fields(payload, prefix="mean_"),
                                 "threshold_oof_global": float(payload["threshold_oof_global"]),
                                 "std_BER_fold": float(payload["std_BER_fold"]),
                                 "mean_n_selected_features": float(payload["mean_n_selected_features"]),
@@ -216,12 +198,9 @@ def run_original_benchmark_replication(
                             selector_config=selector_config,
                             classifier_config=classifier_config,
                         )
-                        is_better = False
-                        if objective < best_obj - 1e-12:
-                            is_better = True
-                        elif np.isclose(objective, best_obj):
-                            if best_tie_key is None or tie_key < best_tie_key:
-                                is_better = True
+                        is_better = objective < best_obj - 1e-12 or (
+                            np.isclose(objective, best_obj) and (best_tie_key is None or tie_key < best_tie_key)
+                        )
                         if is_better:
                             best_obj = objective
                             best_tie_key = tie_key
@@ -241,19 +220,12 @@ def run_original_benchmark_replication(
                             "classifier": classifier,
                             "replication_mode": replication_mode,
                             **best_fields,
-                            "mean_BER": float(best_payload["mean_BER"]),
-                            "mean_True+": float(best_payload["mean_True+"]),
-                            "mean_True-": float(best_payload["mean_True-"]),
-                            "mean_ROC_AUC": float(best_payload["mean_ROC_AUC"]),
-                            "mean_PR_AUC": float(best_payload["mean_PR_AUC"]),
-                            "mean_MCC": float(best_payload["mean_MCC"]),
-                            "mean_F2": float(best_payload["mean_F2"]),
+                            **prefixed_benchmark_metric_fields(best_payload, prefix="mean_"),
                             "threshold_oof_global": float(best_payload["threshold_oof_global"]),
                         }
                     )
 
-                    for fold_row in best_payload["fold_rows"]:
-                        fold_metric_rows.append({**fold_row, **best_fields})
+                    fold_metric_rows.extend({**fold_row, **best_fields} for fold_row in best_payload["fold_rows"])
 
                     # Full-data fits support artifact summaries; fold scores remain the performance evidence.
                     full_fit_payload = fit_full_dataset(
@@ -272,18 +244,7 @@ def run_original_benchmark_replication(
                             "replication_mode": replication_mode,
                             **best_fields,
                             "threshold_oof_global": float(best_payload["threshold_oof_global"]),
-                            "BER_full_dataset": float(full_fit_payload["BER_full_dataset"]),
-                            "True+_full_dataset": float(full_fit_payload["True+_full_dataset"]),
-                            "True-_full_dataset": float(full_fit_payload["True-_full_dataset"]),
-                            "ROC_AUC_full_dataset": float(full_fit_payload["ROC_AUC_full_dataset"]),
-                            "PR_AUC_full_dataset": float(full_fit_payload["PR_AUC_full_dataset"]),
-                            "MCC_full_dataset": float(full_fit_payload["MCC_full_dataset"]),
-                            "F2_full_dataset": float(full_fit_payload["F2_full_dataset"]),
-                            "n_samples_full_dataset": int(full_fit_payload["n_samples_full_dataset"]),
-                            "n_fails_full_dataset": int(full_fit_payload["n_fails_full_dataset"]),
-                            "n_selected_features_full_dataset": int(
-                                full_fit_payload["n_selected_features_full_dataset"]
-                            ),
+                            **benchmark_full_dataset_fields(full_fit_payload),
                         }
                     )
 
@@ -294,7 +255,7 @@ def run_original_benchmark_replication(
     feature_stability_df = pd.concat(feature_stability_frames, ignore_index=True)
     summary_df = build_benchmark_summary_df(fold_metrics_df)
     ablation_df = build_benchmark_ablation_df(fold_metrics_df)
-    cluster_id_map = build_cluster_id_map(x_raw=x)
+    cluster_id_map = _cluster_id_map if _cluster_id_map is not None else build_cluster_id_map(x_raw=x)
     feature_report_df = build_feature_report(
         feature_stability_df=feature_stability_df,
         benchmark_configs_df=best_df,
@@ -320,32 +281,11 @@ def run_original_benchmark_replication(
         full_fit_df=full_fit_df,
     )
 
-    manifest_path = reports / ArtifactName.MANIFEST
-    if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    else:
-        commit, dirty = git_commit_and_dirty(project_root)
-        manifest = {
-            "manifest_version": "2.0",
-            "study_spec_path": study_spec_path(),
-            "study_spec_sha256": strategy_sha256(project_root),
-            "git_commit": commit,
-            "git_dirty": dirty,
-            "python_executable": sys.executable,
-            "library_versions": library_versions(),
-            "primary_study_status": StudyStatus.NOT_RUN,
-            "benchmark_original_status": StudyStatus.NOT_RUN,
-            "benchmark_tuned_status": StudyStatus.NOT_RUN,
-            "temporal_robustness_status": StudyStatus.NOT_RUN,
-            "temporal_claim_restrictions": [],
-            "industrialization_notes": [],
-        }
-    manifest["benchmark_original_status"] = StudyStatus.PASSED
-    manifest["primary_study_status"] = aggregate_primary_status(
-        StudyStatus.PASSED,
-        str(manifest.get("benchmark_tuned_status", StudyStatus.NOT_RUN)),
+    manifest = write_benchmark_status(
+        manifest_path=reports / ArtifactName.MANIFEST,
+        project_root=project_root,
+        original_status=StudyStatus.PASSED,
     )
-    write_manifest(manifest, manifest_path)
     return {
         "benchmark_original_status": StudyStatus.PASSED,
         "primary_study_status": manifest["primary_study_status"],
@@ -364,13 +304,19 @@ def run_benchmark_replication(
     """Run original and tuned benchmark workflows with one shared prepared dataset."""
     from secom.workflows.benchmark_tuned import run_tuned_benchmark_replication
 
+    classifiers_run, selectors_run = normalize_benchmark_run_filters(
+        classifiers_run=classifiers_run,
+        selectors_run=selectors_run,
+    )
     prepared_data = prepare_benchmark_dataset(input_dir)
+    cluster_id_map = build_cluster_id_map(x_raw=prepared_data["x"])
     original_result = run_original_benchmark_replication(
         input_dir=input_dir,
         output_dir=output_dir,
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
         _prepared_data=prepared_data,
+        _cluster_id_map=cluster_id_map,
     )
     tuned_result = run_tuned_benchmark_replication(
         input_dir=input_dir,
@@ -378,6 +324,7 @@ def run_benchmark_replication(
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
         _prepared_data=prepared_data,
+        _cluster_id_map=cluster_id_map,
     )
     return {
         "primary_study_status": aggregate_primary_status(
@@ -386,6 +333,6 @@ def run_benchmark_replication(
         ),
         "benchmark_original_status": original_result["benchmark_original_status"],
         "benchmark_tuned_status": tuned_result["benchmark_tuned_status"],
-        "selectors_run": selectors_run if selectors_run is not None else list(SelectorName.ACTIVE),
-        "classifiers_run": classifiers_run if classifiers_run is not None else list(BenchmarkClassifier.ALL),
+        "selectors_run": selectors_run,
+        "classifiers_run": classifiers_run,
     }

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from secom.config import ArtifactName, MANIFEST_REQUIRED_KEYS, REQUIRED_ARTIFACTS_TEMPORAL, StudyStatus
+from secom.config import ArtifactName, MANIFEST_REQUIRED_KEYS, StudyStatus
 
 
 @dataclass(frozen=True)
@@ -21,6 +20,17 @@ class ValidationResult:
     ok: bool
     errors: list[str]
     warnings: list[str]
+    claim_restrictions: list[str]
+
+
+@dataclass(frozen=True)
+class _ManifestState:
+    """Validated manifest status fields used by artifact validation."""
+
+    primary_status: str
+    original_status: str
+    tuned_status: str
+    temporal_status: str
     claim_restrictions: list[str]
 
 
@@ -257,6 +267,10 @@ _TEMPORAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
     },
 }
 
+_BENCHMARK_ORIGINAL_ARTIFACTS = tuple(_BENCHMARK_ORIGINAL_REQUIRED_COLUMNS)
+_BENCHMARK_TUNED_ARTIFACTS = tuple(_BENCHMARK_TUNED_REQUIRED_COLUMNS)
+_TEMPORAL_ARTIFACTS = tuple(_TEMPORAL_REQUIRED_COLUMNS)
+
 
 def ensure_reports_dir(output_dir: Path) -> Path:
     """Return the reports directory, creating it if needed."""
@@ -269,6 +283,13 @@ def write_csv(df: pd.DataFrame, path: Path) -> None:
     """Write a report artifact CSV with parent-directory creation."""
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
+
+
+def read_csv_if_exists(path: Path) -> pd.DataFrame | None:
+    """Read a CSV artifact when present, otherwise return ``None``."""
+    if not path.exists():
+        return None
+    return pd.read_csv(path)
 
 
 def _normalize_float(x: float) -> float | None:
@@ -299,23 +320,6 @@ def normalize_for_manifest(value: Any) -> Any:
     return str(value)
 
 
-def canonical_json_bytes(data: Any) -> bytes:
-    """Return deterministic JSON bytes for hashing normalized config payloads."""
-    normalized = normalize_for_manifest(data)
-    return json.dumps(
-        normalized,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    ).encode("utf-8")
-
-
-def config_hash(config: dict[str, Any]) -> str:
-    """Return a stable SHA256 hash for a config payload."""
-    digest = hashlib.sha256(canonical_json_bytes(config)).hexdigest()
-    return digest
-
-
 def write_manifest(manifest: dict[str, Any], path: Path) -> None:
     """Validate and write the run manifest in deterministic JSON form."""
     payload = normalize_for_manifest(manifest)
@@ -327,29 +331,14 @@ def write_manifest(manifest: dict[str, Any], path: Path) -> None:
         json.dump(payload, f, sort_keys=True, indent=2, ensure_ascii=True)
 
 
-def _required_artifacts(primary_status: str, temporal_status: str) -> list[str]:
-    """Return legacy status-based required artifacts."""
-    names = [ArtifactName.MANIFEST]
-    if primary_status != StudyStatus.NOT_RUN:
-        names.extend(
-            [
-                ArtifactName.BENCHMARK_SWEEP,
-                ArtifactName.BENCHMARK_BEST_CONFIG,
-                ArtifactName.BENCHMARK_FOLD_METRICS,
-                ArtifactName.BENCHMARK_SUMMARY,
-                ArtifactName.BENCHMARK_ABLATION,
-                ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
-                ArtifactName.FEATURE_STABILITY,
-                ArtifactName.FEATURE_REPORT,
-            ]
-        )
-    if temporal_status != StudyStatus.NOT_RUN:
-        names.extend(REQUIRED_ARTIFACTS_TEMPORAL)
-    return names
+def read_manifest(path: Path) -> dict[str, Any]:
+    """Read a run manifest JSON document from disk."""
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _required_artifacts_by_study(
     *,
+    primary_status: str,
     benchmark_original_status: str,
     benchmark_tuned_status: str,
     temporal_status: str,
@@ -357,60 +346,33 @@ def _required_artifacts_by_study(
     """Return required artifacts using separate original/tuned/temporal statuses."""
     names = [ArtifactName.MANIFEST]
     if benchmark_original_status != StudyStatus.NOT_RUN:
-        names.extend(
-            [
-                ArtifactName.BENCHMARK_SWEEP,
-                ArtifactName.BENCHMARK_BEST_CONFIG,
-                ArtifactName.BENCHMARK_FOLD_METRICS,
-                ArtifactName.BENCHMARK_SUMMARY,
-                ArtifactName.BENCHMARK_ABLATION,
-                ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
-                ArtifactName.FEATURE_STABILITY,
-                ArtifactName.FEATURE_REPORT,
-            ]
-        )
-    if benchmark_tuned_status != StudyStatus.NOT_RUN:
-        names.extend(
-            [
-                ArtifactName.BENCHMARK_TUNED_SEARCH,
-                ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
-                ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
-                ArtifactName.BENCHMARK_TUNED_SUMMARY,
-                ArtifactName.BENCHMARK_TUNED_ABLATION,
-                ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
-                ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
-                ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
-            ]
-        )
+        names.extend(_BENCHMARK_ORIGINAL_ARTIFACTS)
+    if benchmark_tuned_status != StudyStatus.NOT_RUN or (
+        primary_status != StudyStatus.NOT_RUN and benchmark_original_status != StudyStatus.NOT_RUN
+    ):
+        names.extend(_BENCHMARK_TUNED_ARTIFACTS)
     if temporal_status != StudyStatus.NOT_RUN:
-        names.extend(REQUIRED_ARTIFACTS_TEMPORAL)
+        names.extend(_TEMPORAL_ARTIFACTS)
     return names
 
 
 def validate_required_artifacts(
     output_dir: Path,
     *,
-    primary_status: str,
-    benchmark_original_status: str | None = None,
-    benchmark_tuned_status: str | None = None,
+    primary_status: str = StudyStatus.NOT_RUN,
+    benchmark_original_status: str,
+    benchmark_tuned_status: str,
     temporal_status: str,
 ) -> list[str]:
     """Return missing artifact errors for the manifest-declared active study layers."""
     reports = output_dir / "reports"
-    errors: list[str] = []
-    required = (
-        _required_artifacts_by_study(
-            benchmark_original_status=benchmark_original_status or primary_status,
-            benchmark_tuned_status=benchmark_tuned_status or StudyStatus.NOT_RUN,
-            temporal_status=temporal_status,
-        )
-        if benchmark_original_status is not None or benchmark_tuned_status is not None
-        else _required_artifacts(primary_status, temporal_status)
+    required = _required_artifacts_by_study(
+        primary_status=primary_status,
+        benchmark_original_status=benchmark_original_status,
+        benchmark_tuned_status=benchmark_tuned_status,
+        temporal_status=temporal_status,
     )
-    for name in required:
-        if not (reports / name).exists():
-            errors.append(f"missing artifact: {name}")
-    return errors
+    return [f"missing artifact: {name}" for name in required if not (reports / name).exists()]
 
 
 def load_artifact_frames(output_dir: Path) -> dict[str, pd.DataFrame]:
@@ -418,17 +380,10 @@ def load_artifact_frames(output_dir: Path) -> dict[str, pd.DataFrame]:
     reports = output_dir / "reports"
     frames: dict[str, pd.DataFrame] = {}
     for name in _CSV_ARTIFACT_NAMES:
-        df = _read_csv_if_exists(reports / name)
+        df = read_csv_if_exists(reports / name)
         if df is not None:
             frames[name] = df
     return frames
-
-
-def _read_csv_if_exists(path: Path) -> pd.DataFrame | None:
-    """Read a CSV when present, otherwise return ``None``."""
-    if not path.exists():
-        return None
-    return pd.read_csv(path)
 
 
 def _validate_required_columns(
@@ -452,7 +407,93 @@ def _artifact_frame(
     """Return a cached artifact frame or load it directly from reports."""
     if artifact_frames is not None:
         return artifact_frames.get(name)
-    return _read_csv_if_exists(reports / name)
+    return read_csv_if_exists(reports / name)
+
+
+def _validate_manifest_fields(
+    manifest: dict[str, Any],
+    errors: list[str],
+    warnings: list[str],
+) -> _ManifestState:
+    """Validate manifest fields and return the normalized status values."""
+    missing_manifest_keys = [k for k in MANIFEST_REQUIRED_KEYS if k not in manifest]
+    if missing_manifest_keys:
+        errors.append(f"{ArtifactName.MANIFEST}: missing keys {missing_manifest_keys}")
+
+    statuses = {
+        "primary_study_status": str(manifest.get("primary_study_status", StudyStatus.NOT_RUN)),
+        "benchmark_original_status": str(manifest.get("benchmark_original_status", StudyStatus.NOT_RUN)),
+        "benchmark_tuned_status": str(manifest.get("benchmark_tuned_status", StudyStatus.NOT_RUN)),
+        "temporal_robustness_status": str(manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN)),
+    }
+    for key, value in statuses.items():
+        if value not in StudyStatus.ALL:
+            errors.append(f"{ArtifactName.MANIFEST}: invalid {key} {value}")
+
+    restrictions = manifest.get("temporal_claim_restrictions", [])
+    if not isinstance(restrictions, list):
+        errors.append(f"{ArtifactName.MANIFEST}: temporal_claim_restrictions must be a list")
+        claim_restrictions = []
+    else:
+        claim_restrictions = [str(x) for x in restrictions]
+
+    industrialization_notes = manifest.get("industrialization_notes", [])
+    if not isinstance(industrialization_notes, list):
+        errors.append(f"{ArtifactName.MANIFEST}: industrialization_notes must be a list")
+
+    if statuses["primary_study_status"] == StudyStatus.FAILED:
+        errors.append("primary study status indicates failure")
+    elif statuses["primary_study_status"] == StudyStatus.WARNING:
+        warnings.append("primary study status indicates warnings")
+
+    if statuses["temporal_robustness_status"] == StudyStatus.FAILED:
+        warnings.append("temporal robustness status indicates failure")
+    elif statuses["temporal_robustness_status"] == StudyStatus.WARNING:
+        warnings.append("temporal robustness status indicates warnings")
+
+    return _ManifestState(
+        primary_status=statuses["primary_study_status"],
+        original_status=statuses["benchmark_original_status"],
+        tuned_status=statuses["benchmark_tuned_status"],
+        temporal_status=statuses["temporal_robustness_status"],
+        claim_restrictions=claim_restrictions,
+    )
+
+
+def _validate_artifact_family(
+    *,
+    reports: Path,
+    artifact_frames: dict[str, pd.DataFrame] | None,
+    required_columns: dict[str, set[str]],
+    active: bool,
+    errors: list[str],
+) -> None:
+    """Validate required columns for present artifacts and required presence for active layers."""
+    for name, required in required_columns.items():
+        df = _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
+        if df is not None:
+            _validate_required_columns(df, required, errors, name)
+        elif active:
+            errors.append(f"missing artifact: {name}")
+
+
+def _warn_stale_artifact_family(
+    *,
+    reports: Path,
+    artifact_frames: dict[str, pd.DataFrame] | None,
+    artifact_names: tuple[str, ...],
+    active: bool,
+    warning_prefix: str,
+    warnings: list[str],
+) -> None:
+    """Warn when inactive study layers still have present artifact files."""
+    if active:
+        return
+    warnings.extend(
+        f"{warning_prefix}: {name}"
+        for name in artifact_names
+        if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None
+    )
 
 
 def validate_schema_and_logic(
@@ -464,7 +505,6 @@ def validate_schema_and_logic(
     reports = output_dir / "reports"
     errors: list[str] = []
     warnings: list[str] = []
-    claim_restrictions: list[str] = []
 
     if manifest is None:
         manifest_path = reports / ArtifactName.MANIFEST
@@ -475,134 +515,66 @@ def validate_schema_and_logic(
                 warnings=[],
                 claim_restrictions=[],
             )
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = read_manifest(manifest_path)
 
-    missing_manifest_keys = [k for k in MANIFEST_REQUIRED_KEYS if k not in manifest]
-    if missing_manifest_keys:
-        errors.append(f"{ArtifactName.MANIFEST}: missing keys {missing_manifest_keys}")
-
-    primary_status = str(manifest.get("primary_study_status", StudyStatus.NOT_RUN))
-    original_status = str(manifest.get("benchmark_original_status", StudyStatus.NOT_RUN))
-    tuned_status = str(manifest.get("benchmark_tuned_status", StudyStatus.NOT_RUN))
-    temporal_status = str(manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN))
-    if primary_status not in StudyStatus.ALL:
-        errors.append(f"{ArtifactName.MANIFEST}: invalid primary_study_status {primary_status}")
-    if original_status not in StudyStatus.ALL:
-        errors.append(f"{ArtifactName.MANIFEST}: invalid benchmark_original_status {original_status}")
-    if tuned_status not in StudyStatus.ALL:
-        errors.append(f"{ArtifactName.MANIFEST}: invalid benchmark_tuned_status {tuned_status}")
-    if temporal_status not in StudyStatus.ALL:
-        errors.append(f"{ArtifactName.MANIFEST}: invalid temporal_robustness_status {temporal_status}")
-
-    restrictions = manifest.get("temporal_claim_restrictions", [])
-    if not isinstance(restrictions, list):
-        errors.append(f"{ArtifactName.MANIFEST}: temporal_claim_restrictions must be a list")
-        restrictions = []
-    else:
-        claim_restrictions.extend(str(x) for x in restrictions)
-
-    industrialization_notes = manifest.get("industrialization_notes", [])
-    if not isinstance(industrialization_notes, list):
-        errors.append(f"{ArtifactName.MANIFEST}: industrialization_notes must be a list")
-
-    if primary_status == StudyStatus.FAILED:
-        errors.append("primary study status indicates failure")
-    elif primary_status == StudyStatus.WARNING:
-        warnings.append("primary study status indicates warnings")
-
-    if temporal_status == StudyStatus.FAILED:
-        warnings.append("temporal robustness status indicates failure")
-    elif temporal_status == StudyStatus.WARNING:
-        warnings.append("temporal robustness status indicates warnings")
+    state = _validate_manifest_fields(manifest=manifest, errors=errors, warnings=warnings)
 
     # Active layers require artifacts; inactive layers only warn if stale artifacts remain.
-    active_original = original_status != StudyStatus.NOT_RUN
-    active_tuned = tuned_status != StudyStatus.NOT_RUN
-    active_temporal = temporal_status != StudyStatus.NOT_RUN
+    active_original = state.original_status != StudyStatus.NOT_RUN
+    active_tuned = state.tuned_status != StudyStatus.NOT_RUN or (
+        state.primary_status != StudyStatus.NOT_RUN and state.original_status != StudyStatus.NOT_RUN
+    )
+    active_temporal = state.temporal_status != StudyStatus.NOT_RUN
 
-    for name, required in _BENCHMARK_ORIGINAL_REQUIRED_COLUMNS.items():
-        df = _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
-        if df is not None:
-            _validate_required_columns(df, required, errors, name)
-        elif active_original and name in {
-            ArtifactName.BENCHMARK_SWEEP,
-            ArtifactName.BENCHMARK_BEST_CONFIG,
-            ArtifactName.BENCHMARK_FOLD_METRICS,
-            ArtifactName.BENCHMARK_SUMMARY,
-            ArtifactName.BENCHMARK_ABLATION,
-            ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
-            ArtifactName.FEATURE_STABILITY,
-            ArtifactName.FEATURE_REPORT,
-        }:
-            errors.append(f"missing artifact: {name}")
+    _validate_artifact_family(
+        reports=reports,
+        artifact_frames=artifact_frames,
+        required_columns=_BENCHMARK_ORIGINAL_REQUIRED_COLUMNS,
+        active=active_original,
+        errors=errors,
+    )
+    _validate_artifact_family(
+        reports=reports,
+        artifact_frames=artifact_frames,
+        required_columns=_BENCHMARK_TUNED_REQUIRED_COLUMNS,
+        active=active_tuned,
+        errors=errors,
+    )
+    _validate_artifact_family(
+        reports=reports,
+        artifact_frames=artifact_frames,
+        required_columns=_TEMPORAL_REQUIRED_COLUMNS,
+        active=active_temporal,
+        errors=errors,
+    )
 
-    for name, required in _BENCHMARK_TUNED_REQUIRED_COLUMNS.items():
-        df = _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
-        if df is not None:
-            _validate_required_columns(df, required, errors, name)
-        elif active_tuned and name in {
-            ArtifactName.BENCHMARK_TUNED_SEARCH,
-            ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
-            ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
-            ArtifactName.BENCHMARK_TUNED_SUMMARY,
-            ArtifactName.BENCHMARK_TUNED_ABLATION,
-            ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
-            ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
-            ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
-        }:
-            errors.append(f"missing artifact: {name}")
-
-    for name, required in _TEMPORAL_REQUIRED_COLUMNS.items():
-        df = _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
-        if df is not None:
-            _validate_required_columns(df, required, errors, name)
-        elif active_temporal and name in REQUIRED_ARTIFACTS_TEMPORAL:
-            errors.append(f"missing artifact: {name}")
-
-    original_artifacts = [
-        ArtifactName.BENCHMARK_SWEEP,
-        ArtifactName.BENCHMARK_BEST_CONFIG,
-        ArtifactName.BENCHMARK_FOLD_METRICS,
-        ArtifactName.BENCHMARK_SUMMARY,
-        ArtifactName.BENCHMARK_ABLATION,
-        ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
-        ArtifactName.FEATURE_STABILITY,
-        ArtifactName.FEATURE_REPORT,
-    ]
-    tuned_artifacts = [
-        ArtifactName.BENCHMARK_TUNED_SEARCH,
-        ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
-        ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
-        ArtifactName.BENCHMARK_TUNED_SUMMARY,
-        ArtifactName.BENCHMARK_TUNED_ABLATION,
-        ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
-        ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
-        ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
-    ]
-
-    if not active_original:
-        for name in original_artifacts:
-            if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None:
-                warnings.append(
-                    f"original benchmark artifact present while benchmark_original_status is {StudyStatus.NOT_RUN}: {name}"
-                )
-
-    if not active_tuned:
-        for name in tuned_artifacts:
-            if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None:
-                warnings.append(
-                    f"tuned benchmark artifact present while benchmark_tuned_status is {StudyStatus.NOT_RUN}: {name}"
-                )
-
-    if not active_temporal:
-        for name in REQUIRED_ARTIFACTS_TEMPORAL:
-            if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None:
-                warnings.append(
-                    f"temporal artifact present while temporal robustness status is {StudyStatus.NOT_RUN}: {name}"
-                )
+    _warn_stale_artifact_family(
+        reports=reports,
+        artifact_frames=artifact_frames,
+        artifact_names=_BENCHMARK_ORIGINAL_ARTIFACTS,
+        active=active_original,
+        warning_prefix=f"original benchmark artifact present while benchmark_original_status is {StudyStatus.NOT_RUN}",
+        warnings=warnings,
+    )
+    _warn_stale_artifact_family(
+        reports=reports,
+        artifact_frames=artifact_frames,
+        artifact_names=_BENCHMARK_TUNED_ARTIFACTS,
+        active=active_tuned,
+        warning_prefix=f"tuned benchmark artifact present while benchmark_tuned_status is {StudyStatus.NOT_RUN}",
+        warnings=warnings,
+    )
+    _warn_stale_artifact_family(
+        reports=reports,
+        artifact_frames=artifact_frames,
+        artifact_names=_TEMPORAL_ARTIFACTS,
+        active=active_temporal,
+        warning_prefix=f"temporal artifact present while temporal robustness status is {StudyStatus.NOT_RUN}",
+        warnings=warnings,
+    )
 
     deduped_warnings = list(dict.fromkeys(warnings))
-    deduped_restrictions = list(dict.fromkeys(claim_restrictions))
+    deduped_restrictions = list(dict.fromkeys(state.claim_restrictions))
     return ValidationResult(
         ok=len(errors) == 0,
         errors=errors,

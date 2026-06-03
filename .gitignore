@@ -1,5 +1,7 @@
 # Local agent/tooling folders
+.agents/
 .claude/
+.codex/
 .serena/
 .vscode/
 .venv/

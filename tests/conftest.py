@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections.abc import Iterator
 import os
 from pathlib import Path
-from uuid import uuid4
 import shutil
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 import pytest
+
+from tests.artifact_writers import write_artifact_row, write_artifact_rows
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path(".test_tmp") / "matplotlib"))
 
@@ -73,7 +75,7 @@ def _run_fast_temporal_study(input_dir: Path, output_dir: Path) -> dict[str, obj
 
 
 def _write_active_artifact_contract(output_dir: Path) -> Path:
-    from secom.artifacts import write_csv, write_manifest
+    from secom.artifacts import write_manifest
     from secom.config import ArtifactName, ReplicationMode, StudyStatus, ThresholdPolicy
 
     reports = output_dir / "reports"
@@ -127,75 +129,63 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "mean_MCC": 0.36,
         "mean_F2": 0.62,
     }
-    write_csv(pd.DataFrame([benchmark_row]), reports / ArtifactName.BENCHMARK_SWEEP)
-    write_csv(pd.DataFrame([benchmark_row]), reports / ArtifactName.BENCHMARK_BEST_CONFIG)
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "classifier": "krr",
-                    "replication_mode": ReplicationMode.STRICT,
-                    "fold": 0,
-                    "BER": 0.21,
-                    "True+": 0.72,
-                    "True-": 0.86,
-                    "ROC_AUC": 0.79,
-                    "PR_AUC": 0.42,
-                    "MCC": 0.31,
-                    "F2": 0.58,
-                }
-            ]
-        ),
-        reports / ArtifactName.BENCHMARK_FOLD_METRICS,
+    write_artifact_row(reports, ArtifactName.BENCHMARK_SWEEP, benchmark_row)
+    write_artifact_row(reports, ArtifactName.BENCHMARK_BEST_CONFIG, benchmark_row)
+    write_artifact_row(
+        reports,
+        ArtifactName.BENCHMARK_FOLD_METRICS,
+        {
+            "selector": "F-test",
+            "classifier": "krr",
+            "replication_mode": ReplicationMode.STRICT,
+            "fold": 0,
+            "BER": 0.21,
+            "True+": 0.72,
+            "True-": 0.86,
+            "ROC_AUC": 0.79,
+            "PR_AUC": 0.42,
+            "MCC": 0.31,
+            "F2": 0.58,
+        },
     )
-    write_csv(pd.DataFrame([benchmark_row]), reports / ArtifactName.BENCHMARK_SUMMARY)
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "classifier": "krr",
-                    "BER_reference": 0.21,
-                    "BER_missing_indicator": 0.23,
-                    "delta_BER": 0.02,
-                }
-            ]
-        ),
-        reports / ArtifactName.BENCHMARK_ABLATION,
+    write_artifact_row(reports, ArtifactName.BENCHMARK_SUMMARY, benchmark_row)
+    write_artifact_row(
+        reports,
+        ArtifactName.BENCHMARK_ABLATION,
+        {
+            "selector": "F-test",
+            "classifier": "krr",
+            "BER_reference": 0.21,
+            "BER_missing_indicator": 0.23,
+            "delta_BER": 0.02,
+        },
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "classifier": "krr",
-                    "replication_mode": ReplicationMode.STRICT,
-                    "BER_full_dataset": 0.19,
-                    "True+_full_dataset": 0.75,
-                    "True-_full_dataset": 0.87,
-                    "ROC_AUC_full_dataset": 0.81,
-                    "PR_AUC_full_dataset": 0.44,
-                    "MCC_full_dataset": 0.33,
-                    "F2_full_dataset": 0.6,
-                }
-            ]
-        ),
-        reports / ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+    write_artifact_row(
+        reports,
+        ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+        {
+            "selector": "F-test",
+            "classifier": "krr",
+            "replication_mode": ReplicationMode.STRICT,
+            "BER_full_dataset": 0.19,
+            "True+_full_dataset": 0.75,
+            "True-_full_dataset": 0.87,
+            "ROC_AUC_full_dataset": 0.81,
+            "PR_AUC_full_dataset": 0.44,
+            "MCC_full_dataset": 0.33,
+            "F2_full_dataset": 0.6,
+        },
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "resample_id": 0,
-                    "feature_index": 1,
-                    "feature_type": "value",
-                    "selected": True,
-                }
-            ]
-        ),
-        reports / ArtifactName.FEATURE_STABILITY,
+    write_artifact_row(
+        reports,
+        ArtifactName.FEATURE_STABILITY,
+        {
+            "selector": "F-test",
+            "resample_id": 0,
+            "feature_index": 1,
+            "feature_type": "value",
+            "selected": True,
+        },
     )
     feature_row = {
         "selector": "F-test",
@@ -209,7 +199,7 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "expected_contribution": 0.315,
         "cluster_id": 1,
     }
-    write_csv(pd.DataFrame([feature_row]), reports / ArtifactName.FEATURE_REPORT)
+    write_artifact_row(reports, ArtifactName.FEATURE_REPORT, feature_row)
 
     tuned_search_row = {
         **tuned_row,
@@ -224,221 +214,193 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "mean_inner_ROC_AUC": 0.82,
         "mean_inner_BER": 0.2,
     }
-    write_csv(pd.DataFrame([tuned_search_row]), reports / ArtifactName.BENCHMARK_TUNED_SEARCH)
-    write_csv(pd.DataFrame([tuned_best_row]), reports / ArtifactName.BENCHMARK_TUNED_BEST_CONFIG)
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "classifier": "krr",
-                    "replication_mode": ReplicationMode.STRICT,
-                    "fold": 0,
-                    "BER": 0.18,
-                    "True+": 0.76,
-                    "True-": 0.88,
-                    "ROC_AUC": 0.83,
-                    "PR_AUC": 0.47,
-                    "MCC": 0.36,
-                    "F2": 0.62,
-                }
-            ]
-        ),
-        reports / ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+    write_artifact_row(reports, ArtifactName.BENCHMARK_TUNED_SEARCH, tuned_search_row)
+    write_artifact_row(reports, ArtifactName.BENCHMARK_TUNED_BEST_CONFIG, tuned_best_row)
+    write_artifact_row(
+        reports,
+        ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+        {
+            "selector": "F-test",
+            "classifier": "krr",
+            "replication_mode": ReplicationMode.STRICT,
+            "fold": 0,
+            "BER": 0.18,
+            "True+": 0.76,
+            "True-": 0.88,
+            "ROC_AUC": 0.83,
+            "PR_AUC": 0.47,
+            "MCC": 0.36,
+            "F2": 0.62,
+        },
     )
-    write_csv(pd.DataFrame([tuned_row]), reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "classifier": "krr",
-                    "BER_reference": 0.18,
-                    "BER_missing_indicator": 0.19,
-                    "delta_BER": 0.01,
-                }
-            ]
-        ),
-        reports / ArtifactName.BENCHMARK_TUNED_ABLATION,
+    write_artifact_row(reports, ArtifactName.BENCHMARK_TUNED_SUMMARY, tuned_row)
+    write_artifact_row(
+        reports,
+        ArtifactName.BENCHMARK_TUNED_ABLATION,
+        {
+            "selector": "F-test",
+            "classifier": "krr",
+            "BER_reference": 0.18,
+            "BER_missing_indicator": 0.19,
+            "delta_BER": 0.01,
+        },
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "classifier": "krr",
-                    "replication_mode": ReplicationMode.STRICT,
-                    "BER_full_dataset": 0.17,
-                    "True+_full_dataset": 0.78,
-                    "True-_full_dataset": 0.89,
-                    "ROC_AUC_full_dataset": 0.84,
-                    "PR_AUC_full_dataset": 0.49,
-                    "MCC_full_dataset": 0.38,
-                    "F2_full_dataset": 0.64,
-                }
-            ]
-        ),
-        reports / ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+    write_artifact_row(
+        reports,
+        ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+        {
+            "selector": "F-test",
+            "classifier": "krr",
+            "replication_mode": ReplicationMode.STRICT,
+            "BER_full_dataset": 0.17,
+            "True+_full_dataset": 0.78,
+            "True-_full_dataset": 0.89,
+            "ROC_AUC_full_dataset": 0.84,
+            "PR_AUC_full_dataset": 0.49,
+            "MCC_full_dataset": 0.38,
+            "F2_full_dataset": 0.64,
+        },
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "classifier": "krr",
-                    "replication_mode": ReplicationMode.STRICT,
-                    "resample_id": 0,
-                    "feature_index": 1,
-                    "feature_type": "value",
-                    "selected": True,
-                }
-            ]
-        ),
-        reports / ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+    write_artifact_row(
+        reports,
+        ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+        {
+            "selector": "F-test",
+            "classifier": "krr",
+            "replication_mode": ReplicationMode.STRICT,
+            "resample_id": 0,
+            "feature_index": 1,
+            "feature_type": "value",
+            "selected": True,
+        },
     )
-    write_csv(pd.DataFrame([feature_row]), reports / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
+    write_artifact_row(reports, ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT, feature_row)
 
-    write_csv(
-        pd.DataFrame([{"n_total": 260, "n_dev": 220, "n_lockbox": 40, "split_rule": "chronological"}]),
-        reports / ArtifactName.TEMPORAL_SPLIT_METADATA,
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_SPLIT_METADATA,
+        {"n_total": 260, "n_dev": 220, "n_lockbox": 40, "split_rule": "chronological"},
     )
-    write_csv(
-        pd.DataFrame([{"selector": "F-test", "mean_BER": 0.24, "std_BER": 0.03}]),
-        reports / ArtifactName.TEMPORAL_SELECTOR_SCREENING,
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_SELECTOR_SCREENING,
+        {"selector": "F-test", "mean_BER": 0.24, "std_BER": 0.03},
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "status": "primary",
-                    "is_primary": True,
-                    "is_challenger": False,
-                    "mean_BER": 0.24,
-                    "mean_True+": 0.68,
-                    "mean_True-": 0.84,
-                    "modal_k": 10,
-                    "modal_C": 1.0,
-                    "modal_scaler": "StandardScaler",
-                    "modal_n_neighbors": np.nan,
-                },
-                {
-                    "selector": "S2N",
-                    "status": "challenger",
-                    "is_primary": False,
-                    "is_challenger": True,
-                    "mean_BER": 0.27,
-                    "mean_True+": 0.64,
-                    "mean_True-": 0.82,
-                    "modal_k": 10,
-                    "modal_C": 1.0,
-                    "modal_scaler": "StandardScaler",
-                    "modal_n_neighbors": np.nan,
-                },
-            ]
-        ),
-        reports / ArtifactName.TEMPORAL_MODEL_SELECTION,
+    write_artifact_rows(
+        reports,
+        ArtifactName.TEMPORAL_MODEL_SELECTION,
+        [
+            {
+                "selector": "F-test",
+                "status": "primary",
+                "is_primary": True,
+                "is_challenger": False,
+                "mean_BER": 0.24,
+                "mean_True+": 0.68,
+                "mean_True-": 0.84,
+                "modal_k": 10,
+                "modal_C": 1.0,
+                "modal_scaler": "StandardScaler",
+                "modal_n_neighbors": np.nan,
+            },
+            {
+                "selector": "S2N",
+                "status": "challenger",
+                "is_primary": False,
+                "is_challenger": True,
+                "mean_BER": 0.27,
+                "mean_True+": 0.64,
+                "mean_True-": 0.82,
+                "modal_k": 10,
+                "modal_C": 1.0,
+                "modal_scaler": "StandardScaler",
+                "modal_n_neighbors": np.nan,
+            },
+        ],
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "selector": "F-test",
-                    "resample_id": 0,
-                    "mean_inner_BER": 0.25,
-                    "mean_inner_ROC_AUC": 0.76,
-                    "is_selected_config": True,
-                }
-            ]
-        ),
-        reports / ArtifactName.TEMPORAL_INNER_CV,
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_INNER_CV,
+        {
+            "selector": "F-test",
+            "resample_id": 0,
+            "mean_inner_BER": 0.25,
+            "mean_inner_ROC_AUC": 0.76,
+            "is_selected_config": True,
+        },
     )
-    write_csv(
-        pd.DataFrame([{"role": "primary", "selector": "F-test", "is_frozen_config": True}]),
-        reports / ArtifactName.TEMPORAL_FREEZE,
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_FREEZE,
+        {"role": "primary", "selector": "F-test", "is_frozen_config": True},
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "role": "primary",
-                    "threshold_policy": ThresholdPolicy.SCIENTIFIC,
-                    "BER": 0.28,
-                    "True+": 0.6,
-                    "True-": 0.84,
-                    "ROC_AUC": 0.72,
-                    "PR_AUC": 0.35,
-                    "MCC": 0.22,
-                    "F2": 0.48,
-                    "threshold_at_TNR90": 0.6,
-                    "TNR_at_TNR90": 0.9,
-                    "TPR_at_TNR90": 0.5,
-                    "lockbox_fails": 5,
-                }
-            ]
-        ),
-        reports / ArtifactName.TEMPORAL_LOCKBOX,
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_LOCKBOX,
+        {
+            "role": "primary",
+            "threshold_policy": ThresholdPolicy.SCIENTIFIC,
+            "BER": 0.28,
+            "True+": 0.6,
+            "True-": 0.84,
+            "ROC_AUC": 0.72,
+            "PR_AUC": 0.35,
+            "MCC": 0.22,
+            "F2": 0.48,
+            "threshold_at_TNR90": 0.6,
+            "TNR_at_TNR90": 0.9,
+            "TPR_at_TNR90": 0.5,
+            "lockbox_fails": 5,
+        },
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "model_scope": "primary",
-                    "drift_gate_status": "HIGH_SHIFT",
-                    "lockbox_claims_allowed": False,
-                    "abs_prevalence_shift": 0.08,
-                    "ks_pvalue_scores": 0.01,
-                    "max_PSI": 0.4,
-                    "median_PSI": 0.12,
-                }
-            ]
-        ),
-        reports / ArtifactName.TEMPORAL_DRIFT,
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_DRIFT,
+        {
+            "model_scope": "primary",
+            "drift_gate_status": "HIGH_SHIFT",
+            "lockbox_claims_allowed": False,
+            "abs_prevalence_shift": 0.08,
+            "ks_pvalue_scores": 0.01,
+            "max_PSI": 0.4,
+            "median_PSI": 0.12,
+        },
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "eval_scope": "lockbox",
-                    "best_MSPC_TPR_at_TNR90": 0.3,
-                    "best_MSPC_source": "Q",
-                    "T2_AUC": 0.61,
-                    "Q_AUC": 0.65,
-                    "alarm_rate": 0.12,
-                    "empirical_ARL0": 8.0,
-                }
-            ]
-        ),
-        reports / ArtifactName.TEMPORAL_MSPC,
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_MSPC,
+        {
+            "eval_scope": "lockbox",
+            "best_MSPC_TPR_at_TNR90": 0.3,
+            "best_MSPC_source": "Q",
+            "T2_AUC": 0.61,
+            "Q_AUC": 0.65,
+            "alarm_rate": 0.12,
+            "empirical_ARL0": 8.0,
+        },
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "cost_ratio": 1,
-                    "all_pass_baseline": 1.0,
-                    "all_flag_baseline": 1.5,
-                    "primary_scientific": 0.8,
-                    "primary_operational": 0.9,
-                }
-            ]
-        ),
-        reports / ArtifactName.TEMPORAL_COST_CURVES,
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_COST_CURVES,
+        {
+            "cost_ratio": 1,
+            "all_pass_baseline": 1.0,
+            "all_flag_baseline": 1.5,
+            "primary_scientific": 0.8,
+            "primary_operational": 0.9,
+        },
     )
-    write_csv(
-        pd.DataFrame(
-            [
-                {
-                    "role": "primary",
-                    "threshold_policy": ThresholdPolicy.SCIENTIFIC,
-                    "predicted_flag_fraction": 0.2,
-                    "mean_weekly_flagged_wafers": 12.0,
-                    "mean_weekly_fail_captures": 3.0,
-                    "mean_weekly_fail_misses": 2.0,
-                }
-            ]
-        ),
-        reports / ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+        {
+            "role": "primary",
+            "threshold_policy": ThresholdPolicy.SCIENTIFIC,
+            "predicted_flag_fraction": 0.2,
+            "mean_weekly_flagged_wafers": 12.0,
+            "mean_weekly_fail_captures": 3.0,
+            "mean_weekly_fail_misses": 2.0,
+        },
     )
     return output_dir
 

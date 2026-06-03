@@ -2,20 +2,26 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SRC_PATH = PROJECT_ROOT / "src"
-if str(SRC_PATH) not in sys.path:
-    sys.path.insert(0, str(SRC_PATH))
+from _script_path import ensure_src_on_path
+
+ensure_src_on_path()
 
 from secom.reporting import write_report_skeleton
 
+DEFAULT_OUTPUT_DIR = "runs"
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse options for the scaffold report command."""
+    parser = argparse.ArgumentParser(description="Generate the final report skeleton from active artifacts")
+    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
+    return parser.parse_args()
+
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate the final report skeleton from active artifacts")
-    parser.add_argument("--output-dir", default="runs")
-    args = parser.parse_args()
+    """Generate the scaffold report used for debugging report assembly."""
+    args = parse_args()
     out = write_report_skeleton(Path(args.output_dir))
     print(out)
 

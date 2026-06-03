@@ -15,8 +15,8 @@ def make_benchmark_krr_model(alpha: float = 1.0, gamma: float | None = None) -> 
     return KernelRidge(kernel="rbf", alpha=float(alpha), gamma=gamma)
 
 
-def make_benchmark_logreg_model(c_value: float) -> LogisticRegression:
-    """Create the benchmark balanced logistic-regression classifier."""
+def _make_balanced_logreg_model(c_value: float) -> LogisticRegression:
+    """Create the shared balanced logistic-regression classifier."""
     return LogisticRegression(
         C=float(c_value),
         class_weight="balanced",
@@ -24,17 +24,16 @@ def make_benchmark_logreg_model(c_value: float) -> LogisticRegression:
         max_iter=3000,
         random_state=42,
     )
+
+
+def make_benchmark_logreg_model(c_value: float) -> LogisticRegression:
+    """Create the benchmark balanced logistic-regression classifier."""
+    return _make_balanced_logreg_model(c_value)
 
 
 def make_temporal_logreg_model(c_value: float) -> LogisticRegression:
     """Create the temporal balanced logistic-regression classifier."""
-    return LogisticRegression(
-        C=float(c_value),
-        class_weight="balanced",
-        solver="lbfgs",
-        max_iter=3000,
-        random_state=42,
-    )
+    return _make_balanced_logreg_model(c_value)
 
 
 def fit_temporal_logreg_model(x_train: np.ndarray, y_train_bin: np.ndarray, c_value: float) -> LogisticRegression:
