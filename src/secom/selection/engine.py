@@ -7,20 +7,13 @@ import numpy as np
 from secom.config import SelectorName
 from secom.feature_select.gram_schmidt import gram_schmidt_rank_features
 from secom.feature_select.relief import relief_rank_features
-from secom.feature_select.univariate import rank_features
+from secom.feature_select.univariate import UNIVARIATE_SELECTORS, rank_features
 from secom.preprocess import (
     TransformedFeature,
     make_imputer,
     make_scaler,
     transformed_feature_metadata_from_imputer,
 )
-
-_UNIVARIATE_SELECTORS = {
-    SelectorName.S2N,
-    SelectorName.WELCH_T,
-    SelectorName.F_TEST,
-    SelectorName.PEARSON,
-}
 
 
 def _top_k(order: np.ndarray, k: int) -> np.ndarray:
@@ -36,7 +29,7 @@ def _selector_order_and_scores(
     k: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Dispatch to the selector implementation and return full order plus scores."""
-    if method in _UNIVARIATE_SELECTORS:
+    if method in UNIVARIATE_SELECTORS:
         return rank_features(method, x_train, y_train)
 
     if method == SelectorName.RELIEFF:

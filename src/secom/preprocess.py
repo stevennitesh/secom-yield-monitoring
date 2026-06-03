@@ -21,6 +21,26 @@ class TransformedFeature:
     raw_index: int
 
 
+def _value_feature(raw_idx: int) -> TransformedFeature:
+    """Return report metadata for one raw value feature."""
+    return TransformedFeature(
+        feature_index=raw_idx,
+        feature_type="value",
+        feature_name_or_source_col=f"X{raw_idx}",
+        raw_index=raw_idx,
+    )
+
+
+def _missing_indicator_feature(raw_idx: int, raw_feature_count: int) -> TransformedFeature:
+    """Return report metadata for one imputed missingness indicator."""
+    return TransformedFeature(
+        feature_index=raw_feature_count + raw_idx,
+        feature_type="missing_indicator",
+        feature_name_or_source_col=f"M{raw_idx}",
+        raw_index=raw_idx,
+    )
+
+
 def make_imputer(add_indicator: bool) -> SimpleImputer:
     """Create the median imputer used before feature selection."""
     return SimpleImputer(
@@ -49,26 +69,12 @@ def transformed_feature_metadata_from_imputer(
     """Return transformed-column metadata for value columns plus fitted indicators."""
     out: list[TransformedFeature] = []
     for raw_idx in range(raw_feature_count):
-        out.append(
-            TransformedFeature(
-                feature_index=raw_idx,
-                feature_type="value",
-                feature_name_or_source_col=f"X{raw_idx}",
-                raw_index=raw_idx,
-            )
-        )
+        out.append(_value_feature(raw_idx))
 
     if getattr(imputer, "indicator_", None) is not None:
         # SimpleImputer exposes only indicators for raw columns that were missing at fit time.
         for raw_idx in imputer.indicator_.features_.tolist():
-            out.append(
-                TransformedFeature(
-                    feature_index=raw_feature_count + int(raw_idx),
-                    feature_type="missing_indicator",
-                    feature_name_or_source_col=f"M{int(raw_idx)}",
-                    raw_index=int(raw_idx),
-                )
-            )
+            out.append(_missing_indicator_feature(raw_idx=int(raw_idx), raw_feature_count=raw_feature_count))
     return out
 
 
@@ -84,21 +90,7 @@ def build_feature_universe(raw_feature_count: int) -> list[TransformedFeature]:
     """Return the full reportable value-plus-missing-indicator feature universe."""
     universe = []
     for raw_idx in range(raw_feature_count):
-        universe.append(
-            TransformedFeature(
-                feature_index=raw_idx,
-                feature_type="value",
-                feature_name_or_source_col=f"X{raw_idx}",
-                raw_index=raw_idx,
-            )
-        )
+        universe.append(_value_feature(raw_idx))
     for raw_idx in range(raw_feature_count):
-        universe.append(
-            TransformedFeature(
-                feature_index=raw_feature_count + raw_idx,
-                feature_type="missing_indicator",
-                feature_name_or_source_col=f"M{raw_idx}",
-                raw_index=raw_idx,
-            )
-        )
+        universe.append(_missing_indicator_feature(raw_idx=raw_idx, raw_feature_count=raw_feature_count))
     return universe

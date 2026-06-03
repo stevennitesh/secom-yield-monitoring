@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any
 
-from secom.artifacts import write_manifest
+from secom.artifacts import read_manifest, write_manifest
 from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256, study_spec_path
 from secom.config import StudyStatus
 
@@ -32,15 +31,10 @@ def initial_study_manifest(project_root: Path) -> dict[str, Any]:
     }
 
 
-def read_study_manifest(manifest_path: Path) -> dict[str, Any]:
-    """Read a study manifest from disk."""
-    return json.loads(manifest_path.read_text(encoding="utf-8"))
-
-
 def load_or_create_study_manifest(manifest_path: Path, project_root: Path) -> dict[str, Any]:
     """Load an existing manifest or return the common baseline manifest."""
     if manifest_path.exists():
-        return read_study_manifest(manifest_path)
+        return read_manifest(manifest_path)
     return initial_study_manifest(project_root=project_root)
 
 

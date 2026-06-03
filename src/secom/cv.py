@@ -195,20 +195,6 @@ def temporal_feasibility_gate(
     return (True, None)
 
 
-def fold_plan_manifest_ranges(plan: OuterFoldPlanResult) -> list[dict[str, object]]:
-    """Serialize fold week ranges for manifest/debug output."""
-    out: list[dict[str, object]] = []
-    for fold in plan.folds:
-        out.append(
-            {
-                "outer_fold": fold.outer_fold,
-                "train_weeks": [fold.train_start_week, fold.train_end_week],
-                "test_weeks": [fold.test_start_week, fold.test_end_week],
-            }
-        )
-    return out
-
-
 def to_time_window_string(start_ts: pd.Timestamp, end_ts: pd.Timestamp) -> str:
     """Format an inclusive timestamp window for artifact rows."""
     return f"{start_ts.strftime('%Y-%m-%dT%H:%M:%S')}/{end_ts.strftime('%Y-%m-%dT%H:%M:%S')}"

@@ -28,7 +28,7 @@ from secom.metrics import (
     find_ber_optimal_threshold,
     safe_std,
 )
-from secom.models import fit_benchmark_krr_model, make_benchmark_krr_model, make_benchmark_logreg_model
+from secom.models import fit_benchmark_krr_model, make_benchmark_logreg_model
 from secom.preprocess import (
     build_feature_universe,
     local_to_global_feature_indices,
@@ -37,7 +37,6 @@ from secom.preprocess import (
     transformed_feature_metadata_from_imputer,
 )
 from secom.selection.engine import select_features
-from secom.selection.tuning import gamma_sort_key
 
 BENCHMARK_FEATURE_BUDGET = 40
 BOOTSTRAP_N = 1000
@@ -54,6 +53,11 @@ BENCHMARK_REPLICATION_MODES = (
     ReplicationMode.STRICT,
     ReplicationMode.WITH_MISSING_INDICATORS,
 )
+
+
+def gamma_sort_key(gamma: float | None) -> float:
+    """Sort ``None`` before numeric RBF gamma values."""
+    return -1.0 if gamma is None else float(gamma)
 
 
 def selector_param_grid(selector: str) -> list[dict[str, Any]]:
@@ -74,8 +78,6 @@ def classifier_param_grid(classifier: str) -> list[dict[str, Any]]:
         return [{"alpha": float(alpha), "gamma": gamma} for alpha, gamma in product(alphas, gammas)]
     if classifier == BenchmarkClassifier.LOGREG:
         return [{"C": float(v)} for v in sorted(float(c) for c in BENCHMARK_LOGREG_C_GRID)]
-    if classifier == BenchmarkClassifier.KRR_STRICT:
-        return [{"alpha": 1.0, "gamma": None}]
     raise ValueError(f"Unknown benchmark classifier mode: {classifier}")
 
 
@@ -403,14 +405,6 @@ def fit_classifier_scores(
             else np.empty(0, dtype=float)
         )
         eval_scores = np.asarray(clf.predict_proba(x_eval_sel)[:, 1], dtype=float)
-    elif classifier == BenchmarkClassifier.KRR_STRICT:
-        clf = make_benchmark_krr_model(alpha=1.0, gamma=None)
-        y_train_krr = 2 * np.asarray(y_train, dtype=int) - 1
-        clf.fit(x_train_sel, y_train_krr)
-        train_scores = (
-            np.asarray(clf.predict(x_train_sel), dtype=float) if include_train_scores else np.empty(0, dtype=float)
-        )
-        eval_scores = np.asarray(clf.predict(x_eval_sel), dtype=float)
     else:
         raise ValueError(f"Unknown benchmark classifier mode: {classifier}")
     return train_scores, eval_scores
