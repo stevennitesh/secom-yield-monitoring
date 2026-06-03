@@ -10,6 +10,7 @@ from secom.workflows.audit import run_study_audit
 from secom.workflows.benchmark_common import classifier_config_from_row, selector_config_from_row
 from secom.workflows.benchmark_replication import run_benchmark_replication
 from secom.workflows import benchmark_tuned
+from tests.assertions import assert_artifacts_exist, assert_columns_include
 
 
 def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
@@ -23,65 +24,75 @@ def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
     assert result["benchmark_tuned_status"] == StudyStatus.PASSED
 
     reports = out_dir / "reports"
-    expected = [
-        ArtifactName.BENCHMARK_SWEEP,
-        ArtifactName.BENCHMARK_BEST_CONFIG,
-        ArtifactName.BENCHMARK_FOLD_METRICS,
-        ArtifactName.BENCHMARK_SUMMARY,
-        ArtifactName.BENCHMARK_ABLATION,
-        ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
-        ArtifactName.FEATURE_STABILITY,
-        ArtifactName.FEATURE_REPORT,
-        ArtifactName.BENCHMARK_TUNED_SEARCH,
-        ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
-        ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
-        ArtifactName.BENCHMARK_TUNED_SUMMARY,
-        ArtifactName.BENCHMARK_TUNED_ABLATION,
-        ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
-        ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
-        ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
-        ArtifactName.MANIFEST,
-    ]
-    for name in expected:
-        assert (reports / name).exists(), name
+    assert_artifacts_exist(
+        reports,
+        [
+            ArtifactName.BENCHMARK_SWEEP,
+            ArtifactName.BENCHMARK_BEST_CONFIG,
+            ArtifactName.BENCHMARK_FOLD_METRICS,
+            ArtifactName.BENCHMARK_SUMMARY,
+            ArtifactName.BENCHMARK_ABLATION,
+            ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+            ArtifactName.FEATURE_STABILITY,
+            ArtifactName.FEATURE_REPORT,
+            ArtifactName.BENCHMARK_TUNED_SEARCH,
+            ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+            ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+            ArtifactName.BENCHMARK_TUNED_SUMMARY,
+            ArtifactName.BENCHMARK_TUNED_ABLATION,
+            ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+            ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+            ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+            ArtifactName.MANIFEST,
+        ],
+    )
 
     summary_df = pd.read_csv(reports / ArtifactName.BENCHMARK_SUMMARY)
-    assert {
-        "selector",
-        "classifier",
-        "replication_mode",
-        "mean_BER",
-        "mean_ROC_AUC",
-        "mean_PR_AUC",
-        "mean_MCC",
-        "mean_F2",
-    }.issubset(summary_df.columns)
+    assert_columns_include(
+        summary_df,
+        [
+            "selector",
+            "classifier",
+            "replication_mode",
+            "mean_BER",
+            "mean_ROC_AUC",
+            "mean_PR_AUC",
+            "mean_MCC",
+            "mean_F2",
+        ],
+    )
 
     fold_metrics_df = pd.read_csv(reports / ArtifactName.BENCHMARK_FOLD_METRICS)
-    assert {"ROC_AUC", "PR_AUC", "MCC", "F2"}.issubset(fold_metrics_df.columns)
+    assert_columns_include(fold_metrics_df, ["ROC_AUC", "PR_AUC", "MCC", "F2"])
 
     feature_report_df = pd.read_csv(reports / ArtifactName.FEATURE_REPORT)
-    assert {
-        "selector",
-        "classifier",
-        "replication_mode",
-        "feature_index",
-        "feature_type",
-        "selection_frequency",
-        "conditional_effect_magnitude",
-        "expected_contribution",
-    }.issubset(feature_report_df.columns)
+    assert_columns_include(
+        feature_report_df,
+        [
+            "selector",
+            "classifier",
+            "replication_mode",
+            "feature_index",
+            "feature_type",
+            "selection_frequency",
+            "conditional_effect_magnitude",
+            "expected_contribution",
+        ],
+    )
     tuned_summary_df = pd.read_csv(reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
-    assert {
-        "selector",
-        "classifier",
-        "replication_mode",
-        "mean_BER",
-        "mean_ROC_AUC",
-        "mean_PR_AUC",
-        "mean_MCC",
-        "mean_F2",
-    }.issubset(tuned_summary_df.columns)
+    assert_columns_include(
+        tuned_summary_df,
+        [
+            "selector",
+            "classifier",
+            "replication_mode",
+            "mean_BER",
+            "mean_ROC_AUC",
+            "mean_PR_AUC",
+            "mean_MCC",
+            "mean_F2",
+        ],
+    )
 
     audit = run_study_audit(out_dir)
     assert audit.ok, audit.errors

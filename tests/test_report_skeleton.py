@@ -4,6 +4,7 @@ from pathlib import Path
 
 from secom.config import ArtifactName
 from secom.reporting import write_report_skeleton
+from tests.assertions import assert_text_contains_all, assert_text_excludes_all
 
 
 def test_report_skeleton_is_generated_from_active_artifacts(
@@ -13,39 +14,43 @@ def test_report_skeleton_is_generated_from_active_artifacts(
     text = report_path.read_text(encoding="utf-8")
 
     assert report_path.name == ArtifactName.REPORT_SKELETON
-    assert "## Executive Summary" in text
-    assert "## Benchmark Replication Results" in text
-    assert "### Original Replication" in text
-    assert "#### Original Replication Design" in text
-    assert "#### Original Replication Search Summary" in text
-    assert "##### Search Space" in text
-    assert "##### Selected Configurations" in text
-    assert "#### Original Replication Results" in text
-    assert "### Tuned Benchmark" in text
-    assert "#### Tuned Benchmark Design" in text
-    assert "#### Tuned Benchmark Search Summary" in text
-    assert "##### Search Space" in text
-    assert "##### Modal Selected Configurations" in text
-    assert "#### Tuned Benchmark Results" in text
-    assert "#### Tuned Feature Stability and Interpretation" in text
-    assert "## Temporal Robustness Stress Test" in text
-    assert "### Temporal Robustness Design" in text
-    assert "### Temporal Model Selection Summary" in text
-    assert "#### Selector Ranking and Modal Configurations" in text
-    assert "### Temporal Lockbox Results" in text
-    assert "### Drift and Claim Restrictions" in text
-    assert "## Industrialization Gaps" in text
-    assert "### Supporting Benchmark Metrics" in text
-    assert "### MSPC Comparison" in text
-    assert "### Illustrative Operational Framing" in text
-    assert "#### Cost Curves" in text
-    assert "PRIMARY_STUDY_STATUS" not in text
-    assert "| F-test | krr | strict |" in text
-    assert "mean_ROC_AUC" in text
-    assert "mean_PR_AUC" in text
-    assert "mean_MCC" in text
-    assert "mean_F2" in text
-    assert "Leading original replication configuration" in text
-    assert "Leading tuned benchmark configuration" in text
-    assert "#### Original Feature Stability and Interpretation" in text
-    assert "| n/a | n/a |" not in text
+    assert_text_contains_all(
+        text,
+        [
+            "## Executive Summary",
+            "## Benchmark Replication Results",
+            "### Original Replication",
+            "#### Original Replication Design",
+            "#### Original Replication Search Summary",
+            "##### Search Space",
+            "##### Selected Configurations",
+            "#### Original Replication Results",
+            "### Tuned Benchmark",
+            "#### Tuned Benchmark Design",
+            "#### Tuned Benchmark Search Summary",
+            "##### Search Space",
+            "##### Modal Selected Configurations",
+            "#### Tuned Benchmark Results",
+            "#### Tuned Feature Stability and Interpretation",
+            "## Temporal Robustness Stress Test",
+            "### Temporal Robustness Design",
+            "### Temporal Model Selection Summary",
+            "#### Selector Ranking and Modal Configurations",
+            "### Temporal Lockbox Results",
+            "### Drift and Claim Restrictions",
+            "## Industrialization Gaps",
+            "### Supporting Benchmark Metrics",
+            "### MSPC Comparison",
+            "### Illustrative Operational Framing",
+            "#### Cost Curves",
+            "| F-test | krr | strict |",
+            "mean_ROC_AUC",
+            "mean_PR_AUC",
+            "mean_MCC",
+            "mean_F2",
+            "Leading original replication configuration",
+            "Leading tuned benchmark configuration",
+            "#### Original Feature Stability and Interpretation",
+        ],
+    )
+    assert_text_excludes_all(text, ["PRIMARY_STUDY_STATUS", "| n/a | n/a |"])

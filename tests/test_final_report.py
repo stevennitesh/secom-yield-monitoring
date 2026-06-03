@@ -5,6 +5,7 @@ from pathlib import Path
 
 from secom.config import ArtifactName
 from secom.reporting import write_final_report
+from tests.assertions import assert_text_contains_all, assert_text_excludes_all
 
 
 def test_final_report_is_generated_from_active_artifacts(
@@ -21,10 +22,14 @@ def test_final_report_contains_finished_narrative_sections(
 ) -> None:
     text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
 
-    assert "## What I Built" in text
-    assert "## Provenance Appendix" in text
-    assert "Summarize the SECOM benchmark context" not in text
-    assert "Describe the full-dataset replication protocol" not in text
+    assert_text_contains_all(text, ["## What I Built", "## Provenance Appendix"])
+    assert_text_excludes_all(
+        text,
+        [
+            "Summarize the SECOM benchmark context",
+            "Describe the full-dataset replication protocol",
+        ],
+    )
 
 
 def test_final_report_surfaces_required_industrialization_gaps(
@@ -32,9 +37,14 @@ def test_final_report_surfaces_required_industrialization_gaps(
 ) -> None:
     text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
 
-    assert "No downstream decision or action outcome data" in text
-    assert "Single-dataset evidence only" in text
-    assert "deployment decision objectives and cost accounting" in text
+    assert_text_contains_all(
+        text,
+        [
+            "No downstream decision or action outcome data",
+            "Single-dataset evidence only",
+            "deployment decision objectives and cost accounting",
+        ],
+    )
 
 
 def test_final_report_writes_expected_figure_files(

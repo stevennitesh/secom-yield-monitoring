@@ -44,6 +44,16 @@ def _bruteforce_reference(y_true: np.ndarray, scores: np.ndarray) -> tuple[float
     return best_threshold, best_metrics
 
 
+def _assert_fast_threshold_search_matches_bruteforce(y_true: np.ndarray, scores: np.ndarray) -> None:
+    threshold_fast, metrics_fast = find_ber_optimal_threshold(y_true, scores)
+    threshold_brute, metrics_brute = _bruteforce_reference(y_true, scores)
+
+    assert _threshold_equal(float(threshold_fast), float(threshold_brute))
+    assert np.isclose(float(metrics_fast["BER"]), float(metrics_brute["BER"]), atol=1e-12)
+    assert np.isclose(float(metrics_fast["True+"]), float(metrics_brute["True+"]), atol=1e-12)
+    assert np.isclose(float(metrics_fast["True-"]), float(metrics_brute["True-"]), atol=1e-12)
+
+
 @pytest.mark.parametrize("seed", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 def test_find_ber_optimal_threshold_matches_bruteforce_random(seed: int) -> None:
     rng = np.random.default_rng(seed)
@@ -52,31 +62,19 @@ def test_find_ber_optimal_threshold_matches_bruteforce_random(seed: int) -> None
     if np.unique(y_true).size < 2:
         y_true[0] = 1 - int(y_true[0])
     scores = rng.normal(loc=0.0, scale=1.0, size=n).astype(float)
-    threshold_fast, metrics_fast = find_ber_optimal_threshold(y_true, scores)
-    threshold_brute, metrics_brute = _bruteforce_reference(y_true, scores)
-    assert _threshold_equal(float(threshold_fast), float(threshold_brute))
-    assert np.isclose(float(metrics_fast["BER"]), float(metrics_brute["BER"]), atol=1e-12)
-    assert np.isclose(float(metrics_fast["True+"]), float(metrics_brute["True+"]), atol=1e-12)
-    assert np.isclose(float(metrics_fast["True-"]), float(metrics_brute["True-"]), atol=1e-12)
+
+    _assert_fast_threshold_search_matches_bruteforce(y_true, scores)
 
 
 def test_find_ber_optimal_threshold_matches_bruteforce_with_duplicate_scores() -> None:
     y_true = np.asarray([0, 0, 1, 1, 0, 1, 0, 1], dtype=int)
     scores = np.asarray([0.1, 0.1, 0.1, 0.3, 0.3, 0.3, 0.2, 0.2], dtype=float)
-    threshold_fast, metrics_fast = find_ber_optimal_threshold(y_true, scores)
-    threshold_brute, metrics_brute = _bruteforce_reference(y_true, scores)
-    assert _threshold_equal(float(threshold_fast), float(threshold_brute))
-    assert np.isclose(float(metrics_fast["BER"]), float(metrics_brute["BER"]), atol=1e-12)
-    assert np.isclose(float(metrics_fast["True+"]), float(metrics_brute["True+"]), atol=1e-12)
-    assert np.isclose(float(metrics_fast["True-"]), float(metrics_brute["True-"]), atol=1e-12)
+
+    _assert_fast_threshold_search_matches_bruteforce(y_true, scores)
 
 
 def test_find_ber_optimal_threshold_nonfinite_scores_fallback_equivalence() -> None:
     y_true = np.asarray([0, 1, 0, 1, 0, 1, 1, 0], dtype=int)
     scores = np.asarray([0.2, np.nan, -0.1, np.inf, -np.inf, 0.2, 0.8, -0.5], dtype=float)
-    threshold_fast, metrics_fast = find_ber_optimal_threshold(y_true, scores)
-    threshold_brute, metrics_brute = _bruteforce_reference(y_true, scores)
-    assert _threshold_equal(float(threshold_fast), float(threshold_brute))
-    assert np.isclose(float(metrics_fast["BER"]), float(metrics_brute["BER"]), atol=1e-12)
-    assert np.isclose(float(metrics_fast["True+"]), float(metrics_brute["True+"]), atol=1e-12)
-    assert np.isclose(float(metrics_fast["True-"]), float(metrics_brute["True-"]), atol=1e-12)
+
+    _assert_fast_threshold_search_matches_bruteforce(y_true, scores)

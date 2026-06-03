@@ -5,6 +5,7 @@ from pathlib import Path
 
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.audit import run_study_audit
+from tests.assertions import assert_artifacts_exist
 
 
 def test_end_to_end_active_studies_share_output_dir(
@@ -20,13 +21,15 @@ def test_end_to_end_active_studies_share_output_dir(
     assert audit.ok, audit.errors
 
     reports = active_artifacts_output_dir / "reports"
-    for name in [
-        ArtifactName.BENCHMARK_SUMMARY,
-        ArtifactName.BENCHMARK_TUNED_SUMMARY,
-        ArtifactName.FEATURE_REPORT,
-        ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
-        ArtifactName.TEMPORAL_MODEL_SELECTION,
-        ArtifactName.TEMPORAL_LOCKBOX,
-        ArtifactName.MANIFEST,
-    ]:
-        assert (reports / name).exists(), name
+    assert_artifacts_exist(
+        reports,
+        [
+            ArtifactName.BENCHMARK_SUMMARY,
+            ArtifactName.BENCHMARK_TUNED_SUMMARY,
+            ArtifactName.FEATURE_REPORT,
+            ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+            ArtifactName.TEMPORAL_MODEL_SELECTION,
+            ArtifactName.TEMPORAL_LOCKBOX,
+            ArtifactName.MANIFEST,
+        ],
+    )
