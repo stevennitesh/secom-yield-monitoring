@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from secom.artifacts import (
@@ -12,6 +11,7 @@ from secom.artifacts import (
     validate_schema_and_logic,
 )
 from secom.config import ArtifactName, StudyStatus
+from secom.workflows.manifest import read_study_manifest
 
 
 def run_study_audit(output_dir: Path) -> ValidationResult:
@@ -26,7 +26,7 @@ def run_study_audit(output_dir: Path) -> ValidationResult:
             claim_restrictions=[],
         )
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = read_study_manifest(manifest_path)
     primary_status = str(manifest.get("primary_study_status", StudyStatus.NOT_RUN))
     original_status = str(manifest.get("benchmark_original_status", StudyStatus.NOT_RUN))
     tuned_status = str(manifest.get("benchmark_tuned_status", StudyStatus.NOT_RUN))
