@@ -1,3 +1,5 @@
+"""Typed containers shared by temporal workflow stages."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +13,8 @@ from secom.cv import OuterFoldPlanResult
 
 @dataclass(frozen=True)
 class DataBundle:
+    """Loaded temporal data split plus feasibility context."""
+
     all_data: pd.DataFrame
     dev: pd.DataFrame
     lockbox: pd.DataFrame
@@ -23,6 +27,8 @@ class DataBundle:
 
 @dataclass(frozen=True)
 class RoleConfig:
+    """Frozen temporal role configuration used for final DEV and lockbox scoring."""
+
     role: str
     selector: str
     k: int
@@ -31,6 +37,7 @@ class RoleConfig:
     n_neighbors: int | None
 
     def to_hash_payload(self) -> dict[str, Any]:
+        """Return the config subset that identifies a fitted role."""
         return {
             "selector": self.selector,
             "k": int(self.k),
@@ -42,6 +49,8 @@ class RoleConfig:
 
 @dataclass
 class FittedRoleModel:
+    """Fitted temporal role model with transforms, thresholds, and DEV scores."""
+
     config: RoleConfig
     imputer: Any
     scaler: Any

@@ -13,7 +13,9 @@ from secom.workflows import run_benchmark_replication
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the benchmark study bundle (original replication + tuned benchmark)")
+    parser = argparse.ArgumentParser(
+        description="Run the benchmark study bundle (original replication + tuned benchmark)"
+    )
     parser.add_argument("--input-dir", default="data/raw")
     parser.add_argument("--output-dir", default="runs/benchmark_replication")
     parser.add_argument("--strict", action="store_true")

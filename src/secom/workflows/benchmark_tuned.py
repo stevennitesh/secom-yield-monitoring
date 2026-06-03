@@ -1,3 +1,5 @@
+"""Nested tuned benchmark replication workflow."""
+
 from __future__ import annotations
 
 import json
@@ -10,7 +12,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
-from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256
+from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256, study_spec_path
 from secom.config import (
     ArtifactName,
     BENCHMARK_INNER_SPLITS,
@@ -46,6 +48,7 @@ from secom.workflows.benchmark_common import (
 
 
 def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
+    """Return the tuned benchmark selector grid for one selector."""
     ks = [10, 20, 40]
     if selector == SelectorName.RELIEFF:
         return [{"k": int(k), "n_neighbors": int(nn)} for k in ks for nn in [5, 10, 20]]
@@ -53,6 +56,7 @@ def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
 
 
 def _select_best_tuned_config(config_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Select a tuned config by near-best AUC, BER, then deterministic config key."""
     if not config_rows:
         raise ValueError("No tuned benchmark configs to select")
     best_auc = max(float(row["mean_inner_ROC_AUC"]) for row in config_rows)
@@ -80,6 +84,7 @@ def _inner_cv_summary_for_config(
     classifier_config: dict[str, Any],
     prepared_inner_views: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
 ) -> dict[str, Any]:
+    """Score one classifier config over prepared inner selector views."""
     aucs: list[float] = []
     bers: list[float] = []
     for x_train_sel, y_inner_train, x_val_sel, y_inner_val in prepared_inner_views:
@@ -108,6 +113,7 @@ def _prepare_inner_selector_views(
     add_indicator: bool,
     selector_config: dict[str, Any],
 ) -> list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+    """Prepare inner-CV selected matrices for one outer benchmark training fold."""
     y_outer_train = np.asarray(y_outer_train, dtype=int)
     n_fail = int(np.sum(y_outer_train == 1))
     n_pass = int(np.sum(y_outer_train == 0))
@@ -160,6 +166,7 @@ def _evaluate_outer_fold_with_config(
     raw_feature_count: int,
     fold: int,
 ) -> tuple[dict[str, Any], pd.DataFrame]:
+    """Evaluate a selected tuned config on one outer benchmark fold."""
     add_indicator = replication_mode == ReplicationMode.WITH_MISSING_INDICATORS
     x_train_sel, x_test_sel, feature_meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
         x_train_raw=x_train_raw,
@@ -180,9 +187,7 @@ def _evaluate_outer_fold_with_config(
     )
     threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
     metrics = binary_metrics_at_threshold(y_test, test_scores, threshold=float(threshold))
-    selected_global = set(
-        local_to_global_feature_indices(selected_local, feature_meta)
-    )
+    selected_global = set(local_to_global_feature_indices(selected_local, feature_meta))
 
     universe = transformed_feature_metadata_from_imputer(
         imputer=_imputer,
@@ -232,6 +237,7 @@ def _evaluate_outer_fold_with_config(
 
 
 def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
+    """Choose the modal selected tuned config for final full-dataset summaries."""
     rows: list[dict[str, Any]] = []
     for (selector, classifier, mode), frame in selected_configs.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
@@ -301,6 +307,7 @@ def run_tuned_benchmark_replication(
     selectors_run: list[str] | None = None,
     _prepared_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Run nested tuned benchmark replication and write tuned benchmark artifacts."""
     reports = ensure_reports_dir(output_dir)
     prepared_data = prepare_benchmark_dataset(input_dir) if _prepared_data is None else _prepared_data
     project_root = prepared_data["project_root"]
@@ -329,6 +336,7 @@ def run_tuned_benchmark_replication(
                     x_outer_test = x[test_idx]
                     y_outer_test = y[test_idx]
                     config_rows: list[dict[str, Any]] = []
+                    # Reuse selector transforms across classifier configs for a selector config.
                     for selector_config in selector_grid:
                         prepared_inner_views = _prepare_inner_selector_views(
                             x_outer_train_raw=x_outer_train,
@@ -484,7 +492,7 @@ def run_tuned_benchmark_replication(
         commit, dirty = git_commit_and_dirty(project_root)
         manifest = {
             "manifest_version": "2.0",
-            "study_spec_path": "docs/spec/README.md",
+            "study_spec_path": study_spec_path(),
             "study_spec_sha256": strategy_sha256(project_root),
             "git_commit": commit,
             "git_dirty": dirty,

@@ -1,3 +1,5 @@
+"""Temporal robustness workflow with screening, freeze, lockbox, drift, and MSPC artifacts."""
+
 from __future__ import annotations
 
 import json
@@ -15,9 +17,9 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
-from secom.artifacts import config_hash, ensure_reports_dir, write_csv, write_manifest
+from secom.artifacts import ensure_reports_dir, write_csv, write_manifest
 from secom.common.drift import psi_for_feature
-from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256
+from secom.common.meta import git_commit_and_dirty, library_versions, strategy_sha256, study_spec_path
 from secom.common.thresholds import operational_threshold
 from secom.config import (
     ArtifactName,
@@ -52,8 +54,20 @@ from secom.selection.engine import fit_selector_pipeline, select_features
 from secom.selection.tuning import select_best_inner_config
 from secom.types import DataBundle, FittedRoleModel, RoleConfig
 
+STAGE_A_FEATURE_BUDGET = 40
+STAGE_B_K_VALUES = [10, 20, 40]
+STAGE_B_C_VALUES = [0.01, 0.1, 1.0, 10.0]
+STAGE_B_SCALERS = [ScalerName.STANDARD, ScalerName.ROBUST]
+RELIEFF_NEIGHBOR_VALUES = [5, 10, 20]
+INNER_CV_SPLITS = 5
+PREVALENCE_SHIFT_CAUTION = 0.02
+SCORE_KS_PVALUE_CAUTION = 0.01
+MAX_PSI_CAUTION = 0.30
+MSPC_QUANTILE = 0.99
+
 
 def _build_bundle(input_dir: Path) -> DataBundle:
+    """Load SECOM data, create the chronological split, and assess temporal feasibility."""
     loaded = load_raw_secom(input_dir)
     all_sorted = parse_sort_and_label(loaded.frame)
     split = split_dev_lockbox(all_sorted)
@@ -83,6 +97,7 @@ def _fit_eval_with_labels(
     scaler_name: str,
     n_neighbors: int | None,
 ) -> tuple[dict[str, float], float, list[Any], np.ndarray, Any, Any, Any]:
+    """Fit a temporal selector/logreg view and return metrics plus fitted pieces."""
     prepared = _prepare_selector_eval_view(
         x_train_raw=x_train_raw,
         y_train=y_train,
@@ -121,6 +136,7 @@ def _prepare_selector_eval_view(
     add_indicator: bool,
     n_neighbors: int | None,
 ) -> dict[str, Any]:
+    """Prepare selected train/eval matrices while retaining transform metadata."""
     x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler = fit_selector_pipeline(
         x_train_raw=x_train_raw,
         y_train=y_train,
@@ -148,6 +164,7 @@ def _score_temporal_logreg_view(
     prepared_view: dict[str, Any],
     c_value: float,
 ) -> tuple[dict[str, float], float, Any, np.ndarray, np.ndarray]:
+    """Fit temporal logistic regression and score eval data at a train-frozen threshold."""
     x_train_sel = prepared_view["x_train_sel"]
     y_train = prepared_view["y_train"]
     x_eval_sel = prepared_view["x_eval_sel"]
@@ -171,6 +188,7 @@ def _prepare_resampled_selector_views(
     add_indicator: bool,
     n_neighbors: int | None,
 ) -> list[dict[str, Any]]:
+    """Prepare selector views for repeated CV splits with caller-provided metadata."""
     prepared_views: list[dict[str, Any]] = []
     for meta, train_idx, eval_idx in splits_with_meta:
         prepared = _prepare_selector_eval_view(
@@ -189,10 +207,11 @@ def _prepare_resampled_selector_views(
 
 
 def _stage_a_configs(selectors_run: list[str]) -> list[dict[str, Any]]:
+    """Build the fixed selector-screening configs used before temporal model selection."""
     return [
         {
             "selector": s,
-            "k": 40,
+            "k": STAGE_A_FEATURE_BUDGET,
             "C": 1.0,
             "scaler": ScalerName.ROBUST,
             "n_neighbors": 10 if s == SelectorName.RELIEFF else None,
@@ -202,15 +221,13 @@ def _stage_a_configs(selectors_run: list[str]) -> list[dict[str, Any]]:
 
 
 def build_stage_b_config_grid(selector: str) -> list[dict[str, Any]]:
-    ks = [10, 20, 40]
-    cs = [0.01, 0.1, 1.0, 10.0]
-    scalers = [ScalerName.STANDARD, ScalerName.ROBUST]
+    """Return the temporal Stage-B grid for one selector."""
     configs: list[dict[str, Any]] = []
     if selector == SelectorName.RELIEFF:
-        for nn in [5, 10, 20]:
-            for k in ks:
-                for c in cs:
-                    for scaler in scalers:
+        for nn in RELIEFF_NEIGHBOR_VALUES:
+            for k in STAGE_B_K_VALUES:
+                for c in STAGE_B_C_VALUES:
+                    for scaler in STAGE_B_SCALERS:
                         configs.append(
                             {
                                 "selector": selector,
@@ -221,9 +238,9 @@ def build_stage_b_config_grid(selector: str) -> list[dict[str, Any]]:
                             }
                         )
     else:
-        for k in ks:
-            for c in cs:
-                for scaler in scalers:
+        for k in STAGE_B_K_VALUES:
+            for c in STAGE_B_C_VALUES:
+                for scaler in STAGE_B_SCALERS:
                     configs.append(
                         {
                             "selector": selector,
@@ -245,7 +262,8 @@ def _prepare_inner_cv_views(
     n_neighbors: int | None,
     seed: int,
 ) -> list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+    """Prepare selected inner-CV folds for one outer temporal split and seed."""
+    skf = StratifiedKFold(n_splits=INNER_CV_SPLITS, shuffle=True, random_state=seed)
     splits_with_meta = [
         ({}, inner_train_idx, inner_val_idx)
         for inner_train_idx, inner_val_idx in skf.split(x_outer_train_raw, y_outer_train)
@@ -260,16 +278,14 @@ def _prepare_inner_cv_views(
         add_indicator=True,
         n_neighbors=n_neighbors,
     )
-    return [
-        (view["x_train_sel"], view["y_train"], view["x_eval_sel"], view["y_eval"])
-        for view in prepared
-    ]
+    return [(view["x_train_sel"], view["y_train"], view["x_eval_sel"], view["y_eval"]) for view in prepared]
 
 
 def _score_prepared_inner_cv(
     prepared_folds: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
     c_value: float,
 ) -> tuple[float, float]:
+    """Return mean inner AUC and BER for one C value over prepared folds."""
     aucs: list[float] = []
     bers: list[float] = []
     for x_train_sel, y_inner_train, x_val_sel, y_inner_val in prepared_folds:
@@ -289,6 +305,7 @@ def _score_prepared_inner_cv(
 
 
 def _phase2_fold_metrics(y_true: np.ndarray, scores: np.ndarray, threshold: float) -> tuple[float, float]:
+    """Compute freeze-phase BER and AUC from frozen-threshold scores."""
     y_true = np.asarray(y_true, dtype=int)
     scores = np.asarray(scores, dtype=float)
     preds = (scores >= threshold).astype(int)
@@ -314,9 +331,10 @@ def _prepare_phase2_inner_views(
     scaler_name: str,
     n_neighbors: int | None,
 ) -> list[dict[str, Any]]:
+    """Prepare repeated Phase-2 inner views used to freeze role configs."""
     splits_with_meta: list[tuple[dict[str, Any], np.ndarray, np.ndarray]] = []
     for seed in SEEDS_PHASE2:
-        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
+        skf = StratifiedKFold(n_splits=INNER_CV_SPLITS, shuffle=True, random_state=seed)
         for inner_fold_i, (tr, va) in enumerate(skf.split(x_dev, y_dev), start=1):
             splits_with_meta.append(
                 (
@@ -343,6 +361,7 @@ def _phase2_freeze_for_role(
     x_dev: np.ndarray,
     y_dev: np.ndarray,
 ) -> tuple[pd.DataFrame, RoleConfig]:
+    """Freeze one role's selector, feature budget, C, scaler, and ReliefF neighbors."""
     configs = build_stage_b_config_grid(selector)
     per_config: dict[tuple, list[dict[str, Any]]] = {}
     grouped_configs: dict[tuple[int, str, int | None], list[dict[str, Any]]] = {}
@@ -431,6 +450,7 @@ def _fit_phase3_role_model(
     week_labels: np.ndarray,
     raw_feature_count: int,
 ) -> FittedRoleModel:
+    """Fit the frozen role model on all DEV data and freeze scientific/operational thresholds."""
     imputer = make_imputer(add_indicator=True)
     x_dev_imp = imputer.fit_transform(x_dev_raw)
     scaler = make_scaler(role_cfg.scaler)
@@ -474,6 +494,7 @@ def _prepare_lockbox_eval_context(
     x_lock_raw: np.ndarray,
     y_lock: np.ndarray,
 ) -> dict[str, Any]:
+    """Transform lockbox data through the fitted role model and compute TNR90 context."""
     x_lock_imp = model.imputer.transform(x_lock_raw)
     x_lock_scaled = model.scaler.transform(x_lock_imp)
     x_lock_sel = x_lock_scaled[:, model.selected_local_idx]
@@ -492,6 +513,7 @@ def _score_lockbox_for_role(
     y_lock: np.ndarray,
     lock_ctx: dict[str, Any],
 ) -> pd.DataFrame:
+    """Score lockbox metrics for scientific and operational threshold policies."""
     lock_scores = np.asarray(lock_ctx["lock_scores"], dtype=float)
     rows = []
     for policy, th in (
@@ -532,6 +554,7 @@ def _drift_gate_for_role(
     y_lock: np.ndarray,
     lock_ctx: dict[str, Any],
 ) -> dict[str, Any]:
+    """Apply prevalence, score-shift, and selected-feature PSI drift gates for one role."""
     lock_scores = np.asarray(lock_ctx["lock_scores"], dtype=float)
     dev_fail_rate = float(np.mean(y_dev == 1))
     lock_fail_rate = float(np.mean(y_lock == 1))
@@ -540,11 +563,7 @@ def _drift_gate_for_role(
 
     coef_abs = np.abs(model.clf.coef_[0])
     sel_meta = [model.feature_meta[int(i)] for i in model.selected_local_idx.tolist()]
-    candidates = [
-        (coef_abs[i], meta.raw_index)
-        for i, meta in enumerate(sel_meta)
-        if meta.feature_type == "value"
-    ]
+    candidates = [(coef_abs[i], meta.raw_index) for i, meta in enumerate(sel_meta) if meta.feature_type == "value"]
     candidates = sorted(candidates, key=lambda x: (-x[0], x[1]))
     top_raw_idx = [raw_idx for _, raw_idx in candidates[:PSI_MAX_FEATURES]]
     psi_vals = [psi_for_feature(x_dev_raw[:, idx], x_lock_raw[:, idx]) for idx in top_raw_idx]
@@ -552,11 +571,11 @@ def _drift_gate_for_role(
     med_psi = 0.0 if not psi_vals else float(np.median(psi_vals))
 
     violated = 0
-    if abs_prev >= 0.02:
+    if abs_prev >= PREVALENCE_SHIFT_CAUTION:
         violated += 1
-    if ks_p < 0.01:
+    if ks_p < SCORE_KS_PVALUE_CAUTION:
         violated += 1
-    if max_psi >= 0.30:
+    if max_psi >= MAX_PSI_CAUTION:
         violated += 1
     status = "PASS" if violated == 0 else ("CAUTION" if violated == 1 else "HIGH_SHIFT")
     return {
@@ -578,6 +597,7 @@ def _mspc_fit_and_score(
     x_eval: np.ndarray,
     y_eval: np.ndarray,
 ) -> dict[str, Any]:
+    """Fit a PCA MSPC baseline on pass wafers and score an eval window."""
     imputer = SimpleImputer(strategy="median", keep_empty_features=True, add_indicator=False)
     scaler = StandardScaler()
     x_train_imp = imputer.fit_transform(x_train_pass)
@@ -589,8 +609,8 @@ def _mspc_fit_and_score(
     q_train = np.sum((x_train_s - xhat_train) ** 2, axis=1)
     ev = pca.explained_variance_
     t2_train = np.sum((t_train**2) / (ev + 1e-12), axis=1)
-    ucl_t2 = float(np.quantile(t2_train, 0.99))
-    ucl_q = float(np.quantile(q_train, 0.99))
+    ucl_t2 = float(np.quantile(t2_train, MSPC_QUANTILE))
+    ucl_q = float(np.quantile(q_train, MSPC_QUANTILE))
 
     x_eval_s = scaler.transform(imputer.transform(x_eval))
     t_eval = pca.transform(x_eval_s)
@@ -629,6 +649,7 @@ def _manager_weekly_metrics(
     threshold: float,
     week_labels: np.ndarray,
 ) -> dict[str, float]:
+    """Summarize weekly operations-facing flag and fail-capture rates."""
     y_true = np.asarray(y_true, dtype=int)
     scores = np.asarray(scores, dtype=float)
     weeks = np.asarray(week_labels, dtype=int)
@@ -637,9 +658,19 @@ def _manager_weekly_metrics(
     week_count = int(week_codes.max()) + 1 if week_codes.size else 0
     preds_float = preds.astype(float, copy=False)
     fail_mask = (y_true == 1).astype(float)
-    flagged_counts = np.bincount(week_codes, weights=preds_float, minlength=week_count) if week_count else np.array([], dtype=float)
-    tp_counts = np.bincount(week_codes, weights=(preds_float * fail_mask), minlength=week_count) if week_count else np.array([], dtype=float)
-    fn_counts = np.bincount(week_codes, weights=((1.0 - preds_float) * fail_mask), minlength=week_count) if week_count else np.array([], dtype=float)
+    flagged_counts = (
+        np.bincount(week_codes, weights=preds_float, minlength=week_count) if week_count else np.array([], dtype=float)
+    )
+    tp_counts = (
+        np.bincount(week_codes, weights=(preds_float * fail_mask), minlength=week_count)
+        if week_count
+        else np.array([], dtype=float)
+    )
+    fn_counts = (
+        np.bincount(week_codes, weights=((1.0 - preds_float) * fail_mask), minlength=week_count)
+        if week_count
+        else np.array([], dtype=float)
+    )
     sample_count = len(y_true)
     return {
         "predicted_flag_fraction": float(np.mean(preds)) if sample_count else 0.0,
@@ -650,6 +681,7 @@ def _manager_weekly_metrics(
 
 
 def _init_manifest(output_dir: Path) -> dict[str, Any]:
+    """Load an existing manifest or create the temporal workflow manifest baseline."""
     reports = ensure_reports_dir(output_dir)
     path = reports / ArtifactName.MANIFEST
     if path.exists():
@@ -658,7 +690,7 @@ def _init_manifest(output_dir: Path) -> dict[str, Any]:
     commit, dirty = git_commit_and_dirty(project_root)
     return {
         "manifest_version": "2.0",
-        "study_spec_path": "docs/spec/README.md",
+        "study_spec_path": study_spec_path(),
         "study_spec_sha256": strategy_sha256(project_root),
         "git_commit": commit,
         "git_dirty": dirty,
@@ -679,6 +711,7 @@ def run_temporal_robustness(
     *,
     selectors_run: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Run the temporal robustness study and write all temporal artifacts."""
     reports = ensure_reports_dir(output_dir)
     selectors_run = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
     bundle = _build_bundle(input_dir)
@@ -697,11 +730,10 @@ def run_temporal_robustness(
 
     manifest = _init_manifest(output_dir)
     if not bundle.temporal_feasible or bundle.fold_plan is None:
+        # Still write split metadata so the audit explains why temporal artifacts are absent.
         manifest["temporal_robustness_status"] = StudyStatus.NOT_RUN
         notes = list(manifest.get("industrialization_notes", []))
-        notes.append(
-            f"temporal robustness not run: {bundle.temporal_infeasible_reason or 'no_feasible_plan'}"
-        )
+        notes.append(f"temporal robustness not run: {bundle.temporal_infeasible_reason or 'no_feasible_plan'}")
         manifest["industrialization_notes"] = notes
         write_manifest(manifest, reports / ArtifactName.MANIFEST)
         return {
@@ -857,8 +889,7 @@ def run_temporal_robustness(
                 "modal_C": float(grp["C"].mode().min()),
                 "modal_scaler": (
                     ScalerName.STANDARD
-                    if (grp["scaler"] == ScalerName.STANDARD).sum()
-                    >= (grp["scaler"] == ScalerName.ROBUST).sum()
+                    if (grp["scaler"] == ScalerName.STANDARD).sum() >= (grp["scaler"] == ScalerName.ROBUST).sum()
                     else ScalerName.ROBUST
                 ),
                 "modal_n_neighbors": (
@@ -981,9 +1012,7 @@ def run_temporal_robustness(
         for role in ["primary", "challenger"]:
             for policy in [ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPERATIONAL]:
                 key = f"{role}_{policy}"
-                sub = lockbox_df[
-                    (lockbox_df["role"] == role) & (lockbox_df["threshold_policy"] == policy)
-                ]
+                sub = lockbox_df[(lockbox_df["role"] == role) & (lockbox_df["threshold_policy"] == policy)]
                 if sub.empty:
                     row[key] = np.nan
                 else:
