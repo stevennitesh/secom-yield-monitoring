@@ -8,6 +8,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 from sklearn.model_selection import StratifiedKFold
 
 from secom.config import (
@@ -84,6 +86,17 @@ def classifier_param_grid(classifier: str) -> list[dict[str, Any]]:
 def add_indicator_for_replication_mode(replication_mode: str) -> bool:
     """Return whether a benchmark replication mode includes missingness indicators."""
     return str(replication_mode) == ReplicationMode.WITH_MISSING_INDICATORS
+
+
+def normalize_benchmark_run_filters(
+    *,
+    classifiers_run: list[str] | None,
+    selectors_run: list[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Return concrete classifier and selector lists for benchmark workflows."""
+    classifiers = list(BenchmarkClassifier.ALL) if classifiers_run is None else [str(c) for c in classifiers_run]
+    selectors = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
+    return classifiers, selectors
 
 
 def selector_kwargs(selector: str, selector_config: dict[str, Any]) -> dict[str, Any]:
@@ -475,30 +488,11 @@ def build_cluster_id_map(x_raw: np.ndarray) -> dict[int, int]:
     value_x = imputer.fit_transform(x_raw)
     corr = safe_value_corrcoef(value_x)
     p = corr.shape[0]
-    adj = {i: set() for i in range(p)}
-    for i in range(p):
-        for j in range(i + 1, p):
-            cij = corr[i, j]
-            if np.isfinite(cij) and abs(cij) >= VALUE_CLUSTER_CORR_THRESHOLD:
-                adj[i].add(j)
-                adj[j].add(i)
-    cluster_id: dict[int, int] = {}
-    cid = 0
-    seen = set()
-    for i in range(p):
-        if i in seen:
-            continue
-        stack = [i]
-        seen.add(i)
-        while stack:
-            v = stack.pop()
-            cluster_id[v] = cid
-            for nb in adj[v]:
-                if nb not in seen:
-                    seen.add(nb)
-                    stack.append(nb)
-        cid += 1
-    return cluster_id
+    if p == 0:
+        return {}
+    adjacency = np.isfinite(corr) & (np.abs(corr) >= VALUE_CLUSTER_CORR_THRESHOLD)
+    _n_components, labels = connected_components(csr_matrix(adjacency), directed=False, return_labels=True)
+    return {idx: int(label) for idx, label in enumerate(labels)}
 
 
 def build_feature_report(
@@ -568,15 +562,23 @@ def build_feature_report(
 def build_benchmark_summary_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
     """Aggregate fold metrics with bootstrap confidence intervals."""
     summary_rows: list[dict[str, Any]] = []
+    bootstrap_draws_by_n: dict[int, np.ndarray] = {}
     for (selector, classifier, mode), frame in fold_metrics_df.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
     ):
-        draw_indices = bootstrap_resample_indices(n_values=len(frame), n_boot=BOOTSTRAP_N, seed=BOOTSTRAP_SEED)
+        n_values = int(len(frame))
+        if n_values not in bootstrap_draws_by_n:
+            bootstrap_draws_by_n[n_values] = bootstrap_resample_indices(
+                n_values=n_values,
+                n_boot=BOOTSTRAP_N,
+                seed=BOOTSTRAP_SEED,
+            )
+        draw_indices = bootstrap_draws_by_n[n_values]
         row = {
             "selector": selector,
             "classifier": classifier,
             "replication_mode": mode,
-            "n_folds": int(len(frame)),
+            "n_folds": n_values,
             "n_boot": BOOTSTRAP_N,
             "boot_seed": BOOTSTRAP_SEED,
         }

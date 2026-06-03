@@ -362,16 +362,12 @@ def validate_required_artifacts(
 ) -> list[str]:
     """Return missing artifact errors for the manifest-declared active study layers."""
     reports = output_dir / "reports"
-    errors: list[str] = []
     required = _required_artifacts_by_study(
         benchmark_original_status=benchmark_original_status,
         benchmark_tuned_status=benchmark_tuned_status,
         temporal_status=temporal_status,
     )
-    for name in required:
-        if not (reports / name).exists():
-            errors.append(f"missing artifact: {name}")
-    return errors
+    return [f"missing artifact: {name}" for name in required if not (reports / name).exists()]
 
 
 def load_artifact_frames(output_dir: Path) -> dict[str, pd.DataFrame]:
@@ -488,9 +484,11 @@ def _warn_stale_artifact_family(
     """Warn when inactive study layers still have present artifact files."""
     if active:
         return
-    for name in artifact_names:
-        if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None:
-            warnings.append(f"{warning_prefix}: {name}")
+    warnings.extend(
+        f"{warning_prefix}: {name}"
+        for name in artifact_names
+        if _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames) is not None
+    )
 
 
 def validate_schema_and_logic(

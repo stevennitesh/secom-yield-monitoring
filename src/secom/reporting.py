@@ -58,8 +58,10 @@ def _markdown_table(
         "| " + " | ".join(header_row) + " |",
         "|" + "|".join(["---"] * len(columns)) + "|",
     ]
-    for row in table.itertuples(index=False, name=None):
-        lines.append("| " + " | ".join(_format_cell(value) for value in row) + " |")
+    lines.extend(
+        "| " + " | ".join(_format_cell(value) for value in row) + " |"
+        for row in table.itertuples(index=False, name=None)
+    )
     return lines
 
 
@@ -259,11 +261,11 @@ def _best_row_feature_table(
             "| feature | type | selection_frequency | cluster_id |",
             "|---|---|---:|---:|",
         ]
-        for row in rows.itertuples(index=False):
-            lines.append(
-                f"| {row.feature_name_or_source_col} | {row.feature_type} |"
-                f" {_format_float(row.selection_frequency)} | {_format_float(row.cluster_id)} |"
-            )
+        lines.extend(
+            f"| {row.feature_name_or_source_col} | {row.feature_type} |"
+            f" {_format_float(row.selection_frequency)} | {_format_float(row.cluster_id)} |"
+            for row in rows.itertuples(index=False)
+        )
         return lines
 
     lines = [
@@ -414,8 +416,7 @@ def _load_report_context(output_dir: Path) -> ReportContext:
 
 def _append_bullet_list(lines: list[str], items: list[str]) -> None:
     """Append Markdown bullet lines in-place."""
-    for item in items:
-        lines.append(f"- {item}")
+    lines.extend(f"- {item}" for item in items)
 
 
 def _append_benchmark_summary_table(
@@ -665,8 +666,10 @@ def write_report_skeleton(output_dir: Path) -> Path:
     if benchmark_ablation is not None and not benchmark_ablation.empty:
         lines.append("")
         lines.append("- Original missing-indicator ablation summary:")
-        for row in benchmark_ablation.itertuples(index=False):
-            lines.append(f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}")
+        lines.extend(
+            f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}"
+            for row in benchmark_ablation.itertuples(index=False)
+        )
     lines.append("")
     lines.append("### Tuned Benchmark")
     lines.append("")
@@ -731,8 +734,10 @@ def write_report_skeleton(output_dir: Path) -> Path:
     if benchmark_tuned_ablation is not None and not benchmark_tuned_ablation.empty:
         lines.append("")
         lines.append("##### Missing-Indicator Ablation Summary")
-        for row in benchmark_tuned_ablation.itertuples(index=False):
-            lines.append(f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}")
+        lines.extend(
+            f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}"
+            for row in benchmark_tuned_ablation.itertuples(index=False)
+        )
     if best_tuned_benchmark_row is not None:
         lines.append("")
         lines.append("##### Interpretation")
@@ -957,8 +962,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
         if restrictions:
             lines.append("")
             lines.append("- Temporal claim restrictions:")
-            for restriction in restrictions:
-                lines.append(f"  - `{restriction}`")
+            lines.extend(f"  - `{restriction}`" for restriction in restrictions)
             lines.append(
                 "- Lockbox evidence remains reportable, but restricted claims should be treated as descriptive rather than confirmatory."
             )
@@ -1172,11 +1176,11 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     if ctx.benchmark_ablation is not None and not ctx.benchmark_ablation.empty:
         lines.append("### Missing-Indicator Ablation")
         lines.append("")
-        for row in ctx.benchmark_ablation.itertuples(index=False):
-            lines.append(
-                f"- `{row.selector}` / `{row.classifier}` changes mean BER by `{_format_float(row.delta_BER)}` "
-                "when missing indicators are added."
-            )
+        lines.extend(
+            f"- `{row.selector}` / `{row.classifier}` changes mean BER by `{_format_float(row.delta_BER)}` "
+            "when missing indicators are added."
+            for row in ctx.benchmark_ablation.itertuples(index=False)
+        )
         lines.append("")
     lines.append("## Tuned Benchmark")
     lines.append("")
@@ -1310,8 +1314,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         )
     if restrictions:
         lines.append("- Active temporal claim restrictions:")
-        for restriction in restrictions:
-            lines.append(f"  - `{restriction}`")
+        lines.extend(f"  - `{restriction}`" for restriction in restrictions)
     else:
         lines.append("- No temporal claim restrictions are active in this run.")
     lines.append("")
@@ -1427,8 +1430,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         lines.append(f"  - `{name}`: `{version}`")
     if restrictions:
         lines.append("- Temporal claim restrictions:")
-        for restriction in restrictions:
-            lines.append(f"  - `{restriction}`")
+        lines.extend(f"  - `{restriction}`" for restriction in restrictions)
     else:
         lines.append("- Temporal claim restrictions: `none`")
     lines.append("")
