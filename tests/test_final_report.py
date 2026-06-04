@@ -48,6 +48,8 @@ def test_final_report_includes_uci_original_benchmark_reference(
             "Ftest",
             "Gram Schmidt",
             "33.5 +/- 2.2",
+            "binary-label ANOVA F-test ranking and absolute Pearson correlation ranking are mathematically monotonic",
+            "UCI reference table reports separate Ftest and Pearson rows",
         ],
     )
 
