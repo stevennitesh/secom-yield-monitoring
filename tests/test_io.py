@@ -42,6 +42,19 @@ def test_load_raw_secom_rejects_undocumented_label_values(workspace_tmp_dir: Pat
         load_raw_secom(input_dir)
 
 
+def test_load_raw_secom_reports_nan_label_values(workspace_tmp_dir: Path) -> None:
+    """Raw label loading should distinguish NaN labels from invalid values."""
+    input_dir = workspace_tmp_dir / "nan_label"
+    _write_raw_input(
+        input_dir,
+        feature_rows=["1.0 2.0", "3.0 4.0"],
+        label_rows=['-1 "19/07/2008 11:55:00"', 'NaN "19/07/2008 12:55:00"'],
+    )
+
+    with pytest.raises(ValueError, match="contains NaN values"):
+        load_raw_secom(input_dir)
+
+
 def test_parse_sort_and_label_rejects_unparseable_timestamps(workspace_tmp_dir: Path) -> None:
     """Timestamp parsing failures should be reported before study sorting."""
     input_dir = workspace_tmp_dir / "bad_timestamp"
