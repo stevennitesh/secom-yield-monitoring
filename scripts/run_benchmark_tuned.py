@@ -1,3 +1,5 @@
+"""CLI entry point for the tuned benchmark workflow."""
+
 from __future__ import annotations
 
 import argparse
@@ -16,6 +18,7 @@ PASSED_STATUS = "passed"
 
 
 def _parse_csv_arg(value: str | None) -> list[str] | None:
+    """Parse comma-separated CLI overrides into workflow filter lists."""
     if value is None:
         return None
     parsed = [item.strip() for item in value.split(",") if item.strip()]
@@ -23,6 +26,7 @@ def _parse_csv_arg(value: str | None) -> list[str] | None:
 
 
 def _print_progress(message: str) -> None:
+    """Print workflow progress to stderr without buffering."""
     print(message, file=sys.stderr, flush=True)
 
 

@@ -249,6 +249,7 @@ def extract_tpr_at_tnr(y_true: np.ndarray, scores: np.ndarray, target_tnr: float
     best_tnr = 0.0
 
     def consider(threshold: float, tpr: float, tnr: float) -> None:
+        """Record threshold candidates that satisfy the requested specificity."""
         nonlocal best_threshold, best_tpr, best_tnr
         if tnr < target_tnr:
             return

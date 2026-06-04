@@ -1,3 +1,5 @@
+"""Tests for model construction and warning handling."""
+
 from __future__ import annotations
 
 import warnings
@@ -9,8 +11,13 @@ from secom.models import fit_temporal_logreg_model
 
 
 def test_fit_temporal_logreg_model_suppresses_convergence_warning(monkeypatch) -> None:
+    """Temporal logistic fitting should hide expected convergence noise."""
+
     class FakeClassifier:
+        """Classifier double that emits the warning wrapper code suppresses."""
+
         def fit(self, x_train, y_train):
+            """Emit a convergence warning while preserving sklearn-like chaining."""
             warnings.warn(
                 "lbfgs failed to converge after 3000 iteration(s)",
                 ConvergenceWarning,

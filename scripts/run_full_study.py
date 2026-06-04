@@ -1,3 +1,5 @@
+"""CLI entry point for running the full active study bundle."""
+
 from __future__ import annotations
 
 import argparse

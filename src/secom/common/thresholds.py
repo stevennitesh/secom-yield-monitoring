@@ -56,6 +56,7 @@ def operational_threshold(scores: np.ndarray, y_true: np.ndarray, week_labels: n
     sorted_week_codes = week_codes[order]
 
     def consider(threshold: float) -> None:
+        """Update the best feasible threshold after the sweep state changes."""
         nonlocal best_threshold, best_tpr
         flag_fraction = float(np.mean(flagged_counts / week_counts)) if week_counts.size else 0.0
         if flag_fraction > MAX_WEEKLY_FLAG_FRACTION:

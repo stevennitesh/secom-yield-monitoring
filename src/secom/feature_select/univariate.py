@@ -15,6 +15,8 @@ from secom.feature_select._ranking import rank_desc_with_index_tiebreak, sanitiz
 
 @dataclass(frozen=True)
 class _ClassStats:
+    """Class-conditional moments used by univariate separation scores."""
+
     mu_fail: np.ndarray
     mu_pass: np.ndarray
     sd_fail: np.ndarray
@@ -30,6 +32,7 @@ def _zero_variance_mask(x: np.ndarray) -> np.ndarray:
 
 
 def _sanitize_univariate_scores(scores: np.ndarray, x: np.ndarray) -> np.ndarray:
+    """Normalize invalid scores and force constant columns to the bottom rank."""
     sanitized = sanitize_scores(scores)
     sanitized[_zero_variance_mask(x)] = -np.inf
     return sanitized

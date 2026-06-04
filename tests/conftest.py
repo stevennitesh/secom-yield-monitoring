@@ -1,3 +1,5 @@
+"""Shared pytest fixtures for synthetic SECOM study artifacts."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -16,6 +18,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(".test_tmp") / "matplotlib"))
 
 
 def _make_synthetic_secom(n_rows: int = 260, n_features: int = 12, seed: int = 7) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Create synthetic raw SECOM feature and label frames."""
     rng = np.random.default_rng(seed)
     x = rng.normal(size=(n_rows, n_features))
     # Add small signal into first features.
@@ -38,6 +41,7 @@ def _make_synthetic_secom(n_rows: int = 260, n_features: int = 12, seed: int = 7
 
 
 def _write_synthetic_input_dir(input_dir: Path) -> None:
+    """Write synthetic SECOM raw files into an input directory."""
     input_dir.mkdir(parents=True, exist_ok=True)
     x_df, labels = _make_synthetic_secom()
     x_df.to_csv(input_dir / "secom.data", sep=" ", header=False, index=False, na_rep="NaN")
@@ -45,6 +49,7 @@ def _write_synthetic_input_dir(input_dir: Path) -> None:
 
 
 def _small_temporal_grid(selector: str) -> list[dict[str, object]]:
+    """Return a single-config temporal grid for fast tests."""
     return [
         {
             "selector": selector,
@@ -57,6 +62,7 @@ def _small_temporal_grid(selector: str) -> list[dict[str, object]]:
 
 
 def _run_fast_temporal_study(input_dir: Path, output_dir: Path) -> dict[str, object]:
+    """Run temporal robustness with reduced seeds and selector grid."""
     import secom.workflows.temporal_robustness as temporal
     from secom.workflows.temporal_robustness import run_temporal_robustness
 
@@ -75,6 +81,7 @@ def _run_fast_temporal_study(input_dir: Path, output_dir: Path) -> dict[str, obj
 
 
 def _write_active_artifact_contract(output_dir: Path) -> Path:
+    """Write a compact complete artifact set for report-generation tests."""
     from secom.artifacts import write_manifest
     from secom.config import ArtifactName, ReplicationMode, StudyStatus, ThresholdPolicy
 
@@ -407,6 +414,7 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
 
 @pytest.fixture(scope="session")
 def session_workspace_dir() -> Iterator[Path]:
+    """Provide one temporary workspace shared across session fixtures."""
     root = Path(".test_tmp") / f"session-{uuid4()}"
     root.mkdir(parents=True, exist_ok=True)
     try:
@@ -417,6 +425,7 @@ def session_workspace_dir() -> Iterator[Path]:
 
 @pytest.fixture(scope="session")
 def session_synthetic_input_dir(session_workspace_dir: Path) -> Path:
+    """Provide synthetic raw input files for session-scoped study fixtures."""
     input_dir = session_workspace_dir / "data" / "raw"
     _write_synthetic_input_dir(input_dir)
     return input_dir
@@ -424,6 +433,7 @@ def session_synthetic_input_dir(session_workspace_dir: Path) -> Path:
 
 @pytest.fixture(scope="session")
 def benchmark_replication_case(session_synthetic_input_dir: Path, session_workspace_dir: Path) -> dict[str, object]:
+    """Run a small benchmark replication once for tests that inspect artifacts."""
     from secom.workflows.benchmark_replication import run_benchmark_replication
 
     out_dir = session_workspace_dir / "out_benchmark_replication"
@@ -438,11 +448,13 @@ def benchmark_replication_case(session_synthetic_input_dir: Path, session_worksp
 
 @pytest.fixture()
 def active_artifacts_output_dir(workspace_tmp_dir: Path) -> Path:
+    """Provide a compact active artifact directory for report tests."""
     return _write_active_artifact_contract(workspace_tmp_dir / "out_active_artifacts")
 
 
 @pytest.fixture(scope="session")
 def temporal_artifacts_case(session_synthetic_input_dir: Path, session_workspace_dir: Path) -> dict[str, object]:
+    """Run a fast temporal study once for tests that inspect temporal artifacts."""
     out_dir = session_workspace_dir / "out_temporal_robustness"
     result = _run_fast_temporal_study(session_synthetic_input_dir, out_dir)
     return {"out_dir": out_dir, "result": result}
@@ -450,6 +462,7 @@ def temporal_artifacts_case(session_synthetic_input_dir: Path, session_workspace
 
 @pytest.fixture()
 def workspace_tmp_dir() -> Iterator[Path]:
+    """Provide an isolated temporary workspace for one test."""
     root = Path(".test_tmp") / str(uuid4())
     root.mkdir(parents=True, exist_ok=True)
     try:
@@ -460,6 +473,7 @@ def workspace_tmp_dir() -> Iterator[Path]:
 
 @pytest.fixture()
 def synthetic_input_dir(workspace_tmp_dir: Path) -> Path:
+    """Provide synthetic raw input files for one test."""
     input_dir = workspace_tmp_dir / "data" / "raw"
     _write_synthetic_input_dir(input_dir)
     return input_dir

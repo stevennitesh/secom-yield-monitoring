@@ -1,3 +1,5 @@
+"""Demonstrate Pearson correlation behavior for binary fail/pass labels."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -34,10 +36,12 @@ features = {
 
 
 def pearson_r(x: np.ndarray, y_: np.ndarray) -> float:
+    """Return feature-label Pearson correlation."""
     return float(np.corrcoef(x, y_)[0, 1])
 
 
 def t_from_r(r: float, n_samples: int) -> float:
+    """Convert Pearson correlation to its implied t statistic."""
     # Binary-label Pearson is point-biserial; linked to t-stat under standard assumptions
     denom = max(1e-12, 1.0 - r * r)
     return r * np.sqrt((n_samples - 2) / denom)

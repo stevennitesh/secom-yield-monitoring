@@ -223,6 +223,7 @@ def _supporting_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
 
 
 def _search_space_count(frame: pd.DataFrame, column: str) -> int:
+    """Return the number of distinct search values for one optional config column."""
     if column == "n_neighbors":
         values = frame[column].dropna().to_numpy(dtype=float) if column in frame.columns else np.array([], dtype=float)
         return int(pd.unique(values).size) if values.size else 0
@@ -230,6 +231,7 @@ def _search_space_count(frame: pd.DataFrame, column: str) -> int:
 
 
 def _search_space_table(frame: pd.DataFrame, *, evaluated_columns: list[str]) -> list[str]:
+    """Summarize evaluated hyperparameter breadth by selector/classifier/mode."""
     summary_rows = []
     for (selector, classifier, mode), group in frame.groupby(
         ["selector", "classifier", "replication_mode"], sort=False

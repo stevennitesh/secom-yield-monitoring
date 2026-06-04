@@ -1,3 +1,5 @@
+"""Illustrate why S2N and Welch-style t scores can rank features differently."""
+
 import math
 import matplotlib.pyplot as plt
 
@@ -5,18 +7,23 @@ import matplotlib.pyplot as plt
 # delta_mu = |mean_fail - mean_pass|
 data = {
     "A": {"n_fail": 10, "n_pass": 100, "delta_mu": 0.8, "sigma_fail": 1.0, "sigma_pass": 1.0},
-    "B": {"n_fail": 2,  "n_pass": 100, "delta_mu": 1.2, "sigma_fail": 1.0, "sigma_pass": 1.0},
+    "B": {"n_fail": 2, "n_pass": 100, "delta_mu": 1.2, "sigma_fail": 1.0, "sigma_pass": 1.0},
     "C": {"n_fail": 10, "n_pass": 100, "delta_mu": 0.6, "sigma_fail": 0.2, "sigma_pass": 0.2},
 }
 
 EPS = 1e-12
 
+
 def s2n(d):
+    """Return signal-to-noise separation for one toy feature summary."""
     return abs(d["delta_mu"]) / (d["sigma_fail"] + d["sigma_pass"] + EPS)
 
+
 def t_abs(d):
+    """Return absolute Welch-style t score for one toy feature summary."""
     se = math.sqrt((d["sigma_fail"] ** 2) / d["n_fail"] + (d["sigma_pass"] ** 2) / d["n_pass"] + EPS)
     return abs(d["delta_mu"]) / se
+
 
 # Compute scores
 features = list(data.keys())

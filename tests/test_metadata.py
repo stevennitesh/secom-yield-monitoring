@@ -1,3 +1,5 @@
+"""Tests for study metadata and strategy provenance helpers."""
+
 from __future__ import annotations
 
 import hashlib
@@ -18,6 +20,7 @@ _SPEC_FILENAMES = [
 
 
 def _write_spec_set(project_root: Path) -> list[bytes]:
+    """Write the canonical numbered spec set and return hashable contents."""
     spec_dir = project_root / "docs" / "spec"
     spec_dir.mkdir(parents=True)
     contents = []
@@ -30,6 +33,7 @@ def _write_spec_set(project_root: Path) -> list[bytes]:
 
 
 def test_strategy_sha256_hashes_ordered_numbered_specs(workspace_tmp_dir: Path) -> None:
+    """Strategy hashes should use the ordered active numbered spec files."""
     contents = _write_spec_set(workspace_tmp_dir)
 
     expected = hashlib.sha256(b"".join(contents)).hexdigest()
@@ -39,6 +43,7 @@ def test_strategy_sha256_hashes_ordered_numbered_specs(workspace_tmp_dir: Path) 
 
 
 def test_strategy_sha256_returns_missing_when_required_spec_is_absent(workspace_tmp_dir: Path) -> None:
+    """Missing required spec files should produce the manifest sentinel."""
     _write_spec_set(workspace_tmp_dir)
     (workspace_tmp_dir / "docs" / "spec" / "04-temporal-robustness-study.md").unlink()
 

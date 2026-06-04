@@ -1,3 +1,5 @@
+"""Demonstrate how Gram-Schmidt selection avoids redundant correlated features."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -29,6 +31,7 @@ X = (X - X.mean(axis=0)) / X.std(axis=0, ddof=0)
 
 
 def abs_corr_scores(X_, y_):
+    """Return absolute feature-label correlations for univariate ranking."""
     yc = y_ - y_.mean()
     yn = np.linalg.norm(yc)
     scores = []
@@ -40,6 +43,7 @@ def abs_corr_scores(X_, y_):
 
 
 def gram_schmidt_rank(X_, y_, k=3):
+    """Select features by repeatedly removing already selected directions."""
     Xw = X_.copy()
     r = y_ - y_.mean()  # residual target direction
     remaining = list(range(Xw.shape[1]))
