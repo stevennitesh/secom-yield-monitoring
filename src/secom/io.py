@@ -40,7 +40,10 @@ def _validated_labels(raw_labels: pd.Series) -> pd.Series:
     """Return integer SECOM labels after enforcing the documented pass/fail values."""
     labels = pd.to_numeric(raw_labels, errors="raise")
     invalid = sorted(set(labels.dropna().astype(object)) - SECOM_LABEL_VALUES)
-    if labels.isna().any() or invalid:
+    has_nan = labels.isna().any()
+    if has_nan:
+        raise ValueError("y_raw must contain only SECOM labels -1 or 1; contains NaN values")
+    if invalid:
         raise ValueError(f"y_raw must contain only SECOM labels -1 or 1; got invalid values {invalid}")
     return labels.astype(int)
 
