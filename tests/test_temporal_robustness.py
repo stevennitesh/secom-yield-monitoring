@@ -1,3 +1,5 @@
+"""End-to-end tests for temporal robustness artifact generation."""
+
 from __future__ import annotations
 
 import pandas as pd
@@ -10,6 +12,7 @@ from tests.assertions import assert_artifacts_exist, assert_columns_include
 def test_temporal_robustness_emits_temporal_artifacts_and_audit_is_non_blocking(
     temporal_artifacts_case: dict[str, object],
 ) -> None:
+    """Temporal robustness should emit its artifact family without blocking primary claims."""
     out_dir = temporal_artifacts_case["out_dir"]
     result = temporal_artifacts_case["result"]
 

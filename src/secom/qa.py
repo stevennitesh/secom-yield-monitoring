@@ -14,12 +14,14 @@ _VALID_SELECTORS = set(SelectorName.ALL)
 
 
 def _validate_required_columns(name: str, df: pd.DataFrame, required: set[str]) -> None:
+    """Raise when an artifact frame is missing required schema columns."""
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"{name}: missing columns {sorted(missing)}")
 
 
 def _validate_label_values(name: str, df: pd.DataFrame) -> None:
+    """Validate selector, classifier, and replication-mode vocabularies."""
     bad_classifiers = set(df["classifier"].dropna().astype(str).unique()) - _VALID_CLASSIFIERS
     if bad_classifiers:
         raise ValueError(f"{name}: invalid classifier values {sorted(bad_classifiers)}")
@@ -32,6 +34,7 @@ def _validate_label_values(name: str, df: pd.DataFrame) -> None:
 
 
 def _mode_map(df: pd.DataFrame) -> dict[tuple[str, str], set[str]]:
+    """Map each selector/classifier pair to its emitted replication modes."""
     out: dict[tuple[str, str], set[str]] = {}
     for (selector, classifier), frame in df.groupby(["selector", "classifier"], dropna=False):
         out[(str(selector), str(classifier))] = set(frame["replication_mode"].dropna().astype(str).unique())
@@ -39,18 +42,21 @@ def _mode_map(df: pd.DataFrame) -> dict[tuple[str, str], set[str]]:
 
 
 def _validate_paired_modes(name: str, df: pd.DataFrame) -> None:
+    """Require strict and missing-indicator rows for each selector/classifier pair."""
     for key, modes in _mode_map(df).items():
         if modes != _VALID_REPLICATION_MODES:
             raise ValueError(f"{name}: expected paired replication modes for {key}, got {sorted(modes)}")
 
 
 def _validate_triplet_uniqueness(frames: tuple[tuple[str, pd.DataFrame], ...]) -> None:
+    """Ensure summary-like artifact frames have one row per benchmark triplet."""
     for name, df in frames:
         if df.duplicated(_TRIPLET_COLS, keep=False).any():
             raise ValueError(f"{name}: duplicate triplets")
 
 
 def _validate_fold_coverage(name: str, fold_metrics_df: pd.DataFrame) -> None:
+    """Require exactly one row for every fold in every benchmark triplet."""
     fold_group_sizes = fold_metrics_df.groupby(_TRIPLET_COLS, dropna=False)["fold"].nunique()
     if not np.all(fold_group_sizes.to_numpy(dtype=int) == 10):
         raise ValueError(f"{name}: each triplet must include exactly 10 folds")
@@ -68,6 +74,7 @@ def _validate_triplet_coverage(
     full_fit_df: pd.DataFrame,
     fold_metrics_df: pd.DataFrame,
 ) -> None:
+    """Require best, summary, full-fit, and fold artifacts to cover identical triplets."""
     summary_triplets = set(summary_df[_TRIPLET_COLS].itertuples(index=False, name=None))
     best_triplets = set(best_df[_TRIPLET_COLS].itertuples(index=False, name=None))
     full_fit_triplets = set(full_fit_df[_TRIPLET_COLS].itertuples(index=False, name=None))
@@ -82,6 +89,7 @@ def _validate_ablation_consistency(
     ablation_df: pd.DataFrame,
     summary_df: pd.DataFrame,
 ) -> None:
+    """Validate strict-vs-indicator ablation arithmetic and pair coverage."""
     if {"BER_reference", "BER_missing_indicator", "delta_BER"}.issubset(ablation_df.columns):
         diff = np.abs(ablation_df["delta_BER"] - (ablation_df["BER_reference"] - ablation_df["BER_missing_indicator"]))
         if np.any(diff > 1e-9):

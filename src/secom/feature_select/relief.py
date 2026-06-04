@@ -8,6 +8,7 @@ from secom.feature_select._ranking import rank_desc_with_index_tiebreak, sanitiz
 
 
 def _class_neighbor_candidates(y: np.ndarray, row_idx: int) -> tuple[np.ndarray, np.ndarray]:
+    """Return same-class and opposite-class candidate indices for one row."""
     hit_candidates = np.flatnonzero(y == y[row_idx])
     hit_candidates = hit_candidates[hit_candidates != row_idx]
     miss_candidates = np.flatnonzero(y != y[row_idx])
@@ -15,6 +16,7 @@ def _class_neighbor_candidates(y: np.ndarray, row_idx: int) -> tuple[np.ndarray,
 
 
 def _nearest_candidates(distances: np.ndarray, candidates: np.ndarray, n_neighbors: int) -> np.ndarray:
+    """Select the nearest candidate indices without fully sorting all distances."""
     k = min(int(n_neighbors), candidates.size)
     return candidates[np.argpartition(distances[candidates], k - 1)[:k]]
 

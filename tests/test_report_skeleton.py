@@ -1,3 +1,5 @@
+"""Tests for rendering the scaffold report from active artifacts."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,6 +12,7 @@ from tests.assertions import assert_text_contains_all, assert_text_excludes_all
 def test_report_skeleton_is_generated_from_active_artifacts(
     active_artifacts_output_dir: Path,
 ) -> None:
+    """Report skeleton should expose the active narrative structure."""
     report_path = write_report_skeleton(active_artifacts_output_dir)
     text = report_path.read_text(encoding="utf-8")
 
@@ -25,6 +28,7 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "##### Search Space",
             "##### Selected Configurations",
             "#### Original Replication Results",
+            "##### UCI Original Benchmark Reference",
             "### Tuned Benchmark",
             "#### Tuned Benchmark Design",
             "#### Tuned Benchmark Search Summary",
@@ -51,6 +55,10 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "Leading original replication configuration",
             "Leading tuned benchmark configuration",
             "#### Original Feature Stability and Interpretation",
+            "Gram Schmidt",
+            "33.5 +/- 2.2",
+            "binary-label ANOVA F-test ranking and absolute Pearson correlation ranking are mathematically monotonic",
+            "UCI reference table reports separate Ftest and Pearson rows",
         ],
     )
     assert_text_excludes_all(text, ["PRIMARY_STUDY_STATUS", "| n/a | n/a |"])

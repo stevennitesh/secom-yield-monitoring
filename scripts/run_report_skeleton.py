@@ -1,3 +1,5 @@
+"""CLI entry point for rendering the report skeleton from existing artifacts."""
+
 from __future__ import annotations
 
 import argparse

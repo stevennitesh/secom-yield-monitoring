@@ -1,3 +1,5 @@
+"""Show when missing-value indicators carry class signal."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.impute import SimpleImputer
@@ -9,6 +11,7 @@ from sklearn.preprocessing import StandardScaler
 
 
 def ber_tpr_tnr(y_true, y_pred):
+    """Return BER, fail recall, and pass specificity for binary predictions."""
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
     tpr = tp / (tp + fn + 1e-12)  # True+ (fail recall)
     tnr = tn / (tn + fp + 1e-12)  # True- (pass specificity)
@@ -17,6 +20,7 @@ def ber_tpr_tnr(y_true, y_pred):
 
 
 def make_data(n=2500, fail_rate=0.12, seed=42):
+    """Create toy data where missingness is more informative than one value feature."""
     rng = np.random.default_rng(seed)
 
     # Labels: 1=fail, 0=pass
@@ -40,6 +44,7 @@ def make_data(n=2500, fail_rate=0.12, seed=42):
 
 
 def evaluate_median_only(X_train, y_train, X_test, y_test):
+    """Evaluate median imputation without missingness indicators."""
     # No missing indicators
     pipe = make_pipeline(
         SimpleImputer(strategy="median"),
@@ -59,6 +64,7 @@ def evaluate_median_only(X_train, y_train, X_test, y_test):
 
 
 def evaluate_median_plus_indicator(X_train, y_train, X_test, y_test):
+    """Evaluate median imputation with missingness indicators enabled."""
     # Add missing indicators automatically
     pipe = make_pipeline(
         SimpleImputer(strategy="median", add_indicator=True),
@@ -80,9 +86,7 @@ def evaluate_median_plus_indicator(X_train, y_train, X_test, y_test):
 if __name__ == "__main__":
     X, y, names, miss_mask = make_data()
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, stratify=y, random_state=11
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y, random_state=11)
 
     b1, tpr1, tnr1 = evaluate_median_only(X_train, y_train, X_test, y_test)
     b2, tpr2, tnr2 = evaluate_median_plus_indicator(X_train, y_train, X_test, y_test)

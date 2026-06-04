@@ -1,3 +1,5 @@
+"""Tests for active-study artifact audit status and claim semantics."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,6 +20,7 @@ def _base_manifest(
     temporal_status: str = StudyStatus.NOT_RUN,
     temporal_claim_restrictions: list[str] | None = None,
 ) -> dict[str, object]:
+    """Build a minimal manifest with configurable study-layer statuses."""
     return {
         "manifest_version": "2.0",
         "study_spec_path": "docs/spec",
@@ -36,6 +39,7 @@ def _base_manifest(
 
 
 def _write_primary_artifacts(reports: Path) -> None:
+    """Write the minimal original benchmark artifact family required by audit."""
     write_artifact_row(
         reports,
         ArtifactName.BENCHMARK_SWEEP,
@@ -144,6 +148,7 @@ def _write_primary_artifacts(reports: Path) -> None:
 
 
 def _write_temporal_artifacts(reports: Path) -> None:
+    """Write the minimal temporal robustness artifact family required by audit."""
     write_artifact_row(
         reports,
         ArtifactName.TEMPORAL_SPLIT_METADATA,
@@ -215,6 +220,7 @@ def _write_temporal_artifacts(reports: Path) -> None:
 
 
 def _write_tuned_artifacts(reports: Path) -> None:
+    """Write the minimal tuned benchmark artifact family required by audit."""
     write_artifact_row(
         reports,
         ArtifactName.BENCHMARK_TUNED_SEARCH,
@@ -381,6 +387,7 @@ def _write_tuned_artifacts(reports: Path) -> None:
 
 
 def test_study_audit_primary_status_requires_tuned_artifacts(workspace_tmp_dir: Path) -> None:
+    """Primary pass status should require tuned benchmark artifacts too."""
     reports = ensure_reports_dir(workspace_tmp_dir)
     write_manifest(_base_manifest(), reports / ArtifactName.MANIFEST)
     _write_primary_artifacts(reports)
@@ -392,6 +399,7 @@ def test_study_audit_primary_status_requires_tuned_artifacts(workspace_tmp_dir: 
 
 
 def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_dir: Path) -> None:
+    """Temporal claim restrictions should warn without blocking the audit."""
     reports = ensure_reports_dir(workspace_tmp_dir)
     write_manifest(
         _base_manifest(
@@ -413,6 +421,7 @@ def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_
 
 
 def test_study_audit_missing_primary_artifact_is_blocking(workspace_tmp_dir: Path) -> None:
+    """Missing required primary artifacts should fail the audit."""
     reports = ensure_reports_dir(workspace_tmp_dir)
     write_manifest(_base_manifest(), reports / ArtifactName.MANIFEST)
     _write_primary_artifacts(reports)
@@ -425,6 +434,7 @@ def test_study_audit_missing_primary_artifact_is_blocking(workspace_tmp_dir: Pat
 
 
 def test_study_audit_missing_tuned_artifact_is_blocking(workspace_tmp_dir: Path) -> None:
+    """Missing required tuned artifacts should fail the audit."""
     reports = ensure_reports_dir(workspace_tmp_dir)
     write_manifest(
         _base_manifest(tuned_status=StudyStatus.PASSED),

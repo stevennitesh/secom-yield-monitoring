@@ -35,6 +35,7 @@ class SelectorName:
     EXPERIMENTAL: list[str] = [PEARSON]
     ALL = CORE + EXPERIMENTAL
     ACTIVE = CORE
+    ORIGINAL_BENCHMARK = CORE + EXPERIMENTAL
 
 
 class ScalerName:
@@ -72,6 +73,7 @@ class BenchmarkClassifier:
     KRR = "krr"
     LOGREG = "logreg"
     ALL = [KRR, LOGREG]
+    TUNED_DEFAULT = [KRR]
 
 
 class FoldPlanName:
