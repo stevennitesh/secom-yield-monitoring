@@ -174,6 +174,17 @@ def _uci_original_baseline_table(benchmark_summary: pd.DataFrame | None) -> list
     )
 
 
+def _uci_selector_definition_note() -> str:
+    """Explain selector-definition differences that affect UCI/local interpretation."""
+    return (
+        "Interpretation note: in this local implementation, binary-label ANOVA F-test ranking and absolute Pearson "
+        "correlation ranking are mathematically monotonic for non-constant features, so they can select the same "
+        "40-feature set and produce identical local rows. The UCI reference table reports separate Ftest and Pearson "
+        "rows, which should be read as that benchmark's implementation/protocol definitions rather than a guarantee "
+        "that the two selectors are distinct under this replication."
+    )
+
+
 def _top_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
     """Render primary benchmark BER/TPR/TNR evidence."""
     table = benchmark_summary.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
@@ -760,6 +771,8 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.append("")
         lines.extend(_uci_original_baseline_table(benchmark_summary))
         lines.append("")
+        lines.append(_uci_selector_definition_note())
+        lines.append("")
         lines.append("##### Supporting Benchmark Metrics")
         lines.append("")
         lines.extend(_supporting_benchmark_table(benchmark_summary))
@@ -1289,6 +1302,8 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     )
     lines.append("")
     lines.extend(_uci_original_baseline_table(ctx.benchmark_summary))
+    lines.append("")
+    lines.append(_uci_selector_definition_note())
     lines.append("")
     _append_supporting_metrics_table(lines, "### Supporting Benchmark Metrics", ctx.benchmark_summary)
     _append_figure(
