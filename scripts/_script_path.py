@@ -1,3 +1,5 @@
+"""Utilities for running repo scripts without installing the package first."""
+
 from __future__ import annotations
 
 from pathlib import Path

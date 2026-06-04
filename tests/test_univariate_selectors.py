@@ -1,3 +1,5 @@
+"""Tests for univariate, Gram-Schmidt, and ReliefF selector ranking."""
+
 from __future__ import annotations
 
 import sys
@@ -11,6 +13,7 @@ from secom.feature_select import univariate
 
 
 def test_score_f_test_skips_constant_columns(monkeypatch) -> None:
+    """F-test scoring should omit constant columns from sklearn scoring."""
     x = np.array(
         [
             [1.0, 0.0, 5.0, 2.0],
@@ -25,6 +28,7 @@ def test_score_f_test_skips_constant_columns(monkeypatch) -> None:
     called = {}
 
     def fake_f_classif(x_sub: np.ndarray, y_sub: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Record the scored shape and return fixed F statistics."""
         called["shape"] = x_sub.shape
         assert np.array_equal(y_sub, y)
         return np.array([7.0, 3.0], dtype=float), np.array([0.1, 0.2], dtype=float)
@@ -39,6 +43,7 @@ def test_score_f_test_skips_constant_columns(monkeypatch) -> None:
 
 
 def test_score_pearson_marks_constant_columns_as_bottom_rank() -> None:
+    """Pearson scoring should rank constant columns below usable features."""
     x = np.asarray(
         [
             [1.0, 0.0, 0.0],
@@ -58,6 +63,7 @@ def test_score_pearson_marks_constant_columns_as_bottom_rank() -> None:
 
 
 def test_rank_features_uses_lower_feature_index_for_score_ties(monkeypatch) -> None:
+    """Feature ranking ties should preserve lower-index deterministic order."""
     monkeypatch.setitem(univariate._SCORERS, SelectorName.S2N, lambda x, y: np.asarray([1.0, -np.inf, 2.0, 2.0]))
 
     order, scores = univariate.rank_features(SelectorName.S2N, np.zeros((3, 4)), np.asarray([0, 1, 0]))
@@ -67,6 +73,7 @@ def test_rank_features_uses_lower_feature_index_for_score_ties(monkeypatch) -> N
 
 
 def test_gram_schmidt_rank_features_skips_constant_columns() -> None:
+    """Gram-Schmidt ranking should not select constant columns."""
     x = np.asarray(
         [
             [0.0, 1.0, 0.0],
@@ -85,9 +92,11 @@ def test_gram_schmidt_rank_features_skips_constant_columns() -> None:
 
 
 def test_relief_rank_features_fallback_uses_deterministic_order(monkeypatch) -> None:
+    """Fallback ReliefF ranking should sanitize invalid scores deterministically."""
     import secom.feature_select.relief as relief
 
     def fake_fallback(x: np.ndarray, y: np.ndarray, n_neighbors: int) -> np.ndarray:
+        """Return fixed fallback ReliefF scores including an invalid value."""
         return np.asarray([0.5, np.nan, 1.0, 1.0], dtype=float)
 
     monkeypatch.setitem(sys.modules, "skrebate", None)

@@ -1,3 +1,5 @@
+"""Demonstrate feature-selection stability across repeated train/test splits."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations
@@ -9,6 +11,7 @@ from sklearn.preprocessing import StandardScaler
 
 
 def make_data(n=1800, seed=42):
+    """Create imbalanced data with redundant correlated sensor groups."""
     rng = np.random.default_rng(seed)
 
     # Latent factors
@@ -17,17 +20,22 @@ def make_data(n=1800, seed=42):
     z3 = rng.normal(size=n)
 
     # Correlated feature groups (redundant sensors)
-    g1 = np.column_stack([z1 + 0.10 * rng.normal(size=n), z1 + 0.15 * rng.normal(size=n), z1 + 0.20 * rng.normal(size=n)])
-    g2 = np.column_stack([z2 + 0.10 * rng.normal(size=n), z2 + 0.15 * rng.normal(size=n), z2 + 0.20 * rng.normal(size=n)])
-    g3 = np.column_stack([z3 + 0.10 * rng.normal(size=n), z3 + 0.15 * rng.normal(size=n), z3 + 0.20 * rng.normal(size=n)])
+    g1 = np.column_stack(
+        [z1 + 0.10 * rng.normal(size=n), z1 + 0.15 * rng.normal(size=n), z1 + 0.20 * rng.normal(size=n)]
+    )
+    g2 = np.column_stack(
+        [z2 + 0.10 * rng.normal(size=n), z2 + 0.15 * rng.normal(size=n), z2 + 0.20 * rng.normal(size=n)]
+    )
+    g3 = np.column_stack(
+        [z3 + 0.10 * rng.normal(size=n), z3 + 0.15 * rng.normal(size=n), z3 + 0.20 * rng.normal(size=n)]
+    )
 
     noise = rng.normal(size=(n, 15))
     X = np.hstack([g1, g2, g3, noise])
 
-    names = (
-        ["g1_a", "g1_b", "g1_c", "g2_a", "g2_b", "g2_c", "g3_a", "g3_b", "g3_c"]
-        + [f"noise_{i}" for i in range(1, 16)]
-    )
+    names = ["g1_a", "g1_b", "g1_c", "g2_a", "g2_b", "g2_c", "g3_a", "g3_b", "g3_c"] + [
+        f"noise_{i}" for i in range(1, 16)
+    ]
 
     # Imbalanced fail label (~12%)
     score = 1.1 * z1 - 1.0 * z2 + 0.9 * z3 + 0.8 * rng.normal(size=n)
@@ -37,6 +45,7 @@ def make_data(n=1800, seed=42):
 
 
 def make_model(kind, seed):
+    """Build an L1 or elastic-net logistic-regression pipeline."""
     if kind == "l1":
         l1_ratio = 1.0
     elif kind == "en":
@@ -58,6 +67,7 @@ def make_model(kind, seed):
 
 
 def ber(y_true, y_pred):
+    """Return balanced error rate for binary predictions."""
     tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
     tpr = tp / (tp + fn + 1e-12)  # True+ (fail recall)
     tnr = tn / (tn + fp + 1e-12)  # True- (pass specificity)
@@ -65,26 +75,27 @@ def ber(y_true, y_pred):
 
 
 def topk_set_from_coef(pipe, k):
+    """Return the top-k absolute-coefficient feature set from a fitted pipeline."""
     coef = np.abs(pipe[-1].coef_[0])
     idx = np.argsort(coef)[::-1][:k]
     return set(idx), coef
 
 
 def jaccard(a, b):
+    """Return Jaccard overlap for two selected-feature sets."""
     u = len(a | b)
     return len(a & b) / u if u else 1.0
 
 
 def run_method(kind, X, y, repeats=40, top_k=8):
+    """Evaluate model performance and selection stability over repeated splits."""
     n_features = X.shape[1]
     freq = np.zeros(n_features, dtype=float)
     selected_sets = []
     bers = []
 
     for seed in range(repeats):
-        X_tr, X_te, y_tr, y_te = train_test_split(
-            X, y, test_size=0.3, stratify=y, random_state=seed
-        )
+        X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, stratify=y, random_state=seed)
         model = make_model(kind, seed)
         model.fit(X_tr, y_tr)
 
@@ -98,10 +109,7 @@ def run_method(kind, X, y, repeats=40, top_k=8):
 
     freq /= repeats
 
-    pairwise_j = [
-        jaccard(a, b)
-        for a, b in combinations(selected_sets, 2)
-    ]
+    pairwise_j = [jaccard(a, b) for a, b in combinations(selected_sets, 2)]
 
     return {
         "freq": freq,

@@ -16,6 +16,7 @@ _ConfigKey = Callable[[dict[str, Any]], tuple[Any, ...]]
 
 
 def _inner_config_simplicity_key(row: dict[str, Any]) -> tuple[float, float, int, float]:
+    """Prefer smaller temporal configs after near-best AUC and BER ties."""
     nn = row.get("n_neighbors")
     nn_key = math.inf if nn is None else nn
     scaler_pref = 0 if row["scaler"] == ScalerName.STANDARD else 1

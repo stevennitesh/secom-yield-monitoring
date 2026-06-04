@@ -1,3 +1,5 @@
+"""End-to-end test for the active study artifact bundle."""
+
 from __future__ import annotations
 
 import json
@@ -11,6 +13,7 @@ from tests.assertions import assert_artifacts_exist
 def test_end_to_end_active_studies_share_output_dir(
     active_artifacts_output_dir: Path,
 ) -> None:
+    """The active benchmark and temporal layers should audit in one run dir."""
     audit = run_study_audit(active_artifacts_output_dir)
     manifest = json.loads((active_artifacts_output_dir / "reports" / ArtifactName.MANIFEST).read_text(encoding="utf-8"))
 

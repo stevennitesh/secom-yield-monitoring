@@ -1,3 +1,5 @@
+"""Show the binary-class relationship between equal-variance t-test and F-test."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import ttest_ind, f_oneway
@@ -37,7 +39,7 @@ for name in names:
     t_welch_vals.append(abs(t_w))
     f_vals.append(f)
 
-    print(f"{name:20s} {abs(t_eq):10.3f} {f:10.3f} {abs(t_eq)**2:12.3f} {abs(t_w):10.3f}")
+    print(f"{name:20s} {abs(t_eq):10.3f} {f:10.3f} {abs(t_eq) ** 2:12.3f} {abs(t_w):10.3f}")
 
 t_equal_vals = np.array(t_equal_vals)
 t_welch_vals = np.array(t_welch_vals)
@@ -46,9 +48,12 @@ f_vals = np.array(f_vals)
 print("-" * 86)
 print(f"max(|F - |t_equal|^2|) = {np.max(np.abs(f_vals - t_equal_vals**2)):.6e}")
 
+
 def rank_desc(feature_names, scores):
+    """Return a display string of feature names sorted by descending score."""
     idx = np.argsort(scores)[::-1]
     return " > ".join(feature_names[i] for i in idx)
+
 
 print("\nRanking by |t_equal| :", rank_desc(names, t_equal_vals))
 print("Ranking by F         :", rank_desc(names, f_vals))

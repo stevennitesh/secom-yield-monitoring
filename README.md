@@ -60,16 +60,30 @@ Original replication:
 python scripts/run_original_replication.py --input-dir data/raw --output-dir runs/original_replication --strict
 ```
 
+Use this command for the UCI original 40-feature benchmark comparison. The original replication default includes the UCI selector family, including Pearson.
+
 Tuned benchmark:
 
 ```bash
 python scripts/run_benchmark_tuned.py --input-dir data/raw --output-dir runs/benchmark_tuned --strict
 ```
 
+The tuned benchmark defaults to KRR for the primary improved-benchmark pass. To explicitly run the full classifier family:
+
+```bash
+python scripts/run_benchmark_tuned.py --input-dir data/raw --output-dir runs/benchmark_tuned --classifiers krr,logreg --strict
+```
+
 Benchmark study bundle:
 
 ```bash
 python scripts/run_benchmark_replication.py --input-dir data/raw --output-dir runs/benchmark_replication --strict
+```
+
+The bundle uses original-replication defaults for the original layer and tuned KRR defaults for the tuned layer. To force both classifiers through both layers:
+
+```bash
+python scripts/run_benchmark_replication.py --input-dir data/raw --output-dir runs/benchmark_replication --classifiers krr,logreg --strict
 ```
 
 Secondary temporal study:
@@ -141,8 +155,10 @@ The final generated report is designed to read like a professional study draft:
 
 - original replication first
 - tuned benchmark second
-- temporal robustness third
-- industrialization limits stated explicitly
+- original vs tuned comparison third
+- feature stability and interpretation fourth
+- temporal robustness fifth
+- industrialization gaps and conclusions stated explicitly
 
 ## Canonical Reading Order
 

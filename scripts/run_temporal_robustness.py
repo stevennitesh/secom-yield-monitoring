@@ -1,3 +1,5 @@
+"""CLI entry point for the secondary temporal robustness study."""
+
 from __future__ import annotations
 
 import argparse

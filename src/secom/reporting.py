@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from secom.artifacts import read_csv_if_exists, read_manifest
-from secom.config import ArtifactName, StudyStatus, ThresholdPolicy
+from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, StudyStatus, ThresholdPolicy
 from secom.report_figures import (
     write_benchmark_comparison_figure,
     write_feature_stability_figure,
@@ -42,6 +42,16 @@ def _format_cell(value: object) -> str:
     return str(value)
 
 
+def _format_percent(value: object) -> str:
+    """Format fractional metric values as report percentages."""
+    try:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return "n/a"
+        return f"{100.0 * float(value):.1f}"
+    except Exception:
+        return str(value)
+
+
 def _markdown_table(
     frame: pd.DataFrame,
     columns: list[str],
@@ -63,6 +73,116 @@ def _markdown_table(
         for row in table.itertuples(index=False, name=None)
     )
     return lines
+
+
+_UCI_ORIGINAL_BASELINE_ROWS = [
+    {
+        "uci_method": "S2N",
+        "selector": "S2N",
+        "uci_BER": "34.5 +/- 2.6",
+        "uci_True+": "57.8 +/- 5.3",
+        "uci_True-": "73.1 +/- 2.1",
+    },
+    {
+        "uci_method": "Ttest",
+        "selector": "Welch-t",
+        "uci_BER": "33.7 +/- 2.1",
+        "uci_True+": "59.6 +/- 4.7",
+        "uci_True-": "73.0 +/- 1.8",
+    },
+    {
+        "uci_method": "Relief",
+        "selector": "ReliefF",
+        "uci_BER": "40.1 +/- 2.8",
+        "uci_True+": "48.3 +/- 5.9",
+        "uci_True-": "71.6 +/- 3.2",
+    },
+    {
+        "uci_method": "Pearson",
+        "selector": "Pearson",
+        "uci_BER": "34.1 +/- 2.0",
+        "uci_True+": "57.4 +/- 4.3",
+        "uci_True-": "74.4 +/- 4.9",
+    },
+    {
+        "uci_method": "Ftest",
+        "selector": "F-test",
+        "uci_BER": "33.5 +/- 2.2",
+        "uci_True+": "59.1 +/- 4.8",
+        "uci_True-": "73.8 +/- 1.8",
+    },
+    {
+        "uci_method": "Gram Schmidt",
+        "selector": "Gram-Schmidt",
+        "uci_BER": "35.6 +/- 2.4",
+        "uci_True+": "51.2 +/- 11.8",
+        "uci_True-": "77.5 +/- 2.3",
+    },
+]
+
+
+def _uci_baseline_match(benchmark_summary: pd.DataFrame | None, selector: str) -> pd.Series | None:
+    """Return the local strict KRR row that best matches the UCI original benchmark setup."""
+    if benchmark_summary is None or benchmark_summary.empty:
+        return None
+
+    rows = benchmark_summary[benchmark_summary["selector"].astype(str) == selector].copy()
+    if rows.empty:
+        return None
+
+    preferred = rows[
+        (rows["classifier"].astype(str) == BenchmarkClassifier.KRR)
+        & (rows["replication_mode"].astype(str) == ReplicationMode.STRICT)
+    ]
+    if preferred.empty:
+        preferred = rows[rows["replication_mode"].astype(str) == ReplicationMode.STRICT]
+    if preferred.empty:
+        preferred = rows
+    return preferred.sort_values(["mean_BER", "classifier", "replication_mode"]).iloc[0]
+
+
+def _uci_original_baseline_table(benchmark_summary: pd.DataFrame | None) -> list[str]:
+    """Compare local original replication rows with the UCI SECOM reference benchmark table."""
+    rows = []
+    missing_local_result = "not run"
+    for baseline in _UCI_ORIGINAL_BASELINE_ROWS:
+        local = _uci_baseline_match(benchmark_summary, str(baseline["selector"]))
+        rows.append(
+            {
+                "UCI method": baseline["uci_method"],
+                "local selector": baseline["selector"],
+                "UCI BER %": baseline["uci_BER"],
+                "UCI True+ %": baseline["uci_True+"],
+                "UCI True- %": baseline["uci_True-"],
+                "local BER %": _format_percent(local["mean_BER"]) if local is not None else missing_local_result,
+                "local True+ %": _format_percent(local["mean_True+"]) if local is not None else missing_local_result,
+                "local True- %": _format_percent(local["mean_True-"]) if local is not None else missing_local_result,
+            }
+        )
+    return _markdown_table(
+        pd.DataFrame(rows),
+        [
+            "UCI method",
+            "local selector",
+            "UCI BER %",
+            "UCI True+ %",
+            "UCI True- %",
+            "local BER %",
+            "local True+ %",
+            "local True- %",
+        ],
+    )
+
+
+def _uci_selector_definition_note() -> str:
+    """Explain selector-definition differences that affect UCI/local interpretation."""
+    return (
+        "Interpretation note: in this local implementation, binary-label ANOVA F-test ranking and absolute Pearson "
+        "correlation ranking are mathematically monotonic for non-constant features, so they can select the same "
+        "40-feature set and produce identical local rows. The UCI reference table reports separate Ftest and Pearson "
+        "rows, which should be read as that benchmark's implementation/protocol definitions rather than a guarantee "
+        "that the two selectors are distinct under this replication."
+    )
 
 
 def _top_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
@@ -103,6 +223,7 @@ def _supporting_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
 
 
 def _search_space_count(frame: pd.DataFrame, column: str) -> int:
+    """Return the number of distinct search values for one optional config column."""
     if column == "n_neighbors":
         values = frame[column].dropna().to_numpy(dtype=float) if column in frame.columns else np.array([], dtype=float)
         return int(pd.unique(values).size) if values.size else 0
@@ -110,6 +231,7 @@ def _search_space_count(frame: pd.DataFrame, column: str) -> int:
 
 
 def _search_space_table(frame: pd.DataFrame, *, evaluated_columns: list[str]) -> list[str]:
+    """Summarize evaluated hyperparameter breadth by selector/classifier/mode."""
     summary_rows = []
     for (selector, classifier, mode), group in frame.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
@@ -312,6 +434,26 @@ class ReportContext:
     mspc_lockbox_row: pd.Series | None
 
 
+_REPORT_CONTEXT_ARTIFACTS: dict[str, str] = {
+    "benchmark_sweep": ArtifactName.BENCHMARK_SWEEP,
+    "benchmark_best": ArtifactName.BENCHMARK_BEST_CONFIG,
+    "benchmark_summary": ArtifactName.BENCHMARK_SUMMARY,
+    "benchmark_ablation": ArtifactName.BENCHMARK_ABLATION,
+    "feature_report": ArtifactName.FEATURE_REPORT,
+    "benchmark_tuned_search": ArtifactName.BENCHMARK_TUNED_SEARCH,
+    "benchmark_tuned_best": ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+    "benchmark_tuned_summary": ArtifactName.BENCHMARK_TUNED_SUMMARY,
+    "benchmark_tuned_ablation": ArtifactName.BENCHMARK_TUNED_ABLATION,
+    "benchmark_tuned_feature_report": ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+    "temporal_selection": ArtifactName.TEMPORAL_MODEL_SELECTION,
+    "temporal_lockbox": ArtifactName.TEMPORAL_LOCKBOX,
+    "temporal_drift": ArtifactName.TEMPORAL_DRIFT,
+    "temporal_mspc": ArtifactName.TEMPORAL_MSPC,
+    "temporal_manager": ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+    "temporal_cost": ArtifactName.TEMPORAL_COST_CURVES,
+}
+
+
 def _first_row(frame: pd.DataFrame | None, mask: pd.Series | None = None) -> pd.Series | None:
     """Return the first row from an optional artifact frame."""
     if frame is None or frame.empty:
@@ -330,22 +472,16 @@ def _load_report_context(output_dir: Path) -> ReportContext:
         raise FileNotFoundError(f"Missing manifest: {manifest_path}")
 
     manifest = read_manifest(manifest_path)
-    benchmark_sweep = read_csv_if_exists(reports / ArtifactName.BENCHMARK_SWEEP)
-    benchmark_best = read_csv_if_exists(reports / ArtifactName.BENCHMARK_BEST_CONFIG)
-    benchmark_summary = read_csv_if_exists(reports / ArtifactName.BENCHMARK_SUMMARY)
-    benchmark_ablation = read_csv_if_exists(reports / ArtifactName.BENCHMARK_ABLATION)
-    feature_report = read_csv_if_exists(reports / ArtifactName.FEATURE_REPORT)
-    benchmark_tuned_search = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_SEARCH)
-    benchmark_tuned_best = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_BEST_CONFIG)
-    benchmark_tuned_summary = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
-    benchmark_tuned_ablation = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_ABLATION)
-    benchmark_tuned_feature_report = read_csv_if_exists(reports / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
-    temporal_selection = read_csv_if_exists(reports / ArtifactName.TEMPORAL_MODEL_SELECTION)
-    temporal_lockbox = read_csv_if_exists(reports / ArtifactName.TEMPORAL_LOCKBOX)
-    temporal_drift = read_csv_if_exists(reports / ArtifactName.TEMPORAL_DRIFT)
-    temporal_mspc = read_csv_if_exists(reports / ArtifactName.TEMPORAL_MSPC)
-    temporal_manager = read_csv_if_exists(reports / ArtifactName.TEMPORAL_MANAGER_OUTPUTS)
-    temporal_cost = read_csv_if_exists(reports / ArtifactName.TEMPORAL_COST_CURVES)
+    frames = {
+        field: read_csv_if_exists(reports / artifact_name) for field, artifact_name in _REPORT_CONTEXT_ARTIFACTS.items()
+    }
+    benchmark_summary = frames["benchmark_summary"]
+    benchmark_tuned_summary = frames["benchmark_tuned_summary"]
+    benchmark_tuned_best = frames["benchmark_tuned_best"]
+    temporal_selection = frames["temporal_selection"]
+    temporal_lockbox = frames["temporal_lockbox"]
+    temporal_drift = frames["temporal_drift"]
+    temporal_mspc = frames["temporal_mspc"]
 
     # These chosen rows are narrative anchors only; full evidence tables remain in the report.
     best_benchmark_row = None
@@ -388,22 +524,7 @@ def _load_report_context(output_dir: Path) -> ReportContext:
     return ReportContext(
         reports_dir=reports,
         manifest=manifest,
-        benchmark_sweep=benchmark_sweep,
-        benchmark_best=benchmark_best,
-        benchmark_summary=benchmark_summary,
-        benchmark_ablation=benchmark_ablation,
-        feature_report=feature_report,
-        benchmark_tuned_search=benchmark_tuned_search,
-        benchmark_tuned_best=benchmark_tuned_best,
-        benchmark_tuned_summary=benchmark_tuned_summary,
-        benchmark_tuned_ablation=benchmark_tuned_ablation,
-        benchmark_tuned_feature_report=benchmark_tuned_feature_report,
-        temporal_selection=temporal_selection,
-        temporal_lockbox=temporal_lockbox,
-        temporal_drift=temporal_drift,
-        temporal_mspc=temporal_mspc,
-        temporal_manager=temporal_manager,
-        temporal_cost=temporal_cost,
+        **frames,
         best_benchmark_row=best_benchmark_row,
         best_tuned_benchmark_row=best_tuned_benchmark_row,
         modal_tuned_config_row=modal_tuned_config_row,
@@ -643,6 +764,16 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.append("##### Primary Evidence Table")
         lines.append("")
         lines.extend(_top_benchmark_table(benchmark_summary))
+        lines.append("")
+        lines.append("##### UCI Original Benchmark Reference")
+        lines.append("")
+        lines.append(
+            "The UCI SECOM reference table reports 40-feature selector results with a simple kernel-ridge classifier and 10-fold cross-validation. Local columns use the strict original-replication KRR row when available."
+        )
+        lines.append("")
+        lines.extend(_uci_original_baseline_table(benchmark_summary))
+        lines.append("")
+        lines.append(_uci_selector_definition_note())
         lines.append("")
         lines.append("##### Supporting Benchmark Metrics")
         lines.append("")
@@ -1166,6 +1297,16 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     )
     lines.append("")
     _append_benchmark_summary_table(lines, "### Primary Benchmark Evidence", ctx.benchmark_summary)
+    lines.append("### UCI Original Benchmark Reference")
+    lines.append("")
+    lines.append(
+        "The UCI SECOM reference table reports 40-feature selector results with a simple kernel-ridge classifier and 10-fold cross-validation. Local columns use the strict original-replication KRR row when available."
+    )
+    lines.append("")
+    lines.extend(_uci_original_baseline_table(ctx.benchmark_summary))
+    lines.append("")
+    lines.append(_uci_selector_definition_note())
+    lines.append("")
     _append_supporting_metrics_table(lines, "### Supporting Benchmark Metrics", ctx.benchmark_summary)
     _append_figure(
         lines,

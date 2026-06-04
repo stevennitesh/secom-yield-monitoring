@@ -1,8 +1,11 @@
+"""Compare Pearson and ReliefF on an XOR-like local-neighborhood pattern."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
 
 def make_xor_data(n_per_cluster=120, noise=0.25, seed=42):
+    """Create a two-feature XOR layout plus one noise feature."""
     rng = np.random.default_rng(seed)
 
     # Class 0 clusters: (-1,-1), (+1,+1)
@@ -25,6 +28,7 @@ def make_xor_data(n_per_cluster=120, noise=0.25, seed=42):
 
 
 def zscore(X):
+    """Standardize columns while protecting constant features."""
     mu = X.mean(axis=0)
     sd = X.std(axis=0, ddof=0)
     sd = np.where(sd == 0, 1.0, sd)
@@ -67,6 +71,7 @@ def relieff_binary(X, y, k=10, n_samples=None, seed=0):
 
 
 def pearson_abs_scores(X, y):
+    """Return absolute feature-label Pearson correlations."""
     scores = []
     for j in range(X.shape[1]):
         r = np.corrcoef(X[:, j], y)[0, 1]
