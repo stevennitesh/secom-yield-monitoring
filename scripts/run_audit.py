@@ -1,3 +1,5 @@
+"""CLI entry point for validating generated study artifacts."""
+
 from __future__ import annotations
 
 import argparse

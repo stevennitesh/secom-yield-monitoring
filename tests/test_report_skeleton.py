@@ -1,3 +1,5 @@
+"""Tests for rendering the scaffold report from active artifacts."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,6 +12,7 @@ from tests.assertions import assert_text_contains_all, assert_text_excludes_all
 def test_report_skeleton_is_generated_from_active_artifacts(
     active_artifacts_output_dir: Path,
 ) -> None:
+    """Report skeleton should expose the active narrative structure."""
     report_path = write_report_skeleton(active_artifacts_output_dir)
     text = report_path.read_text(encoding="utf-8")
 

@@ -54,6 +54,8 @@ from secom.workflows.manifest import write_benchmark_status
 
 @dataclass(frozen=True)
 class _InnerSelectorView:
+    """Selected matrices for one tuned inner-CV train/validation split."""
+
     x_train_sel: np.ndarray
     y_train: np.ndarray
     x_eval_sel: np.ndarray
@@ -62,6 +64,8 @@ class _InnerSelectorView:
 
 @dataclass(frozen=True)
 class _OuterSelectorView:
+    """Selected matrices and metadata for one tuned outer-fold evaluation."""
+
     x_train_sel: np.ndarray
     y_train: np.ndarray
     x_test_sel: np.ndarray
@@ -72,11 +76,13 @@ class _OuterSelectorView:
 
 
 def _emit_progress(progress: Callable[[str], None] | None, message: str) -> None:
+    """Emit optional tuned benchmark progress without coupling workflows to CLI output."""
     if progress is not None:
         progress(message)
 
 
 def _selector_config_cache_key(selector_config: dict[str, Any]) -> tuple[int, int | None]:
+    """Normalize selector config values into a cache key for prepared views."""
     n_neighbors = selector_config.get("n_neighbors")
     normalized_neighbors = None if n_neighbors is None or pd.isna(n_neighbors) else int(n_neighbors)
     return int(selector_config["k"]), normalized_neighbors

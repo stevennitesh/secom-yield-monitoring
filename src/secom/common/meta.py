@@ -29,6 +29,7 @@ def study_spec_path() -> str:
 
 
 def _git_output(project_root: Path, *args: str) -> str:
+    """Run one Git command under the repo root and return stripped stdout."""
     git_base = ["git", "-c", f"safe.directory={project_root.as_posix()}"]
     return subprocess.check_output([*git_base, *args], cwd=project_root, text=True).strip()
 
@@ -45,6 +46,7 @@ def git_commit_and_dirty(project_root: Path) -> tuple[str, bool]:
 
 
 def _ordered_spec_paths(project_root: Path) -> list[Path]:
+    """Return canonical spec files in manifest hash order."""
     return [project_root / _SPEC_DIR / filename for filename in _SPEC_FILENAMES]
 
 

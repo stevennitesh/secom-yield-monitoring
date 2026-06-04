@@ -1,3 +1,5 @@
+"""CLI entry point for the faithful original benchmark replication."""
+
 from __future__ import annotations
 
 import argparse

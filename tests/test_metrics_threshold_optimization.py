@@ -1,3 +1,5 @@
+"""Regression tests for optimized threshold-search metrics."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -15,6 +17,7 @@ from tests.assertions import threshold_equal
 
 
 def _bruteforce_reference(y_true: np.ndarray, scores: np.ndarray) -> tuple[float, dict[str, float]]:
+    """Compute BER-optimal metrics by exhaustive scan for optimizer checks."""
     best_threshold: float | None = None
     best_ber = np.inf
     best_tpr = -np.inf
@@ -47,6 +50,7 @@ def _bruteforce_reference(y_true: np.ndarray, scores: np.ndarray) -> tuple[float
 
 
 def _assert_fast_threshold_search_matches_bruteforce(y_true: np.ndarray, scores: np.ndarray) -> None:
+    """Assert the optimized BER search preserves brute-force tie-breaking."""
     threshold_fast, metrics_fast = find_ber_optimal_threshold(y_true, scores)
     threshold_brute, metrics_brute = _bruteforce_reference(y_true, scores)
 
@@ -57,6 +61,7 @@ def _assert_fast_threshold_search_matches_bruteforce(y_true: np.ndarray, scores:
 
 
 def _bruteforce_tpr_at_tnr(y_true: np.ndarray, scores: np.ndarray, target_tnr: float) -> tuple[float, float, float]:
+    """Compute the best TPR at a target TNR by exhaustive threshold scan."""
     best_threshold: float | None = None
     best_tpr = -np.inf
     best_tnr = 0.0
@@ -91,6 +96,7 @@ def _bruteforce_tpr_at_tnr(y_true: np.ndarray, scores: np.ndarray, target_tnr: f
 
 
 def _assert_fast_tpr_at_tnr_matches_bruteforce(y_true: np.ndarray, scores: np.ndarray, target_tnr: float) -> None:
+    """Assert the optimized TPR-at-TNR search matches brute-force results."""
     threshold_fast, tnr_fast, tpr_fast = extract_tpr_at_tnr(y_true, scores, target_tnr=target_tnr)
     threshold_brute, tnr_brute, tpr_brute = _bruteforce_tpr_at_tnr(y_true, scores, target_tnr=target_tnr)
 
@@ -101,6 +107,7 @@ def _assert_fast_tpr_at_tnr_matches_bruteforce(y_true: np.ndarray, scores: np.nd
 
 @pytest.mark.parametrize("seed", [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 def test_find_ber_optimal_threshold_matches_bruteforce_random(seed: int) -> None:
+    """Random score vectors should match the exhaustive BER search."""
     rng = np.random.default_rng(seed)
     n = 180
     y_true = rng.integers(0, 2, size=n, dtype=int)
@@ -112,6 +119,7 @@ def test_find_ber_optimal_threshold_matches_bruteforce_random(seed: int) -> None
 
 
 def test_find_ber_optimal_threshold_matches_bruteforce_with_duplicate_scores() -> None:
+    """Duplicate scores should preserve BER tie-breaking semantics."""
     y_true = np.asarray([0, 0, 1, 1, 0, 1, 0, 1], dtype=int)
     scores = np.asarray([0.1, 0.1, 0.1, 0.3, 0.3, 0.3, 0.2, 0.2], dtype=float)
 
@@ -119,6 +127,7 @@ def test_find_ber_optimal_threshold_matches_bruteforce_with_duplicate_scores() -
 
 
 def test_find_ber_optimal_threshold_nonfinite_scores_fallback_equivalence() -> None:
+    """Nonfinite BER-search inputs should remain brute-force equivalent."""
     y_true = np.asarray([0, 1, 0, 1, 0, 1, 1, 0], dtype=int)
     scores = np.asarray([0.2, np.nan, -0.1, np.inf, -np.inf, 0.2, 0.8, -0.5], dtype=float)
 
@@ -128,6 +137,7 @@ def test_find_ber_optimal_threshold_nonfinite_scores_fallback_equivalence() -> N
 @pytest.mark.parametrize("seed", [0, 1, 2, 3, 4])
 @pytest.mark.parametrize("target_tnr", [0.0, 0.5, 0.9, 1.0])
 def test_extract_tpr_at_tnr_matches_bruteforce_random(seed: int, target_tnr: float) -> None:
+    """Random score vectors should match exhaustive TPR-at-TNR search."""
     rng = np.random.default_rng(seed)
     y_true = rng.integers(0, 2, size=180, dtype=int)
     if np.unique(y_true).size < 2:
@@ -138,6 +148,7 @@ def test_extract_tpr_at_tnr_matches_bruteforce_random(seed: int, target_tnr: flo
 
 
 def test_extract_tpr_at_tnr_matches_bruteforce_with_duplicate_scores() -> None:
+    """Duplicate scores should keep TPR-at-TNR tie-breaking deterministic."""
     y_true = np.asarray([0, 0, 1, 1, 0, 1, 0, 1], dtype=int)
     scores = np.asarray([0.1, 0.1, 0.1, 0.3, 0.3, 0.3, 0.2, 0.2], dtype=float)
 
@@ -145,6 +156,7 @@ def test_extract_tpr_at_tnr_matches_bruteforce_with_duplicate_scores() -> None:
 
 
 def test_extract_tpr_at_tnr_nonfinite_scores_fallback_equivalence() -> None:
+    """Nonfinite TPR-at-TNR inputs should remain brute-force equivalent."""
     y_true = np.asarray([0, 1, 0, 1, 0, 1, 1, 0], dtype=int)
     scores = np.asarray([0.2, np.nan, -0.1, np.inf, -np.inf, 0.2, 0.8, -0.5], dtype=float)
 
@@ -152,6 +164,7 @@ def test_extract_tpr_at_tnr_nonfinite_scores_fallback_equivalence() -> None:
 
 
 def test_extract_tpr_at_tnr_rejects_mismatched_input_lengths() -> None:
+    """TPR-at-TNR search inputs must describe the same wafers."""
     y_true = np.asarray([0, 1, 0], dtype=int)
     scores = np.asarray([0.1, 0.9], dtype=float)
 
@@ -160,6 +173,7 @@ def test_extract_tpr_at_tnr_rejects_mismatched_input_lengths() -> None:
 
 
 def test_safe_std_accepts_arrays_and_iterators() -> None:
+    """Standard deviation helper should handle reusable and one-shot inputs."""
     values = np.asarray([1.0, 2.0, 3.0], dtype=float)
 
     assert np.isclose(safe_std(values), 1.0)
@@ -167,6 +181,7 @@ def test_safe_std_accepts_arrays_and_iterators() -> None:
 
 
 def test_roc_auc_or_default_handles_single_class_eval() -> None:
+    """ROC AUC should fall back when evaluation labels have one class."""
     assert np.isclose(
         roc_auc_or_default(
             np.asarray([0, 1], dtype=int),

@@ -1,3 +1,5 @@
+"""Compare L1 and elastic-net behavior on correlated feature groups."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
@@ -7,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 
 
 def make_data(n=1200, seed=42):
+    """Create a synthetic imbalanced dataset with correlated feature groups."""
     rng = np.random.default_rng(seed)
 
     # Two latent factors (true signal)
@@ -35,6 +38,7 @@ def make_data(n=1200, seed=42):
 
 
 def model_l1(seed=0):
+    """Build the sparse L1 logistic-regression pipeline."""
     return make_pipeline(
         StandardScaler(),
         LogisticRegression(
@@ -49,6 +53,7 @@ def model_l1(seed=0):
 
 
 def model_en(seed=0):
+    """Build the elastic-net logistic-regression pipeline."""
     return make_pipeline(
         StandardScaler(),
         LogisticRegression(
@@ -63,16 +68,16 @@ def model_en(seed=0):
 
 
 def fit_abs_coef(pipe, X, y):
+    """Fit a pipeline and return absolute logistic coefficients."""
     pipe.fit(X, y)
     return np.abs(pipe[-1].coef_[0])
 
 
 def selection_frequency(builder, X, y, repeats=30, tol=1e-6):
+    """Estimate feature selection frequency across repeated train splits."""
     freq = np.zeros(X.shape[1], dtype=float)
     for seed in range(repeats):
-        X_tr, _, y_tr, _ = train_test_split(
-            X, y, test_size=0.3, stratify=y, random_state=seed
-        )
+        X_tr, _, y_tr, _ = train_test_split(X, y, test_size=0.3, stratify=y, random_state=seed)
         pipe = builder(seed)
         pipe.fit(X_tr, y_tr)
         selected = np.abs(pipe[-1].coef_[0]) > tol

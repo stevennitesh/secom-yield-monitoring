@@ -1,3 +1,5 @@
+"""CLI entry point for rendering the canonical final report."""
+
 from __future__ import annotations
 
 import argparse

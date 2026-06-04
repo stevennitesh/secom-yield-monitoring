@@ -1,3 +1,5 @@
+"""Tests for rendering the canonical final report from active artifacts."""
+
 from __future__ import annotations
 
 import shutil
@@ -11,6 +13,7 @@ from tests.assertions import assert_text_contains_all, assert_text_excludes_all
 def test_final_report_is_generated_from_active_artifacts(
     active_artifacts_output_dir: Path,
 ) -> None:
+    """Final report rendering should create the canonical markdown artifact."""
     report_path = write_final_report(active_artifacts_output_dir)
 
     assert report_path.name == ArtifactName.FINAL_REPORT
@@ -20,6 +23,7 @@ def test_final_report_is_generated_from_active_artifacts(
 def test_final_report_contains_finished_narrative_sections(
     active_artifacts_output_dir: Path,
 ) -> None:
+    """Final report should render finished prose instead of scaffold prompts."""
     text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
 
     assert_text_contains_all(text, ["## What I Built", "## Provenance Appendix"])
@@ -35,6 +39,7 @@ def test_final_report_contains_finished_narrative_sections(
 def test_final_report_includes_uci_original_benchmark_reference(
     active_artifacts_output_dir: Path,
 ) -> None:
+    """Final report should include original benchmark rows and F/Pearson caveat."""
     text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
 
     assert_text_contains_all(
@@ -57,6 +62,7 @@ def test_final_report_includes_uci_original_benchmark_reference(
 def test_final_report_surfaces_required_industrialization_gaps(
     active_artifacts_output_dir: Path,
 ) -> None:
+    """Final report should keep industrialization limits visible."""
     text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
 
     assert_text_contains_all(
@@ -72,6 +78,7 @@ def test_final_report_surfaces_required_industrialization_gaps(
 def test_final_report_writes_expected_figure_files(
     active_artifacts_output_dir: Path,
 ) -> None:
+    """Final report rendering should emit the expected figure set."""
     write_final_report(active_artifacts_output_dir)
 
     figures_dir = active_artifacts_output_dir / "reports" / "figures"
@@ -87,6 +94,7 @@ def test_final_report_pdf_export_is_optional_when_tool_missing(
     active_artifacts_output_dir: Path,
     monkeypatch,
 ) -> None:
+    """Missing pandoc should leave markdown report generation successful."""
     monkeypatch.setattr(shutil, "which", lambda _: None)
 
     report_path = write_final_report(active_artifacts_output_dir, export_pdf=True)
