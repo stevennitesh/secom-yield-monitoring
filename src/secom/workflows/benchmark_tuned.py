@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -57,6 +58,28 @@ class _InnerSelectorView:
     y_train: np.ndarray
     x_eval_sel: np.ndarray
     y_eval: np.ndarray
+
+
+@dataclass(frozen=True)
+class _OuterSelectorView:
+    x_train_sel: np.ndarray
+    y_train: np.ndarray
+    x_test_sel: np.ndarray
+    y_test: np.ndarray
+    feature_meta: list[Any]
+    selected_local: np.ndarray
+    imputer: object
+
+
+def _emit_progress(progress: Callable[[str], None] | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
+
+
+def _selector_config_cache_key(selector_config: dict[str, Any]) -> tuple[int, int | None]:
+    n_neighbors = selector_config.get("n_neighbors")
+    normalized_neighbors = None if n_neighbors is None or pd.isna(n_neighbors) else int(n_neighbors)
+    return int(selector_config["k"]), normalized_neighbors
 
 
 def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
@@ -189,21 +212,39 @@ def _prepare_inner_selector_view(
     )
 
 
-def _evaluate_outer_fold_with_config(
+def _cached_inner_selector_views(
+    cache: dict[tuple[int, int | None], list[_InnerSelectorView]],
+    *,
+    x_outer_train_raw: np.ndarray,
+    y_outer_train: np.ndarray,
+    selector: str,
+    add_indicator: bool,
+    selector_config: dict[str, Any],
+) -> list[_InnerSelectorView]:
+    """Return inner selector views, preparing each selector config once per outer fold."""
+    key = _selector_config_cache_key(selector_config)
+    if key not in cache:
+        cache[key] = _prepare_inner_selector_views(
+            x_outer_train_raw=x_outer_train_raw,
+            y_outer_train=y_outer_train,
+            selector=selector,
+            add_indicator=add_indicator,
+            selector_config=selector_config,
+        )
+    return cache[key]
+
+
+def _prepare_outer_selector_view(
     *,
     x_train_raw: np.ndarray,
     y_train: np.ndarray,
     x_test_raw: np.ndarray,
     y_test: np.ndarray,
     selector: str,
-    classifier: str,
     replication_mode: str,
     selector_config: dict[str, Any],
-    classifier_config: dict[str, Any],
-    raw_feature_count: int,
-    fold: int,
-) -> tuple[dict[str, Any], pd.DataFrame]:
-    """Evaluate a selected tuned config on one outer benchmark fold."""
+) -> _OuterSelectorView:
+    """Prepare one selected outer-fold view for reuse across classifiers."""
     add_indicator = add_indicator_for_replication_mode(replication_mode)
     x_train_sel, x_test_sel, feature_meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
         x_train_raw=x_train_raw,
@@ -215,23 +256,72 @@ def _evaluate_outer_fold_with_config(
         add_indicator=add_indicator,
         n_neighbors=selector_config.get("n_neighbors"),
     )
-    train_scores, test_scores = fit_classifier_scores(
-        classifier=classifier,
+    return _OuterSelectorView(
         x_train_sel=x_train_sel,
         y_train=y_train,
-        x_eval_sel=x_test_sel,
+        x_test_sel=x_test_sel,
+        y_test=y_test,
+        feature_meta=feature_meta,
+        selected_local=selected_local,
+        imputer=_imputer,
+    )
+
+
+def _cached_outer_selector_view(
+    cache: dict[tuple[int, int | None], _OuterSelectorView],
+    *,
+    x_train_raw: np.ndarray,
+    y_train: np.ndarray,
+    x_test_raw: np.ndarray,
+    y_test: np.ndarray,
+    selector: str,
+    replication_mode: str,
+    selector_config: dict[str, Any],
+) -> _OuterSelectorView:
+    """Return an outer selector view, preparing each selected config once per fold."""
+    key = _selector_config_cache_key(selector_config)
+    if key not in cache:
+        cache[key] = _prepare_outer_selector_view(
+            x_train_raw=x_train_raw,
+            y_train=y_train,
+            x_test_raw=x_test_raw,
+            y_test=y_test,
+            selector=selector,
+            replication_mode=replication_mode,
+            selector_config=selector_config,
+        )
+    return cache[key]
+
+
+def _evaluate_outer_prepared_view(
+    *,
+    prepared: _OuterSelectorView,
+    selector: str,
+    classifier: str,
+    replication_mode: str,
+    selector_config: dict[str, Any],
+    classifier_config: dict[str, Any],
+    raw_feature_count: int,
+    fold: int,
+) -> tuple[dict[str, Any], pd.DataFrame]:
+    """Evaluate one cached outer-fold selector view with a classifier config."""
+    train_scores, test_scores = fit_classifier_scores(
+        classifier=classifier,
+        x_train_sel=prepared.x_train_sel,
+        y_train=prepared.y_train,
+        x_eval_sel=prepared.x_test_sel,
         classifier_config=classifier_config,
     )
-    threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
-    metrics = binary_metrics_at_threshold(y_test, test_scores, threshold=float(threshold))
-    selected_global = set(local_to_global_feature_indices(selected_local, feature_meta))
+    threshold, _ = find_ber_optimal_threshold(prepared.y_train, train_scores)
+    metrics = binary_metrics_at_threshold(prepared.y_test, test_scores, threshold=float(threshold))
+    selected_global = set(local_to_global_feature_indices(prepared.selected_local, prepared.feature_meta))
     feature_stability_df = build_feature_stability_frame(
         selector=selector,
         classifier=classifier,
         replication_mode=replication_mode,
         resample_id=f"fold_{fold}",
         feature_universe=transformed_feature_metadata_from_imputer(
-            imputer=_imputer,
+            imputer=prepared.imputer,
             raw_feature_count=raw_feature_count,
         ),
         selected_global=selected_global,
@@ -245,10 +335,10 @@ def _evaluate_outer_fold_with_config(
         **config_fields(selector_config=selector_config, classifier_config=classifier_config),
         **benchmark_metric_fields(metrics),
         "threshold_outer_train": float(threshold),
-        "n_train": int(len(y_train)),
-        "n_test": int(len(y_test)),
-        "n_test_fails": int(np.sum(np.asarray(y_test, dtype=int) == 1)),
-        "n_selected_features": int(len(selected_local)),
+        "n_train": int(len(prepared.y_train)),
+        "n_test": int(len(prepared.y_test)),
+        "n_test_fails": int(np.sum(np.asarray(prepared.y_test, dtype=int) == 1)),
+        "n_selected_features": int(len(prepared.selected_local)),
     }
     return row, feature_stability_df
 
@@ -322,6 +412,7 @@ def run_tuned_benchmark_replication(
     *,
     classifiers_run: list[str] | None = None,
     selectors_run: list[str] | None = None,
+    progress: Callable[[str], None] | None = None,
     _prepared_data: dict[str, Any] | None = None,
     _cluster_id_map: dict[int, int] | None = None,
 ) -> dict[str, Any]:
@@ -337,6 +428,11 @@ def run_tuned_benchmark_replication(
     classifiers_run, selectors_run = normalize_benchmark_run_filters(
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
+        default_classifiers=BenchmarkClassifier.TUNED_DEFAULT,
+    )
+    _emit_progress(
+        progress,
+        f"tuned benchmark start selectors={','.join(selectors_run)} classifiers={','.join(classifiers_run)}",
     )
 
     search_rows: list[dict[str, Any]] = []
@@ -346,19 +442,28 @@ def run_tuned_benchmark_replication(
 
     for selector in selectors_run:
         selector_grid = _tuned_selector_param_grid(selector)
+        _emit_progress(progress, f"tuned selector={selector} selector_configs={len(selector_grid)}")
         for replication_mode in BENCHMARK_REPLICATION_MODES:
             add_indicator = add_indicator_for_replication_mode(replication_mode)
-            for classifier in classifiers_run:
-                classifier_grid = classifier_param_grid(classifier)
-                for fold_i, (train_idx, test_idx) in enumerate(folds, start=1):
-                    x_outer_train = x[train_idx]
-                    y_outer_train = y[train_idx]
-                    x_outer_test = x[test_idx]
-                    y_outer_test = y[test_idx]
+            _emit_progress(progress, f"tuned selector={selector} mode={replication_mode}")
+            for fold_i, (train_idx, test_idx) in enumerate(folds, start=1):
+                x_outer_train = x[train_idx]
+                y_outer_train = y[train_idx]
+                x_outer_test = x[test_idx]
+                y_outer_test = y[test_idx]
+                inner_view_cache: dict[tuple[int, int | None], list[_InnerSelectorView]] = {}
+                outer_view_cache: dict[tuple[int, int | None], _OuterSelectorView] = {}
+
+                for classifier in classifiers_run:
+                    _emit_progress(
+                        progress,
+                        f"tuned selector={selector} mode={replication_mode} classifier={classifier} fold={fold_i}/{len(folds)}",
+                    )
                     config_rows: list[dict[str, Any]] = []
-                    # Reuse selector transforms across classifier configs for a selector config.
+                    classifier_grid = classifier_param_grid(classifier)
                     for selector_config in selector_grid:
-                        prepared_inner_views = _prepare_inner_selector_views(
+                        prepared_inner_views = _cached_inner_selector_views(
+                            inner_view_cache,
                             x_outer_train_raw=x_outer_train,
                             y_outer_train=y_outer_train,
                             selector=selector,
@@ -388,11 +493,18 @@ def run_tuned_benchmark_replication(
 
                     selector_config = selector_config_from_row(best)
                     classifier_config = classifier_config_from_row(best)
-                    fold_row, feature_stability_df = _evaluate_outer_fold_with_config(
+                    outer_prepared = _cached_outer_selector_view(
+                        outer_view_cache,
                         x_train_raw=x_outer_train,
                         y_train=y_outer_train,
                         x_test_raw=x_outer_test,
                         y_test=y_outer_test,
+                        selector=selector,
+                        replication_mode=replication_mode,
+                        selector_config=selector_config,
+                    )
+                    fold_row, feature_stability_df = _evaluate_outer_prepared_view(
+                        prepared=outer_prepared,
                         selector=selector,
                         classifier=classifier,
                         replication_mode=replication_mode,
@@ -480,6 +592,7 @@ def run_tuned_benchmark_replication(
     write_csv(full_fit_df, reports / ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY)
     write_csv(feature_stability_df, reports / ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY)
     write_csv(feature_report_df, reports / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
+    _emit_progress(progress, "tuned benchmark artifacts written")
 
     validate_tuned_benchmark_artifacts(
         search_df=search_df,
@@ -495,6 +608,7 @@ def run_tuned_benchmark_replication(
         project_root=project_root,
         tuned_status=StudyStatus.PASSED,
     )
+    _emit_progress(progress, "tuned benchmark passed")
     return {
         "benchmark_tuned_status": StudyStatus.PASSED,
         "primary_study_status": manifest["primary_study_status"],

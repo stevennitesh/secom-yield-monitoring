@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from secom.artifacts import read_csv_if_exists, read_manifest
-from secom.config import ArtifactName, StudyStatus, ThresholdPolicy
+from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, StudyStatus, ThresholdPolicy
 from secom.report_figures import (
     write_benchmark_comparison_figure,
     write_feature_stability_figure,
@@ -42,6 +42,16 @@ def _format_cell(value: object) -> str:
     return str(value)
 
 
+def _format_percent(value: object) -> str:
+    """Format fractional metric values as report percentages."""
+    try:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return "n/a"
+        return f"{100.0 * float(value):.1f}"
+    except Exception:
+        return str(value)
+
+
 def _markdown_table(
     frame: pd.DataFrame,
     columns: list[str],
@@ -63,6 +73,105 @@ def _markdown_table(
         for row in table.itertuples(index=False, name=None)
     )
     return lines
+
+
+_UCI_ORIGINAL_BASELINE_ROWS = [
+    {
+        "uci_method": "S2N",
+        "selector": "S2N",
+        "uci_BER": "34.5 +/- 2.6",
+        "uci_True+": "57.8 +/- 5.3",
+        "uci_True-": "73.1 +/- 2.1",
+    },
+    {
+        "uci_method": "Ttest",
+        "selector": "Welch-t",
+        "uci_BER": "33.7 +/- 2.1",
+        "uci_True+": "59.6 +/- 4.7",
+        "uci_True-": "73.0 +/- 1.8",
+    },
+    {
+        "uci_method": "Relief",
+        "selector": "ReliefF",
+        "uci_BER": "40.1 +/- 2.8",
+        "uci_True+": "48.3 +/- 5.9",
+        "uci_True-": "71.6 +/- 3.2",
+    },
+    {
+        "uci_method": "Pearson",
+        "selector": "Pearson",
+        "uci_BER": "34.1 +/- 2.0",
+        "uci_True+": "57.4 +/- 4.3",
+        "uci_True-": "74.4 +/- 4.9",
+    },
+    {
+        "uci_method": "Ftest",
+        "selector": "F-test",
+        "uci_BER": "33.5 +/- 2.2",
+        "uci_True+": "59.1 +/- 4.8",
+        "uci_True-": "73.8 +/- 1.8",
+    },
+    {
+        "uci_method": "Gram Schmidt",
+        "selector": "Gram-Schmidt",
+        "uci_BER": "35.6 +/- 2.4",
+        "uci_True+": "51.2 +/- 11.8",
+        "uci_True-": "77.5 +/- 2.3",
+    },
+]
+
+
+def _uci_baseline_match(benchmark_summary: pd.DataFrame | None, selector: str) -> pd.Series | None:
+    """Return the local strict KRR row that best matches the UCI original benchmark setup."""
+    if benchmark_summary is None or benchmark_summary.empty:
+        return None
+
+    rows = benchmark_summary[benchmark_summary["selector"].astype(str) == selector].copy()
+    if rows.empty:
+        return None
+
+    preferred = rows[
+        (rows["classifier"].astype(str) == BenchmarkClassifier.KRR)
+        & (rows["replication_mode"].astype(str) == ReplicationMode.STRICT)
+    ]
+    if preferred.empty:
+        preferred = rows[rows["replication_mode"].astype(str) == ReplicationMode.STRICT]
+    if preferred.empty:
+        preferred = rows
+    return preferred.sort_values(["mean_BER", "classifier", "replication_mode"]).iloc[0]
+
+
+def _uci_original_baseline_table(benchmark_summary: pd.DataFrame | None) -> list[str]:
+    """Compare local original replication rows with the UCI SECOM reference benchmark table."""
+    rows = []
+    missing_local_result = "not run"
+    for baseline in _UCI_ORIGINAL_BASELINE_ROWS:
+        local = _uci_baseline_match(benchmark_summary, str(baseline["selector"]))
+        rows.append(
+            {
+                "UCI method": baseline["uci_method"],
+                "local selector": baseline["selector"],
+                "UCI BER %": baseline["uci_BER"],
+                "UCI True+ %": baseline["uci_True+"],
+                "UCI True- %": baseline["uci_True-"],
+                "local BER %": _format_percent(local["mean_BER"]) if local is not None else missing_local_result,
+                "local True+ %": _format_percent(local["mean_True+"]) if local is not None else missing_local_result,
+                "local True- %": _format_percent(local["mean_True-"]) if local is not None else missing_local_result,
+            }
+        )
+    return _markdown_table(
+        pd.DataFrame(rows),
+        [
+            "UCI method",
+            "local selector",
+            "UCI BER %",
+            "UCI True+ %",
+            "UCI True- %",
+            "local BER %",
+            "local True+ %",
+            "local True- %",
+        ],
+    )
 
 
 def _top_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
@@ -643,6 +752,14 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.append("")
         lines.extend(_top_benchmark_table(benchmark_summary))
         lines.append("")
+        lines.append("##### UCI Original Benchmark Reference")
+        lines.append("")
+        lines.append(
+            "The UCI SECOM reference table reports 40-feature selector results with a simple kernel-ridge classifier and 10-fold cross-validation. Local columns use the strict original-replication KRR row when available."
+        )
+        lines.append("")
+        lines.extend(_uci_original_baseline_table(benchmark_summary))
+        lines.append("")
         lines.append("##### Supporting Benchmark Metrics")
         lines.append("")
         lines.extend(_supporting_benchmark_table(benchmark_summary))
@@ -1165,6 +1282,14 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     )
     lines.append("")
     _append_benchmark_summary_table(lines, "### Primary Benchmark Evidence", ctx.benchmark_summary)
+    lines.append("### UCI Original Benchmark Reference")
+    lines.append("")
+    lines.append(
+        "The UCI SECOM reference table reports 40-feature selector results with a simple kernel-ridge classifier and 10-fold cross-validation. Local columns use the strict original-replication KRR row when available."
+    )
+    lines.append("")
+    lines.extend(_uci_original_baseline_table(ctx.benchmark_summary))
+    lines.append("")
     _append_supporting_metrics_table(lines, "### Supporting Benchmark Metrics", ctx.benchmark_summary)
     _append_figure(
         lines,

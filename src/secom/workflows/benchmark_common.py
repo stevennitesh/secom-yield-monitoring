@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from itertools import product
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -90,10 +91,14 @@ def normalize_benchmark_run_filters(
     *,
     classifiers_run: list[str] | None,
     selectors_run: list[str] | None,
+    default_classifiers: Sequence[str] | None = None,
+    default_selectors: Sequence[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return concrete classifier and selector lists for benchmark workflows."""
-    classifiers = list(BenchmarkClassifier.ALL) if classifiers_run is None else [str(c) for c in classifiers_run]
-    selectors = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
+    classifier_defaults = BenchmarkClassifier.ALL if default_classifiers is None else default_classifiers
+    classifiers = list(classifier_defaults) if classifiers_run is None else [str(c) for c in classifiers_run]
+    selector_defaults = SelectorName.ACTIVE if default_selectors is None else default_selectors
+    selectors = list(selector_defaults) if selectors_run is None else [str(s) for s in selectors_run]
     return classifiers, selectors
 
 
