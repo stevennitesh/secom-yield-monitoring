@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from secom.config import ArtifactName, StudyStatus
+from secom.config import ArtifactName, SelectorName, StudyStatus
 from secom.workflows.audit import run_study_audit
 from secom.workflows.benchmark_common import (
     build_cluster_id_map,
@@ -170,6 +170,101 @@ def test_benchmark_bundle_prepares_dataset_once(
     assert cluster_payloads == [cluster_payload, cluster_payload]
 
 
+def test_benchmark_bundle_defaults_run_pearson_only_in_original_and_krr_only_in_tuned(
+    synthetic_input_dir: Path,
+    workspace_tmp_dir: Path,
+    monkeypatch,
+) -> None:
+    import secom.workflows.benchmark_replication as benchmark
+    import secom.workflows.benchmark_tuned as tuned
+
+    captured: dict[str, list[str]] = {}
+    progress_messages: list[str] = []
+
+    monkeypatch.setattr(
+        benchmark,
+        "prepare_benchmark_dataset",
+        lambda _input_dir: {"project_root": workspace_tmp_dir, "x": np.ones((4, 3), dtype=float)},
+    )
+    monkeypatch.setattr(benchmark, "build_cluster_id_map", lambda x_raw: {0: 0, 1: 1, 2: 2})
+
+    def fake_original_benchmark(**kwargs) -> dict[str, object]:
+        captured["original"] = list(kwargs["selectors_run"])
+        captured["original_classifiers"] = list(kwargs["classifiers_run"])
+        return {
+            "benchmark_original_status": StudyStatus.PASSED,
+            "primary_study_status": StudyStatus.PASSED,
+        }
+
+    def fake_tuned_benchmark(**kwargs) -> dict[str, object]:
+        captured["tuned"] = list(kwargs["selectors_run"])
+        captured["tuned_classifiers"] = list(kwargs["classifiers_run"])
+        kwargs["progress"]("tuned progress marker")
+        return {"benchmark_tuned_status": StudyStatus.PASSED}
+
+    monkeypatch.setattr(benchmark, "run_original_benchmark_replication", fake_original_benchmark)
+    monkeypatch.setattr(tuned, "run_tuned_benchmark_replication", fake_tuned_benchmark)
+
+    result = run_benchmark_replication(
+        input_dir=synthetic_input_dir,
+        output_dir=workspace_tmp_dir / "out",
+        progress=progress_messages.append,
+    )
+
+    assert captured["original"] == SelectorName.ORIGINAL_BENCHMARK
+    assert captured["tuned"] == SelectorName.ACTIVE
+    assert captured["original_classifiers"] == ["krr", "logreg"]
+    assert captured["tuned_classifiers"] == ["krr"]
+    assert SelectorName.PEARSON in result["original_selectors_run"]
+    assert SelectorName.PEARSON not in result["tuned_selectors_run"]
+    assert result["original_classifiers_run"] == ["krr", "logreg"]
+    assert result["tuned_classifiers_run"] == ["krr"]
+    assert progress_messages == ["tuned progress marker"]
+
+
+def test_benchmark_bundle_explicit_classifier_override_reaches_original_and_tuned(
+    synthetic_input_dir: Path,
+    workspace_tmp_dir: Path,
+    monkeypatch,
+) -> None:
+    import secom.workflows.benchmark_replication as benchmark
+    import secom.workflows.benchmark_tuned as tuned
+
+    captured: dict[str, list[str]] = {}
+
+    monkeypatch.setattr(
+        benchmark,
+        "prepare_benchmark_dataset",
+        lambda _input_dir: {"project_root": workspace_tmp_dir, "x": np.ones((4, 3), dtype=float)},
+    )
+    monkeypatch.setattr(benchmark, "build_cluster_id_map", lambda x_raw: {0: 0, 1: 1, 2: 2})
+
+    def fake_original_benchmark(**kwargs) -> dict[str, object]:
+        captured["original_classifiers"] = list(kwargs["classifiers_run"])
+        return {
+            "benchmark_original_status": StudyStatus.PASSED,
+            "primary_study_status": StudyStatus.PASSED,
+        }
+
+    def fake_tuned_benchmark(**kwargs) -> dict[str, object]:
+        captured["tuned_classifiers"] = list(kwargs["classifiers_run"])
+        return {"benchmark_tuned_status": StudyStatus.PASSED}
+
+    monkeypatch.setattr(benchmark, "run_original_benchmark_replication", fake_original_benchmark)
+    monkeypatch.setattr(tuned, "run_tuned_benchmark_replication", fake_tuned_benchmark)
+
+    result = run_benchmark_replication(
+        input_dir=synthetic_input_dir,
+        output_dir=workspace_tmp_dir / "out",
+        classifiers_run=["krr", "logreg"],
+    )
+
+    assert captured["original_classifiers"] == ["krr", "logreg"]
+    assert captured["tuned_classifiers"] == ["krr", "logreg"]
+    assert result["original_classifiers_run"] == ["krr", "logreg"]
+    assert result["tuned_classifiers_run"] == ["krr", "logreg"]
+
+
 def test_tuned_inner_selector_views_reuse_selector_prep_across_classifier_configs(monkeypatch) -> None:
     x = np.arange(48, dtype=float).reshape(12, 4)
     y = np.asarray([0, 1] * 6, dtype=int)
@@ -222,6 +317,81 @@ def test_tuned_inner_selector_views_reuse_selector_prep_across_classifier_config
     assert calls["count"] == prep_calls
     assert set(payload_a) == {"mean_inner_ROC_AUC", "mean_inner_BER"}
     assert set(payload_b) == {"mean_inner_ROC_AUC", "mean_inner_BER"}
+
+
+def test_tuned_selector_view_caches_reuse_preparation_across_classifiers(monkeypatch) -> None:
+    x = np.arange(48, dtype=float).reshape(12, 4)
+    y = np.asarray([0, 1] * 6, dtype=int)
+    calls = {"count": 0}
+
+    def fake_fit_selector_pipeline(
+        *,
+        x_train_raw: np.ndarray,
+        y_train: np.ndarray,
+        x_eval_raw: np.ndarray,
+        method: str,
+        k: int,
+        scaler_name: str,
+        add_indicator: bool,
+        n_neighbors: int | None,
+    ):
+        calls["count"] += 1
+        return (
+            np.asarray(x_train_raw[:, : min(k, x_train_raw.shape[1])], dtype=float),
+            np.asarray(x_eval_raw[:, : min(k, x_eval_raw.shape[1])], dtype=float),
+            [],
+            np.arange(min(k, x_train_raw.shape[1]), dtype=int),
+            object(),
+            object(),
+        )
+
+    monkeypatch.setattr(benchmark_tuned, "fit_selector_pipeline", fake_fit_selector_pipeline)
+    monkeypatch.setattr(benchmark_tuned, "BENCHMARK_INNER_SPLITS", 2, raising=False)
+
+    selector_config = {"k": 2, "n_neighbors": None}
+    inner_cache = {}
+    inner_first = benchmark_tuned._cached_inner_selector_views(
+        inner_cache,
+        x_outer_train_raw=x,
+        y_outer_train=y,
+        selector="F-test",
+        add_indicator=False,
+        selector_config=selector_config,
+    )
+    inner_second = benchmark_tuned._cached_inner_selector_views(
+        inner_cache,
+        x_outer_train_raw=x,
+        y_outer_train=y,
+        selector="F-test",
+        add_indicator=False,
+        selector_config=selector_config,
+    )
+
+    outer_cache = {}
+    outer_first = benchmark_tuned._cached_outer_selector_view(
+        outer_cache,
+        x_train_raw=x[:8],
+        y_train=y[:8],
+        x_test_raw=x[8:],
+        y_test=y[8:],
+        selector="F-test",
+        replication_mode="strict",
+        selector_config=selector_config,
+    )
+    outer_second = benchmark_tuned._cached_outer_selector_view(
+        outer_cache,
+        x_train_raw=x[:8],
+        y_train=y[:8],
+        x_test_raw=x[8:],
+        y_test=y[8:],
+        selector="F-test",
+        replication_mode="strict",
+        selector_config=selector_config,
+    )
+
+    assert inner_first is inner_second
+    assert outer_first is outer_second
+    assert calls["count"] == 3
 
 
 def test_config_row_denormalization_converts_nan_to_none() -> None:

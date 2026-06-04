@@ -32,6 +32,26 @@ def test_final_report_contains_finished_narrative_sections(
     )
 
 
+def test_final_report_includes_uci_original_benchmark_reference(
+    active_artifacts_output_dir: Path,
+) -> None:
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "### UCI Original Benchmark Reference",
+            "S2N",
+            "Ttest",
+            "Relief",
+            "Pearson",
+            "Ftest",
+            "Gram Schmidt",
+            "33.5 +/- 2.2",
+        ],
+    )
+
+
 def test_final_report_surfaces_required_industrialization_gaps(
     active_artifacts_output_dir: Path,
 ) -> None:

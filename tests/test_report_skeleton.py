@@ -25,6 +25,7 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "##### Search Space",
             "##### Selected Configurations",
             "#### Original Replication Results",
+            "##### UCI Original Benchmark Reference",
             "### Tuned Benchmark",
             "#### Tuned Benchmark Design",
             "#### Tuned Benchmark Search Summary",
@@ -51,6 +52,8 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "Leading original replication configuration",
             "Leading tuned benchmark configuration",
             "#### Original Feature Stability and Interpretation",
+            "Gram Schmidt",
+            "33.5 +/- 2.2",
         ],
     )
     assert_text_excludes_all(text, ["PRIMARY_STUDY_STATUS", "| n/a | n/a |"])
