@@ -45,6 +45,7 @@ from secom.workflows.benchmark_common import (
     config_tie_break_key,
     fit_classifier_scores,
     fit_full_dataset,
+    gamma_sort_key,
     normalize_benchmark_run_filters,
     prepare_benchmark_dataset,
     prepare_full_selector_view,
@@ -372,6 +373,7 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
             )
             .reset_index()
         )
+        grouped["_gamma_sort"] = grouped["gamma"].map(gamma_sort_key)
         grouped = grouped.sort_values(
             [
                 "selection_count",
@@ -381,7 +383,7 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
                 "k",
                 "C",
                 "alpha",
-                "gamma",
+                "_gamma_sort",
                 "n_neighbors",
             ],
             ascending=[False, False, True, True, True, True, True, True, True],

@@ -133,3 +133,93 @@ def test_lockbox_context_uses_frozen_temporal_transforms_and_selected_indices() 
     )
     assert np.array_equal(clf.seen[0], np.asarray([[10.0], [20.0], [30.0]]))
     assert lock_ctx["lock_scores"].tolist() == [0.1, 0.8, 0.3]
+
+
+def test_temporal_selector_summary_uses_coherent_modal_config_tuple() -> None:
+    """Temporal modal config fields should come from one winning config tuple."""
+    outer_eval_df = pd.DataFrame(
+        [
+            {
+                "selector": SelectorName.S2N,
+                "outer_fold": 1,
+                "seed": 42,
+                "k": 10,
+                "C": 10.0,
+                "scaler": ScalerName.STANDARD,
+                "n_neighbors": np.nan,
+                "BER": 0.30,
+                "True+": 0.60,
+                "True-": 0.80,
+            },
+            {
+                "selector": SelectorName.S2N,
+                "outer_fold": 2,
+                "seed": 42,
+                "k": 10,
+                "C": 1.0,
+                "scaler": ScalerName.ROBUST,
+                "n_neighbors": np.nan,
+                "BER": 0.20,
+                "True+": 0.70,
+                "True-": 0.90,
+            },
+            {
+                "selector": SelectorName.S2N,
+                "outer_fold": 3,
+                "seed": 42,
+                "k": 20,
+                "C": 1.0,
+                "scaler": ScalerName.STANDARD,
+                "n_neighbors": np.nan,
+                "BER": 0.25,
+                "True+": 0.65,
+                "True-": 0.85,
+            },
+        ]
+    )
+
+    summary = temporal_robustness._summarize_temporal_selector_results(
+        outer_eval_df=outer_eval_df,
+        deciding_outer_fold=3,
+    )
+
+    row = summary[0]
+    assert row["modal_k"] == 10
+    assert row["modal_C"] == 1.0
+    assert row["modal_scaler"] == ScalerName.ROBUST
+    assert np.isnan(row["modal_n_neighbors"])
+
+
+def test_temporal_role_selection_uses_deciding_fold_before_simplicity() -> None:
+    """Primary role tie-breaks should use temporal evidence before config simplicity."""
+    selector_stats = [
+        {
+            "selector": SelectorName.S2N,
+            "mean_BER": 0.20,
+            "mean_True+": 0.70,
+            "mean_True-": 0.80,
+            "modal_k": 10,
+            "modal_C": 0.01,
+            "modal_scaler": ScalerName.STANDARD,
+            "modal_n_neighbors": np.nan,
+            "vote_outer_BER": 0.30,
+            "vote_outer_True+": 0.60,
+        },
+        {
+            "selector": SelectorName.F_TEST,
+            "mean_BER": 0.20,
+            "mean_True+": 0.70,
+            "mean_True-": 0.80,
+            "modal_k": 40,
+            "modal_C": 10.0,
+            "modal_scaler": ScalerName.ROBUST,
+            "modal_n_neighbors": np.nan,
+            "vote_outer_BER": 0.10,
+            "vote_outer_True+": 0.90,
+        },
+    ]
+
+    primary, challenger = temporal_robustness._choose_temporal_roles(selector_stats)
+
+    assert primary == SelectorName.F_TEST
+    assert challenger == SelectorName.S2N

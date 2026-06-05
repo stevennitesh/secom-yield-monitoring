@@ -786,6 +786,58 @@ def test_config_row_denormalization_converts_nan_to_none() -> None:
     assert classifier_config == {"alpha": 1.0, "gamma": None, "C": None}
 
 
+def test_tuned_modal_selected_config_sorts_null_gamma_as_simplest() -> None:
+    """Tuned modal summary should reuse the same KRR gamma tie order as config selection."""
+    selected_configs = pd.DataFrame(
+        [
+            {
+                "selector": SelectorName.F_TEST,
+                "classifier": BenchmarkClassifier.KRR,
+                "replication_mode": ReplicationMode.STRICT,
+                "fold": 1,
+                "k": 40,
+                "alpha": 1.0,
+                "gamma": np.nan,
+                "C": np.nan,
+                "n_neighbors": np.nan,
+                "mean_inner_ROC_AUC": 0.80,
+                "mean_inner_BER": 0.20,
+                "BER": 0.25,
+                "True+": 0.60,
+                "True-": 0.90,
+                "ROC_AUC": 0.80,
+                "PR_AUC": 0.40,
+                "MCC": 0.30,
+                "F2": 0.50,
+            },
+            {
+                "selector": SelectorName.F_TEST,
+                "classifier": BenchmarkClassifier.KRR,
+                "replication_mode": ReplicationMode.STRICT,
+                "fold": 2,
+                "k": 40,
+                "alpha": 1.0,
+                "gamma": 0.1,
+                "C": np.nan,
+                "n_neighbors": np.nan,
+                "mean_inner_ROC_AUC": 0.80,
+                "mean_inner_BER": 0.20,
+                "BER": 0.25,
+                "True+": 0.60,
+                "True-": 0.90,
+                "ROC_AUC": 0.80,
+                "PR_AUC": 0.40,
+                "MCC": 0.30,
+                "F2": 0.50,
+            },
+        ]
+    )
+
+    modal = benchmark_tuned._modal_selected_config(selected_configs)
+
+    assert pd.isna(modal.iloc[0]["gamma"])
+
+
 def test_build_cluster_id_map_groups_highly_correlated_value_features() -> None:
     """Cluster IDs should group perfectly correlated raw value features."""
     x = np.asarray(

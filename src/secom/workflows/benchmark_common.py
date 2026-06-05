@@ -58,7 +58,7 @@ BENCHMARK_REPLICATION_MODES = (
 
 def gamma_sort_key(gamma: float | None) -> float:
     """Sort ``None`` before numeric RBF gamma values."""
-    return -1.0 if gamma is None else float(gamma)
+    return -1.0 if gamma is None or pd.isna(gamma) else float(gamma)
 
 
 def selector_param_grid(selector: str) -> list[dict[str, Any]]:

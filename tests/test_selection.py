@@ -265,3 +265,29 @@ def test_select_best_inner_config_uses_deterministic_simplicity_tie_breaks() -> 
 
     assert selected["scaler"] == ScalerName.STANDARD
     assert selected["n_neighbors"] == 5
+
+
+def test_select_best_inner_config_treats_nan_neighbors_as_absent() -> None:
+    """Artifact-shaped NaN neighbors should not make tuning tie-breaks order-dependent."""
+    rows = [
+        {
+            "mean_inner_ROC_AUC": 0.80,
+            "mean_inner_BER": 0.20,
+            "k": 10,
+            "C": 1.0,
+            "scaler": ScalerName.STANDARD,
+            "n_neighbors": np.nan,
+        },
+        {
+            "mean_inner_ROC_AUC": 0.80,
+            "mean_inner_BER": 0.20,
+            "k": 10,
+            "C": 1.0,
+            "scaler": ScalerName.STANDARD,
+            "n_neighbors": 5,
+        },
+    ]
+
+    selected = select_best_inner_config(rows)
+
+    assert selected["n_neighbors"] == 5
