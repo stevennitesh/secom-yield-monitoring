@@ -76,6 +76,46 @@ def test_fit_selector_pipeline_returns_selected_views_and_metadata() -> None:
     assert scaler is not None
 
 
+def test_fit_selector_pipeline_scores_imputed_and_scaled_training_data(monkeypatch) -> None:
+    """Selector scoring should receive transformed training data, not raw values."""
+    x_train = np.asarray(
+        [
+            [1.0, np.nan],
+            [3.0, 1.0],
+            [5.0, 3.0],
+            [7.0, 5.0],
+        ],
+        dtype=float,
+    )
+    x_eval = np.asarray([[9.0, np.nan]], dtype=float)
+    y_train = np.asarray([0, 0, 1, 1], dtype=int)
+    captured: dict[str, np.ndarray] = {}
+
+    def fake_rank_features(method: str, x_train: np.ndarray, y_train: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Capture selector input after preprocessing."""
+        captured["x_train"] = x_train
+        assert method == SelectorName.S2N
+        assert np.array_equal(y_train, np.asarray([0, 0, 1, 1], dtype=int))
+        return np.asarray([0, 1], dtype=int), np.asarray([1.0, 0.5], dtype=float)
+
+    monkeypatch.setattr(engine, "rank_features", fake_rank_features)
+
+    fit_selector_pipeline(
+        x_train_raw=x_train,
+        y_train=y_train,
+        x_eval_raw=x_eval,
+        method=SelectorName.S2N,
+        k=1,
+        scaler_name=ScalerName.STANDARD,
+        add_indicator=False,
+        n_neighbors=None,
+    )
+
+    assert not np.isnan(captured["x_train"]).any()
+    assert np.allclose(np.mean(captured["x_train"], axis=0), [0.0, 0.0])
+    assert np.allclose(np.std(captured["x_train"], axis=0, ddof=0), [1.0, 1.0])
+
+
 def test_fit_selector_pipeline_rejects_mismatched_feature_counts() -> None:
     """Train and evaluation matrices must share the same raw feature width."""
     with pytest.raises(ValueError, match="same feature count"):

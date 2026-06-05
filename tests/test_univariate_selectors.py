@@ -6,10 +6,50 @@ import sys
 
 import numpy as np
 
-from secom.config import SelectorName
+from secom.config import EPS_SELECTOR, SelectorName
 from secom.feature_select.gram_schmidt import gram_schmidt_rank_features
 from secom.feature_select.relief import relief_rank_features
 from secom.feature_select import univariate
+
+
+def test_score_s2n_matches_hand_calculated_class_separation() -> None:
+    """S2N should equal absolute mean gap over summed class standard deviations."""
+    x = np.asarray(
+        [
+            [0.0, 7.0],
+            [2.0, 7.0],
+            [3.0, 7.0],
+            [5.0, 7.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    scores = univariate.score_s2n(x, y)
+
+    expected_feature_0 = 3.0 / (np.sqrt(2.0) + np.sqrt(2.0) + EPS_SELECTOR)
+    assert np.isclose(scores[0], expected_feature_0)
+    assert np.isneginf(scores[1])
+
+
+def test_score_welch_t_matches_hand_calculated_class_separation() -> None:
+    """Welch-t should use class variances scaled by class sample counts."""
+    x = np.asarray(
+        [
+            [0.0, 7.0],
+            [2.0, 7.0],
+            [3.0, 7.0],
+            [5.0, 7.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    scores = univariate.score_welch_t(x, y)
+
+    expected_feature_0 = 3.0 / np.sqrt((2.0 / 2.0) + (2.0 / 2.0) + EPS_SELECTOR)
+    assert np.isclose(scores[0], expected_feature_0)
+    assert np.isneginf(scores[1])
 
 
 def test_score_f_test_skips_constant_columns(monkeypatch) -> None:
@@ -40,6 +80,29 @@ def test_score_f_test_skips_constant_columns(monkeypatch) -> None:
     assert called["shape"] == (4, 2)
     assert np.isneginf(scores[[0, 2]]).all()
     assert np.allclose(scores[[1, 3]], [7.0, 3.0])
+
+
+def test_f_test_and_pearson_rank_binary_labels_monotonically() -> None:
+    """Binary-label F-test and absolute Pearson should agree on feature order."""
+    x = np.asarray(
+        [
+            [0.0, 0.0, 4.0],
+            [0.0, 1.0, 4.0],
+            [1.0, 0.0, 4.0],
+            [1.0, 1.0, 4.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    f_order, f_scores = univariate.rank_features(SelectorName.F_TEST, x, y)
+    pearson_order, pearson_scores = univariate.rank_features(SelectorName.PEARSON, x, y)
+
+    assert f_order.tolist() == pearson_order.tolist() == [0, 1, 2]
+    assert f_scores[0] > f_scores[1]
+    assert pearson_scores[0] > pearson_scores[1]
+    assert np.isneginf(f_scores[2])
+    assert np.isneginf(pearson_scores[2])
 
 
 def test_score_pearson_marks_constant_columns_as_bottom_rank() -> None:
@@ -89,6 +152,48 @@ def test_gram_schmidt_rank_features_skips_constant_columns() -> None:
 
     assert 0 not in order.tolist()
     assert np.isneginf(scores[0])
+
+
+def test_gram_schmidt_rank_features_skips_redundant_correlated_feature() -> None:
+    """Gram-Schmidt should prefer a nonredundant residual signal over a duplicate."""
+    x = np.asarray(
+        [
+            [-1.0, -1.0, 0.0],
+            [-1.0, -1.0, 0.0],
+            [0.0, 0.0, -1.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 0, 1, 1, 1], dtype=int)
+
+    order, scores = gram_schmidt_rank_features(x, y, k=2)
+
+    assert order.tolist() == [0, 2]
+    assert scores[0] > scores[1]
+    assert scores[2] > scores[1]
+
+
+def test_relief_rank_features_fallback_matches_known_neighborhood_geometry(monkeypatch) -> None:
+    """Fallback ReliefF should reward nearest misses and penalize nearest hits."""
+    monkeypatch.setitem(sys.modules, "skrebate", None)
+    x = np.asarray(
+        [
+            [0.0, 0.0],
+            [0.0, 1.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    order, scores = relief_rank_features(x, y, n_neighbors=1)
+
+    assert order.tolist() == [0, 1]
+    assert np.allclose(scores, [2.0, -1.0])
 
 
 def test_relief_rank_features_fallback_uses_deterministic_order(monkeypatch) -> None:
