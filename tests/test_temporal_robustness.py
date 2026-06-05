@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from secom.config import ArtifactName, ScalerName, SelectorName
 from secom.types import FittedRoleModel, RoleConfig
@@ -44,6 +45,44 @@ def test_temporal_robustness_emits_temporal_artifacts_and_audit_is_non_blocking(
 
     audit = run_study_audit(out_dir)
     assert audit.ok, audit.errors
+
+
+def test_temporal_selector_grids_match_stage_scope_and_reject_unknowns() -> None:
+    """Temporal selector grids should keep screening and Stage-B scopes explicit."""
+    stage_a = temporal_robustness._stage_a_configs([SelectorName.F_TEST, SelectorName.RELIEFF])
+
+    assert stage_a == [
+        {
+            "selector": SelectorName.F_TEST,
+            "k": 40,
+            "C": 1.0,
+            "scaler": ScalerName.ROBUST,
+            "n_neighbors": None,
+        },
+        {
+            "selector": SelectorName.RELIEFF,
+            "k": 40,
+            "C": 1.0,
+            "scaler": ScalerName.ROBUST,
+            "n_neighbors": 10,
+        },
+    ]
+
+    f_test_grid = temporal_robustness.build_stage_b_config_grid(SelectorName.F_TEST)
+    assert len(f_test_grid) == 24
+    assert {row["k"] for row in f_test_grid} == {10, 20, 40}
+    assert {row["C"] for row in f_test_grid} == {0.01, 0.1, 1.0, 10.0}
+    assert {row["scaler"] for row in f_test_grid} == {ScalerName.STANDARD, ScalerName.ROBUST}
+    assert {row["n_neighbors"] for row in f_test_grid} == {None}
+
+    relief_grid = temporal_robustness.build_stage_b_config_grid(SelectorName.RELIEFF)
+    assert len(relief_grid) == 72
+    assert {row["n_neighbors"] for row in relief_grid} == {5, 10, 20}
+
+    with pytest.raises(ValueError, match="Unknown selector"):
+        temporal_robustness._stage_a_configs(["Bogus"])
+    with pytest.raises(ValueError, match="Unknown selector"):
+        temporal_robustness.build_stage_b_config_grid("Bogus")
 
 
 def test_lockbox_context_uses_frozen_temporal_transforms_and_selected_indices() -> None:

@@ -384,6 +384,27 @@ def test_benchmark_bundle_defaults_run_uci_selectors_and_krr_only_in_original(
     assert progress_messages == ["tuned progress marker"]
 
 
+def test_benchmark_selector_grids_match_study_scope_and_reject_unknowns() -> None:
+    """Benchmark selector grids should encode original and tuned study scope explicitly."""
+    assert benchmark_common.selector_param_grid(SelectorName.PEARSON) == [{"k": 40, "n_neighbors": None}]
+    assert benchmark_common.selector_param_grid(SelectorName.RELIEFF) == [{"k": 40, "n_neighbors": 10}]
+
+    assert benchmark_tuned._tuned_selector_param_grid(SelectorName.F_TEST) == [
+        {"k": 10, "n_neighbors": None},
+        {"k": 20, "n_neighbors": None},
+        {"k": 40, "n_neighbors": None},
+    ]
+    relief_grid = benchmark_tuned._tuned_selector_param_grid(SelectorName.RELIEFF)
+    assert len(relief_grid) == 9
+    assert {row["k"] for row in relief_grid} == {10, 20, 40}
+    assert {row["n_neighbors"] for row in relief_grid} == {5, 10, 20}
+
+    with pytest.raises(ValueError, match="Unknown selector"):
+        benchmark_common.selector_param_grid("Bogus")
+    with pytest.raises(ValueError, match="Unknown selector"):
+        benchmark_tuned._tuned_selector_param_grid("Bogus")
+
+
 def test_original_benchmark_fold_metrics_use_train_thresholds(monkeypatch) -> None:
     """Original benchmark folds should score test splits with train-derived thresholds."""
     prepared_views = {

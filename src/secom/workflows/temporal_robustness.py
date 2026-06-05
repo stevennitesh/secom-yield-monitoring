@@ -29,6 +29,7 @@ from secom.config import (
     SelectorName,
     StudyStatus,
     ThresholdPolicy,
+    validate_selector_name,
 )
 from secom.cv import (
     add_dev_week_bins,
@@ -203,6 +204,7 @@ def _prepare_resampled_selector_views(
 
 def _stage_a_configs(selectors_run: list[str]) -> list[dict[str, Any]]:
     """Build the fixed selector-screening configs used before temporal model selection."""
+    selectors = [validate_selector_name(s) for s in selectors_run]
     return [
         {
             "selector": s,
@@ -211,12 +213,13 @@ def _stage_a_configs(selectors_run: list[str]) -> list[dict[str, Any]]:
             "scaler": ScalerName.ROBUST,
             "n_neighbors": 10 if s == SelectorName.RELIEFF else None,
         }
-        for s in selectors_run
+        for s in selectors
     ]
 
 
 def build_stage_b_config_grid(selector: str) -> list[dict[str, Any]]:
     """Return the temporal Stage-B grid for one selector."""
+    selector = validate_selector_name(selector)
     if selector == SelectorName.RELIEFF:
         return [
             {

@@ -22,6 +22,7 @@ from secom.config import (
     ScalerName,
     SEED_BENCHMARK,
     SelectorName,
+    validate_selector_name,
 )
 from secom.io import load_raw_secom, parse_sort_and_label
 from secom.metrics import (
@@ -63,6 +64,7 @@ def gamma_sort_key(gamma: float | None) -> float:
 
 def selector_param_grid(selector: str) -> list[dict[str, Any]]:
     """Return the fixed original-benchmark selector grid for one selector."""
+    selector = validate_selector_name(selector)
     if selector == SelectorName.RELIEFF:
         return [{"k": BENCHMARK_FEATURE_BUDGET, "n_neighbors": 10}]
     return [{"k": BENCHMARK_FEATURE_BUDGET, "n_neighbors": None}]

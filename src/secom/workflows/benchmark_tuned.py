@@ -19,6 +19,7 @@ from secom.config import (
     ScalerName,
     SelectorName,
     StudyStatus,
+    validate_selector_name,
 )
 from secom.metrics import (
     binary_metrics_at_threshold,
@@ -92,6 +93,7 @@ def _selector_config_cache_key(selector_config: dict[str, Any]) -> tuple[int, in
 
 def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
     """Return the tuned benchmark selector grid for one selector."""
+    selector = validate_selector_name(selector)
     ks = [10, 20, 40]
     if selector == SelectorName.RELIEFF:
         return [{"k": int(k), "n_neighbors": int(nn)} for k in ks for nn in [5, 10, 20]]

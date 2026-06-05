@@ -39,6 +39,14 @@ class SelectorName:
     ORIGINAL_BENCHMARK = CORE + EXPERIMENTAL
 
 
+def validate_selector_name(selector: str) -> str:
+    """Return a selector name after checking it against the supported vocabulary."""
+    selector_name = str(selector)
+    if selector_name not in SelectorName.ALL:
+        raise ValueError(f"Unknown selector: {selector_name}")
+    return selector_name
+
+
 class ScalerName:
     """Supported scaler names used in selector pipelines."""
 
