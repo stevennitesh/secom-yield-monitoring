@@ -41,15 +41,23 @@ _CSV_ARTIFACT_NAMES = sorted(
 )
 
 _BENCHMARK_TRIPLET_COLUMNS = {"selector", "classifier", "replication_mode"}
+_BENCHMARK_CONFIG_COLUMNS = {"k", "C", "alpha", "gamma", "n_neighbors"}
 _BENCHMARK_METRIC_COLUMNS = {"BER", "True+", "True-", "ROC_AUC", "PR_AUC", "MCC", "F2"}
 _BENCHMARK_MEAN_METRIC_COLUMNS = {f"mean_{metric}" for metric in _BENCHMARK_METRIC_COLUMNS}
 _BENCHMARK_BER_CI_COLUMNS = {"CI_lower_BER", "CI_upper_BER"}
 _BENCHMARK_FULL_DATASET_METRIC_COLUMNS = {f"{metric}_full_dataset" for metric in _BENCHMARK_METRIC_COLUMNS}
 _BENCHMARK_ABLATION_COLUMNS = {"selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"}
-_BENCHMARK_FEATURE_STABILITY_COLUMNS = {"resample_id", "feature_index", "feature_type", "selected"}
+_BENCHMARK_FEATURE_STABILITY_COLUMNS = {
+    "resample_id",
+    "feature_index",
+    "feature_type",
+    "feature_name_or_source_col",
+    "selected",
+}
 _BENCHMARK_FEATURE_REPORT_COLUMNS = {
     "feature_index",
     "feature_type",
+    "feature_name_or_source_col",
     "selection_frequency",
     "conditional_effect_magnitude",
     "expected_contribution",
@@ -58,13 +66,16 @@ _BENCHMARK_FEATURE_REPORT_COLUMNS = {
 _BENCHMARK_ORIGINAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_SWEEP: {
         *_BENCHMARK_TRIPLET_COLUMNS,
+        *_BENCHMARK_CONFIG_COLUMNS,
         *_BENCHMARK_MEAN_METRIC_COLUMNS,
     },
     ArtifactName.BENCHMARK_BEST_CONFIG: {
         *_BENCHMARK_TRIPLET_COLUMNS,
+        *_BENCHMARK_CONFIG_COLUMNS,
     },
     ArtifactName.BENCHMARK_FOLD_METRICS: {
         *_BENCHMARK_TRIPLET_COLUMNS,
+        *_BENCHMARK_CONFIG_COLUMNS,
         "fold",
         *_BENCHMARK_METRIC_COLUMNS,
     },
@@ -76,18 +87,21 @@ _BENCHMARK_ORIGINAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_ABLATION: _BENCHMARK_ABLATION_COLUMNS,
     ArtifactName.BENCHMARK_FULL_FIT_SUMMARY: {
         *_BENCHMARK_TRIPLET_COLUMNS,
+        *_BENCHMARK_CONFIG_COLUMNS,
         *_BENCHMARK_FULL_DATASET_METRIC_COLUMNS,
     },
     ArtifactName.FEATURE_STABILITY: {
         "selector",
+        "replication_mode",
         *_BENCHMARK_FEATURE_STABILITY_COLUMNS,
     },
-    ArtifactName.FEATURE_REPORT: _BENCHMARK_FEATURE_REPORT_COLUMNS,
+    ArtifactName.FEATURE_REPORT: _BENCHMARK_TRIPLET_COLUMNS | _BENCHMARK_FEATURE_REPORT_COLUMNS,
 }
 
 _BENCHMARK_TUNED_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_TUNED_SEARCH: {
         *_BENCHMARK_TRIPLET_COLUMNS,
+        *_BENCHMARK_CONFIG_COLUMNS,
         "fold",
         "mean_inner_ROC_AUC",
         "mean_inner_BER",
@@ -97,10 +111,11 @@ _BENCHMARK_TUNED_REQUIRED_COLUMNS: dict[str, set[str]] = {
         *_BENCHMARK_TRIPLET_COLUMNS,
         "mean_BER",
         "mean_ROC_AUC",
-        "k",
+        *_BENCHMARK_CONFIG_COLUMNS,
     },
     ArtifactName.BENCHMARK_TUNED_FOLD_METRICS: {
         *_BENCHMARK_TRIPLET_COLUMNS,
+        *_BENCHMARK_CONFIG_COLUMNS,
         "fold",
         *_BENCHMARK_METRIC_COLUMNS,
     },
@@ -112,6 +127,7 @@ _BENCHMARK_TUNED_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_TUNED_ABLATION: _BENCHMARK_ABLATION_COLUMNS,
     ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY: {
         *_BENCHMARK_TRIPLET_COLUMNS,
+        *_BENCHMARK_CONFIG_COLUMNS,
         *_BENCHMARK_FULL_DATASET_METRIC_COLUMNS,
     },
     ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY: {
@@ -412,6 +428,331 @@ def _warn_stale_artifact_family(
     )
 
 
+def _normalize_lineage_cell(value: Any) -> str:
+    """Normalize scalar values before artifact-lineage comparisons."""
+    if pd.isna(value):
+        return "<NA>"
+    if isinstance(value, (float, np.floating)):
+        return f"{float(value):.12g}"
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    return str(value)
+
+
+def _tuple_set(df: pd.DataFrame, columns: list[str]) -> set[tuple[str, ...]]:
+    """Return distinct normalized row tuples for coverage checks."""
+    rows = df[columns].drop_duplicates()
+    return {tuple(_normalize_lineage_cell(value) for value in row) for row in rows.itertuples(index=False, name=None)}
+
+
+def _append_coverage_error(
+    *,
+    errors: list[str],
+    artifact_name: str,
+    expected_label: str,
+    actual: set[tuple[str, ...]],
+    expected: set[tuple[str, ...]],
+) -> None:
+    """Append a compact coverage-mismatch error."""
+    if actual != expected:
+        errors.append(
+            f"{artifact_name}: {expected_label} coverage mismatch "
+            f"missing={sorted(expected - actual)} extra={sorted(actual - expected)}"
+        )
+
+
+def _validate_binary_selected_values(name: str, df: pd.DataFrame, errors: list[str]) -> None:
+    """Validate feature-stability selected flags are binary."""
+    if "selected" not in df.columns:
+        return
+    values = set(pd.to_numeric(df["selected"], errors="coerce").dropna().astype(int).unique())
+    if values - {0, 1}:
+        errors.append(f"{name}: selected must contain only 0/1 values")
+
+
+def _validate_selection_frequency_values(name: str, df: pd.DataFrame, errors: list[str]) -> None:
+    """Validate feature-report selection frequencies are probabilities."""
+    if "selection_frequency" not in df.columns:
+        return
+    values = pd.to_numeric(df["selection_frequency"], errors="coerce")
+    if values.isna().any() or (values < 0.0).any() or (values > 1.0).any():
+        errors.append(f"{name}: selection_frequency must be between 0 and 1")
+
+
+def _validate_feature_report_coverage(
+    *,
+    artifact_name: str,
+    feature_report: pd.DataFrame | None,
+    benchmark_summary: pd.DataFrame | None,
+    errors: list[str],
+) -> None:
+    """Require feature-report triplets to match benchmark summary triplets."""
+    if feature_report is None or benchmark_summary is None:
+        return
+    required = _BENCHMARK_TRIPLET_COLUMNS
+    if not required.issubset(feature_report.columns) or not required.issubset(benchmark_summary.columns):
+        return
+    _append_coverage_error(
+        errors=errors,
+        artifact_name=artifact_name,
+        expected_label="triplet",
+        actual=_tuple_set(feature_report, ["selector", "classifier", "replication_mode"]),
+        expected=_tuple_set(benchmark_summary, ["selector", "classifier", "replication_mode"]),
+    )
+    _validate_selection_frequency_values(artifact_name, feature_report, errors)
+
+
+def _validate_feature_stability_coverage(
+    *,
+    artifact_name: str,
+    feature_stability: pd.DataFrame | None,
+    benchmark_summary: pd.DataFrame | None,
+    errors: list[str],
+) -> None:
+    """Require feature-stability lineage to match benchmark summary coverage."""
+    if feature_stability is None or benchmark_summary is None:
+        return
+    if "classifier" in feature_stability.columns:
+        if not _BENCHMARK_TRIPLET_COLUMNS.issubset(
+            feature_stability.columns
+        ) or not _BENCHMARK_TRIPLET_COLUMNS.issubset(benchmark_summary.columns):
+            return
+        _append_coverage_error(
+            errors=errors,
+            artifact_name=artifact_name,
+            expected_label="triplet",
+            actual=_tuple_set(feature_stability, ["selector", "classifier", "replication_mode"]),
+            expected=_tuple_set(benchmark_summary, ["selector", "classifier", "replication_mode"]),
+        )
+    else:
+        required = {"selector", "replication_mode"}
+        if not required.issubset(feature_stability.columns) or not required.issubset(benchmark_summary.columns):
+            return
+        _append_coverage_error(
+            errors=errors,
+            artifact_name=artifact_name,
+            expected_label="selector/mode",
+            actual=_tuple_set(feature_stability, ["selector", "replication_mode"]),
+            expected=_tuple_set(benchmark_summary, ["selector", "replication_mode"]),
+        )
+    _validate_binary_selected_values(artifact_name, feature_stability, errors)
+
+
+def _validate_feature_lineage(
+    *,
+    artifact_frames: dict[str, pd.DataFrame] | None,
+    reports: Path,
+    active_original: bool,
+    active_tuned: bool,
+    errors: list[str],
+) -> None:
+    """Validate selector lineage between benchmark summaries and feature artifacts."""
+    if active_original:
+        original_summary = _artifact_frame(
+            name=ArtifactName.BENCHMARK_SUMMARY,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        _validate_feature_stability_coverage(
+            artifact_name=ArtifactName.FEATURE_STABILITY,
+            feature_stability=_artifact_frame(
+                name=ArtifactName.FEATURE_STABILITY,
+                reports=reports,
+                artifact_frames=artifact_frames,
+            ),
+            benchmark_summary=original_summary,
+            errors=errors,
+        )
+        _validate_feature_report_coverage(
+            artifact_name=ArtifactName.FEATURE_REPORT,
+            feature_report=_artifact_frame(
+                name=ArtifactName.FEATURE_REPORT,
+                reports=reports,
+                artifact_frames=artifact_frames,
+            ),
+            benchmark_summary=original_summary,
+            errors=errors,
+        )
+
+    if active_tuned:
+        tuned_summary = _artifact_frame(
+            name=ArtifactName.BENCHMARK_TUNED_SUMMARY,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        _validate_feature_stability_coverage(
+            artifact_name=ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+            feature_stability=_artifact_frame(
+                name=ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+                reports=reports,
+                artifact_frames=artifact_frames,
+            ),
+            benchmark_summary=tuned_summary,
+            errors=errors,
+        )
+        _validate_feature_report_coverage(
+            artifact_name=ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+            feature_report=_artifact_frame(
+                name=ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+                reports=reports,
+                artifact_frames=artifact_frames,
+            ),
+            benchmark_summary=tuned_summary,
+            errors=errors,
+        )
+
+
+def _validate_config_set_equal(
+    *,
+    left_name: str,
+    left_df: pd.DataFrame | None,
+    right_name: str,
+    right_df: pd.DataFrame | None,
+    columns: list[str],
+    errors: list[str],
+) -> None:
+    """Require two artifact frames to describe the same selected configs."""
+    if left_df is None or right_df is None:
+        return
+    required = set(columns)
+    if not required.issubset(left_df.columns) or not required.issubset(right_df.columns):
+        return
+    _append_coverage_error(
+        errors=errors,
+        artifact_name=f"{left_name} vs {right_name}",
+        expected_label="config",
+        actual=_tuple_set(left_df, columns),
+        expected=_tuple_set(right_df, columns),
+    )
+
+
+def _validate_config_subset(
+    *,
+    subset_name: str,
+    subset_df: pd.DataFrame | None,
+    superset_name: str,
+    superset_df: pd.DataFrame | None,
+    columns: list[str],
+    errors: list[str],
+) -> None:
+    """Require selected configs to exist inside the broader evaluated search space."""
+    if subset_df is None or superset_df is None:
+        return
+    required = set(columns)
+    if not required.issubset(subset_df.columns) or not required.issubset(superset_df.columns):
+        return
+    subset_values = _tuple_set(subset_df, columns)
+    superset_values = _tuple_set(superset_df, columns)
+    missing = subset_values - superset_values
+    if missing:
+        errors.append(f"{subset_name}: configs missing from {superset_name} {sorted(missing)}")
+
+
+def _selected_tuned_search_configs(search_df: pd.DataFrame | None) -> pd.DataFrame | None:
+    """Return selected tuned search rows when the marker column is available."""
+    if search_df is None or "is_selected_config" not in search_df.columns:
+        return search_df
+    selected = search_df[search_df["is_selected_config"].astype(bool)]
+    return selected
+
+
+def _validate_selector_config_lineage(
+    *,
+    artifact_frames: dict[str, pd.DataFrame] | None,
+    reports: Path,
+    active_original: bool,
+    active_tuned: bool,
+    errors: list[str],
+) -> None:
+    """Validate selected selector/classifier config lineage across benchmark artifacts."""
+    config_cols = ["selector", "classifier", "replication_mode", "k", "C", "alpha", "gamma", "n_neighbors"]
+    fold_config_cols = [*config_cols, "fold"]
+
+    if active_original:
+        sweep_df = _artifact_frame(
+            name=ArtifactName.BENCHMARK_SWEEP,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        best_df = _artifact_frame(
+            name=ArtifactName.BENCHMARK_BEST_CONFIG,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        fold_df = _artifact_frame(
+            name=ArtifactName.BENCHMARK_FOLD_METRICS,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        full_fit_df = _artifact_frame(
+            name=ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        _validate_config_subset(
+            subset_name=ArtifactName.BENCHMARK_BEST_CONFIG,
+            subset_df=best_df,
+            superset_name=ArtifactName.BENCHMARK_SWEEP,
+            superset_df=sweep_df,
+            columns=config_cols,
+            errors=errors,
+        )
+        _validate_config_set_equal(
+            left_name=ArtifactName.BENCHMARK_BEST_CONFIG,
+            left_df=best_df,
+            right_name=ArtifactName.BENCHMARK_FOLD_METRICS,
+            right_df=fold_df,
+            columns=config_cols,
+            errors=errors,
+        )
+        _validate_config_set_equal(
+            left_name=ArtifactName.BENCHMARK_BEST_CONFIG,
+            left_df=best_df,
+            right_name=ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+            right_df=full_fit_df,
+            columns=config_cols,
+            errors=errors,
+        )
+
+    if active_tuned:
+        search_df = _artifact_frame(
+            name=ArtifactName.BENCHMARK_TUNED_SEARCH,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        best_df = _artifact_frame(
+            name=ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        fold_df = _artifact_frame(
+            name=ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        full_fit_df = _artifact_frame(
+            name=ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+            reports=reports,
+            artifact_frames=artifact_frames,
+        )
+        _validate_config_set_equal(
+            left_name=ArtifactName.BENCHMARK_TUNED_SEARCH,
+            left_df=_selected_tuned_search_configs(search_df),
+            right_name=ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+            right_df=fold_df,
+            columns=fold_config_cols,
+            errors=errors,
+        )
+        _validate_config_set_equal(
+            left_name=ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+            left_df=best_df,
+            right_name=ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+            right_df=full_fit_df,
+            columns=config_cols,
+            errors=errors,
+        )
+
+
 def validate_schema_and_logic(
     output_dir: Path,
     artifact_frames: dict[str, pd.DataFrame] | None = None,
@@ -461,6 +802,20 @@ def validate_schema_and_logic(
         artifact_frames=artifact_frames,
         required_columns=_TEMPORAL_REQUIRED_COLUMNS,
         active=active_temporal,
+        errors=errors,
+    )
+    _validate_feature_lineage(
+        artifact_frames=artifact_frames,
+        reports=reports,
+        active_original=active_original,
+        active_tuned=active_tuned,
+        errors=errors,
+    )
+    _validate_selector_config_lineage(
+        artifact_frames=artifact_frames,
+        reports=reports,
+        active_original=active_original,
+        active_tuned=active_tuned,
         errors=errors,
     )
 
