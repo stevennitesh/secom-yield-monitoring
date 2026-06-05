@@ -204,16 +204,22 @@ def _prepare_inner_selector_view(
     n_neighbors: int | None,
 ) -> _InnerSelectorView:
     """Prepare one tuned inner-CV selected train/eval view."""
-    x_train_sel, x_eval_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
-        x_train_raw=x_train_raw,
-        y_train=y_train,
-        x_eval_raw=x_eval_raw,
-        method=selector,
-        k=int(k),
-        scaler_name=ScalerName.STANDARD,
-        add_indicator=add_indicator,
-        n_neighbors=n_neighbors,
-    )
+    try:
+        x_train_sel, x_eval_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
+            x_train_raw=x_train_raw,
+            y_train=y_train,
+            x_eval_raw=x_eval_raw,
+            method=selector,
+            k=int(k),
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=add_indicator,
+            n_neighbors=n_neighbors,
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "tuned inner selector failure "
+            f"selector={selector} k={int(k)} add_indicator={add_indicator} n_neighbors={n_neighbors}"
+        ) from exc
     return _InnerSelectorView(
         x_train_sel=x_train_sel,
         y_train=y_train,
@@ -256,16 +262,23 @@ def _prepare_outer_selector_view(
 ) -> _OuterSelectorView:
     """Prepare one selected outer-fold view for reuse across classifiers."""
     add_indicator = add_indicator_for_replication_mode(replication_mode)
-    x_train_sel, x_test_sel, feature_meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
-        x_train_raw=x_train_raw,
-        y_train=y_train,
-        x_eval_raw=x_test_raw,
-        method=selector,
-        k=int(selector_config["k"]),
-        scaler_name=ScalerName.STANDARD,
-        add_indicator=add_indicator,
-        n_neighbors=selector_config.get("n_neighbors"),
-    )
+    try:
+        x_train_sel, x_test_sel, feature_meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
+            x_train_raw=x_train_raw,
+            y_train=y_train,
+            x_eval_raw=x_test_raw,
+            method=selector,
+            k=int(selector_config["k"]),
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=add_indicator,
+            n_neighbors=selector_config.get("n_neighbors"),
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "tuned outer selector failure "
+            f"selector={selector} mode={replication_mode} k={int(selector_config['k'])} "
+            f"n_neighbors={selector_config.get('n_neighbors')}"
+        ) from exc
     return _OuterSelectorView(
         x_train_sel=x_train_sel,
         y_train=y_train,

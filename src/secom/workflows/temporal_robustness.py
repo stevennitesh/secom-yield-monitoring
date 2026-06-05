@@ -133,16 +133,23 @@ def _prepare_selector_eval_view(
     n_neighbors: int | None,
 ) -> dict[str, Any]:
     """Prepare selected train/eval matrices while retaining transform metadata."""
-    x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler = fit_selector_pipeline(
-        x_train_raw=x_train_raw,
-        y_train=y_train,
-        x_eval_raw=x_eval_raw,
-        method=method,
-        k=k,
-        scaler_name=scaler_name,
-        add_indicator=add_indicator,
-        n_neighbors=n_neighbors,
-    )
+    try:
+        x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler = fit_selector_pipeline(
+            x_train_raw=x_train_raw,
+            y_train=y_train,
+            x_eval_raw=x_eval_raw,
+            method=method,
+            k=k,
+            scaler_name=scaler_name,
+            add_indicator=add_indicator,
+            n_neighbors=n_neighbors,
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "temporal selector failure "
+            f"selector={method} k={int(k)} scaler={scaler_name} "
+            f"add_indicator={add_indicator} n_neighbors={n_neighbors}"
+        ) from exc
     return {
         "x_train_sel": x_train_sel,
         "y_train": np.asarray(y_train, dtype=int),
@@ -443,6 +450,12 @@ def _fit_phase3_role_model(
         n_neighbors=role_cfg.n_neighbors,
     )
     meta = transformed_feature_metadata_from_imputer(imputer, raw_feature_count=raw_feature_count)
+    if selected_local.size <= 0:
+        raise RuntimeError(
+            "temporal role selector failure "
+            f"role={role_cfg.role} selector={role_cfg.selector} k={role_cfg.k} "
+            f"scaler={role_cfg.scaler} n_neighbors={role_cfg.n_neighbors}"
+        )
     selected_global = [meta[int(i)].feature_index for i in selected_local.tolist()]
     x_dev_sel = x_dev_scaled[:, selected_local]
 

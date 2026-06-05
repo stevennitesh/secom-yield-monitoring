@@ -295,16 +295,24 @@ def prepare_full_selector_view(
     """Fit selector preprocessing on the full benchmark dataset for final summaries."""
     validate_raw_feature_count(x=x, raw_feature_count=raw_feature_count)
     kwargs = selector_kwargs(selector=selector, selector_config=selector_config)
-    x_sel, _x_eval_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
-        x_train_raw=x,
-        y_train=y,
-        x_eval_raw=x,
-        method=selector,
-        k=int(k),
-        scaler_name=ScalerName.STANDARD,
-        add_indicator=add_indicator,
-        n_neighbors=kwargs.get("n_neighbors"),
-    )
+    try:
+        x_sel, _x_eval_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
+            x_train_raw=x,
+            y_train=y,
+            x_eval_raw=x,
+            method=selector,
+            k=int(k),
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=add_indicator,
+            n_neighbors=kwargs.get("n_neighbors"),
+        )
+    except RuntimeError as exc:
+        replication_mode = ReplicationMode.WITH_MISSING_INDICATORS if add_indicator else ReplicationMode.STRICT
+        raise RuntimeError(
+            "benchmark selector failure "
+            f"selector={selector} mode={replication_mode} resample=full_dataset "
+            f"k={int(k)} n_neighbors={kwargs.get('n_neighbors')}"
+        ) from exc
     selected_global = local_to_global_feature_indices(selected_local, meta)
     return {
         "x_sel": x_sel,
@@ -341,16 +349,23 @@ def prepare_selector_views(
         x_test_raw = x[test_idx]
         y_test = y[test_idx]
 
-        x_train_sel, x_test_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
-            x_train_raw=x_train_raw,
-            y_train=y_train,
-            x_eval_raw=x_test_raw,
-            method=selector,
-            k=int(k),
-            scaler_name=ScalerName.STANDARD,
-            add_indicator=add_indicator,
-            n_neighbors=kwargs.get("n_neighbors"),
-        )
+        try:
+            x_train_sel, x_test_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
+                x_train_raw=x_train_raw,
+                y_train=y_train,
+                x_eval_raw=x_test_raw,
+                method=selector,
+                k=int(k),
+                scaler_name=ScalerName.STANDARD,
+                add_indicator=add_indicator,
+                n_neighbors=kwargs.get("n_neighbors"),
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "benchmark selector failure "
+                f"selector={selector} mode={replication_mode} resample=fold_{fold_i} "
+                f"k={int(k)} n_neighbors={kwargs.get('n_neighbors')}"
+            ) from exc
         selected_global = set(local_to_global_feature_indices(selected_local, meta))
         fold_views.append(
             {

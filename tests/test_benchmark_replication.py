@@ -690,6 +690,27 @@ def test_prepare_selector_views_separates_strict_and_missing_indicator_universes
         ]
 
 
+def test_original_selector_failure_names_selector_mode_and_fold() -> None:
+    """Original benchmark selector failures should identify the failed selector context."""
+    x = np.ones((6, 3), dtype=float)
+    y = np.asarray([0, 0, 0, 1, 1, 1], dtype=int)
+    folds = [
+        (np.asarray([0, 1, 2, 3], dtype=int), np.asarray([4, 5], dtype=int)),
+    ]
+
+    with pytest.raises(RuntimeError, match="benchmark selector failure.*selector=Gram-Schmidt.*mode=strict.*fold_1"):
+        benchmark_common.prepare_selector_views(
+            x=x,
+            y=y,
+            folds=folds,
+            selector=SelectorName.GRAM_SCHMIDT,
+            add_indicator=False,
+            selector_config={"k": 2, "n_neighbors": None},
+            raw_feature_count=3,
+            k=2,
+        )
+
+
 def test_tuned_missing_indicator_stability_uses_full_feature_universe(monkeypatch) -> None:
     """Tuned missing-indicator stability should count unavailable indicators as unselected."""
     x_train_raw = np.asarray(
@@ -739,6 +760,28 @@ def test_tuned_missing_indicator_stability_uses_full_feature_universe(monkeypatc
     ].sort_values("feature_index")
     assert indicator_rows["feature_index"].tolist() == [2, 3]
     assert indicator_rows["selected"].tolist() == [0, 1]
+
+
+def test_tuned_inner_selector_failure_names_selector_context(monkeypatch) -> None:
+    """Tuned inner selector failures should identify the failed selector context."""
+
+    def failing_fit_selector_pipeline(**_kwargs):
+        """Simulate the shared selector-pipeline failure."""
+        raise RuntimeError("Selector pipeline produced zero selected features")
+
+    monkeypatch.setattr(benchmark_tuned, "fit_selector_pipeline", failing_fit_selector_pipeline)
+
+    with pytest.raises(RuntimeError, match="tuned inner selector failure.*selector=Gram-Schmidt.*k=2"):
+        benchmark_tuned._prepare_inner_selector_view(
+            x_train_raw=np.ones((4, 3), dtype=float),
+            y_train=np.asarray([0, 0, 1, 1], dtype=int),
+            x_eval_raw=np.ones((2, 3), dtype=float),
+            y_eval=np.asarray([0, 1], dtype=int),
+            selector=SelectorName.GRAM_SCHMIDT,
+            add_indicator=False,
+            k=2,
+            n_neighbors=None,
+        )
 
 
 def test_original_full_fit_summary_does_not_drive_fold_performance(

@@ -174,6 +174,46 @@ def test_lockbox_context_uses_frozen_temporal_transforms_and_selected_indices() 
     assert lock_ctx["lock_scores"].tolist() == [0.1, 0.8, 0.3]
 
 
+def test_temporal_selector_eval_failure_names_selector_context() -> None:
+    """Temporal selector-prep failures should identify selector, k, scaler, and neighbors."""
+    with pytest.raises(
+        RuntimeError,
+        match="temporal selector failure.*selector=Gram-Schmidt.*k=2.*scaler=StandardScaler",
+    ):
+        temporal_robustness._prepare_selector_eval_view(
+            x_train_raw=np.ones((4, 3), dtype=float),
+            y_train=np.asarray([0, 0, 1, 1], dtype=int),
+            x_eval_raw=np.ones((2, 3), dtype=float),
+            y_eval=np.asarray([0, 1], dtype=int),
+            method=SelectorName.GRAM_SCHMIDT,
+            k=2,
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=False,
+            n_neighbors=None,
+        )
+
+
+def test_temporal_role_fit_failure_names_role_selector_context() -> None:
+    """Full-DEV role fitting should fail before model fit when selector yields no features."""
+    role_cfg = RoleConfig(
+        role="primary",
+        selector=SelectorName.GRAM_SCHMIDT,
+        k=2,
+        c_value=1.0,
+        scaler=ScalerName.STANDARD,
+        n_neighbors=None,
+    )
+
+    with pytest.raises(RuntimeError, match="temporal role selector failure.*role=primary.*selector=Gram-Schmidt"):
+        temporal_robustness._fit_phase3_role_model(
+            role_cfg=role_cfg,
+            x_dev_raw=np.ones((6, 3), dtype=float),
+            y_dev=np.asarray([0, 0, 0, 1, 1, 1], dtype=int),
+            week_labels=np.asarray([1, 1, 2, 2, 3, 3], dtype=int),
+            raw_feature_count=3,
+        )
+
+
 def test_temporal_selector_summary_uses_coherent_modal_config_tuple() -> None:
     """Temporal modal config fields should come from one winning config tuple."""
     outer_eval_df = pd.DataFrame(

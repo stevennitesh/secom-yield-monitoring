@@ -146,6 +146,27 @@ def test_fit_selector_pipeline_rejects_mismatched_label_length() -> None:
         )
 
 
+def test_fit_selector_pipeline_rejects_zero_selected_features(monkeypatch) -> None:
+    """Selector pipelines should fail clearly when a selector yields no candidates."""
+    monkeypatch.setattr(
+        engine,
+        "select_features",
+        lambda **_kwargs: (np.asarray([], dtype=int), np.asarray([-np.inf, -np.inf], dtype=float)),
+    )
+
+    with pytest.raises(RuntimeError, match="zero selected features"):
+        fit_selector_pipeline(
+            x_train_raw=np.zeros((4, 2), dtype=float),
+            y_train=np.asarray([0, 0, 1, 1], dtype=int),
+            x_eval_raw=np.zeros((2, 2), dtype=float),
+            method=SelectorName.S2N,
+            k=2,
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=False,
+            n_neighbors=None,
+        )
+
+
 def test_fit_selector_pipeline_metadata_ignores_eval_only_missingness() -> None:
     """Missing-indicator metadata should be learned from training data only."""
     x_train = np.asarray(
