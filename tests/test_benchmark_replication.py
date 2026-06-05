@@ -8,15 +8,21 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from secom.config import ArtifactName, BenchmarkClassifier, SelectorName, StudyStatus
+from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, SelectorName, StudyStatus
+from secom.preprocess import make_imputer, transformed_feature_metadata_from_imputer
 from secom.workflows.audit import run_study_audit
 from secom.workflows.benchmark_common import (
     build_cluster_id_map,
+    build_feature_report,
     classifier_config_from_row,
     selector_config_from_row,
     validate_raw_feature_count,
 )
-from secom.workflows.benchmark_replication import _evaluate_config_over_folds, run_benchmark_replication
+from secom.workflows.benchmark_replication import (
+    _evaluate_config_over_folds,
+    run_benchmark_replication,
+    run_original_benchmark_replication,
+)
 from secom.workflows import benchmark_common, benchmark_tuned
 from tests.assertions import assert_artifacts_exist, assert_columns_include
 
@@ -118,6 +124,148 @@ def test_benchmark_replication_feature_report_aligns_with_requested_classifier(
     assert set(feature_report_df["classifier"].dropna().astype(str).unique()) == {"krr"}
     tuned_feature_report_df = pd.read_csv(out_dir / "reports" / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
     assert set(tuned_feature_report_df["classifier"].dropna().astype(str).unique()) == {"krr"}
+
+
+def test_feature_report_keeps_classifier_specific_stability_when_available() -> None:
+    """Classifier-scoped stability rows should not be averaged across classifiers."""
+    feature_stability_df = pd.DataFrame(
+        [
+            {
+                "selector": SelectorName.F_TEST,
+                "classifier": BenchmarkClassifier.KRR,
+                "replication_mode": ReplicationMode.STRICT,
+                "resample_id": "fold_1",
+                "feature_index": 0,
+                "feature_type": "value",
+                "feature_name_or_source_col": "X0",
+                "selected": 1,
+            },
+            {
+                "selector": SelectorName.F_TEST,
+                "classifier": BenchmarkClassifier.LOGREG,
+                "replication_mode": ReplicationMode.STRICT,
+                "resample_id": "fold_1",
+                "feature_index": 0,
+                "feature_type": "value",
+                "feature_name_or_source_col": "X0",
+                "selected": 0,
+            },
+        ]
+    )
+    benchmark_configs_df = pd.DataFrame(
+        [
+            {
+                "selector": SelectorName.F_TEST,
+                "classifier": BenchmarkClassifier.KRR,
+                "replication_mode": ReplicationMode.STRICT,
+            },
+            {
+                "selector": SelectorName.F_TEST,
+                "classifier": BenchmarkClassifier.LOGREG,
+                "replication_mode": ReplicationMode.STRICT,
+            },
+        ]
+    )
+    coefficient_maps = {
+        (SelectorName.F_TEST, BenchmarkClassifier.LOGREG, ReplicationMode.STRICT): {0: 0.75},
+    }
+
+    report = build_feature_report(
+        feature_stability_df=feature_stability_df,
+        benchmark_configs_df=benchmark_configs_df,
+        coefficient_maps=coefficient_maps,
+        cluster_id_map={0: 7},
+    )
+
+    by_classifier = report.set_index("classifier")
+    assert by_classifier.loc[BenchmarkClassifier.KRR, "selection_frequency"] == 1.0
+    assert np.isnan(by_classifier.loc[BenchmarkClassifier.KRR, "conditional_effect_magnitude"])
+    assert by_classifier.loc[BenchmarkClassifier.LOGREG, "selection_frequency"] == 0.0
+    assert by_classifier.loc[BenchmarkClassifier.LOGREG, "conditional_effect_magnitude"] == 0.75
+    assert by_classifier.loc[BenchmarkClassifier.LOGREG, "expected_contribution"] == 0.0
+    assert by_classifier["cluster_id"].tolist() == [7, 7]
+
+
+def test_feature_report_expands_selector_scoped_stability_to_requested_classifiers() -> None:
+    """Original selector-scoped stability should expand to each requested classifier without effect leakage."""
+    feature_stability_df = pd.DataFrame(
+        [
+            {
+                "selector": SelectorName.F_TEST,
+                "replication_mode": ReplicationMode.WITH_MISSING_INDICATORS,
+                "resample_id": "fold_1",
+                "feature_index": 0,
+                "feature_type": "value",
+                "feature_name_or_source_col": "X0",
+                "selected": 1,
+            },
+            {
+                "selector": SelectorName.F_TEST,
+                "replication_mode": ReplicationMode.WITH_MISSING_INDICATORS,
+                "resample_id": "fold_2",
+                "feature_index": 0,
+                "feature_type": "value",
+                "feature_name_or_source_col": "X0",
+                "selected": 0,
+            },
+            {
+                "selector": SelectorName.F_TEST,
+                "replication_mode": ReplicationMode.WITH_MISSING_INDICATORS,
+                "resample_id": "fold_1",
+                "feature_index": 2,
+                "feature_type": "missing_indicator",
+                "feature_name_or_source_col": "M0",
+                "selected": 1,
+            },
+            {
+                "selector": SelectorName.F_TEST,
+                "replication_mode": ReplicationMode.WITH_MISSING_INDICATORS,
+                "resample_id": "fold_2",
+                "feature_index": 2,
+                "feature_type": "missing_indicator",
+                "feature_name_or_source_col": "M0",
+                "selected": 1,
+            },
+        ]
+    )
+    benchmark_configs_df = pd.DataFrame(
+        [
+            {
+                "selector": SelectorName.F_TEST,
+                "classifier": BenchmarkClassifier.KRR,
+                "replication_mode": ReplicationMode.WITH_MISSING_INDICATORS,
+            },
+            {
+                "selector": SelectorName.F_TEST,
+                "classifier": BenchmarkClassifier.LOGREG,
+                "replication_mode": ReplicationMode.WITH_MISSING_INDICATORS,
+            },
+        ]
+    )
+    coefficient_maps = {
+        (SelectorName.F_TEST, BenchmarkClassifier.LOGREG, ReplicationMode.WITH_MISSING_INDICATORS): {
+            0: 0.5,
+            2: 0.25,
+        },
+    }
+
+    report = build_feature_report(
+        feature_stability_df=feature_stability_df,
+        benchmark_configs_df=benchmark_configs_df,
+        coefficient_maps=coefficient_maps,
+        cluster_id_map={0: 4},
+    )
+
+    assert len(report) == 4
+    krr_rows = report[report["classifier"] == BenchmarkClassifier.KRR].sort_values("feature_index")
+    logreg_rows = report[report["classifier"] == BenchmarkClassifier.LOGREG].sort_values("feature_index")
+    assert krr_rows["selection_frequency"].tolist() == [0.5, 1.0]
+    assert krr_rows["conditional_effect_magnitude"].isna().all()
+    assert logreg_rows["selection_frequency"].tolist() == [0.5, 1.0]
+    assert logreg_rows["conditional_effect_magnitude"].tolist() == [0.5, 0.25]
+    assert logreg_rows["expected_contribution"].tolist() == [0.25, 0.25]
+    assert logreg_rows["cluster_id"].tolist()[0] == 4
+    assert np.isnan(logreg_rows["cluster_id"].tolist()[1])
 
 
 def test_benchmark_bundle_prepares_dataset_once(
@@ -468,6 +616,155 @@ def test_tuned_selector_view_caches_reuse_preparation_across_classifiers(monkeyp
     assert inner_first is inner_second
     assert outer_first is outer_second
     assert calls["count"] == 3
+
+
+def test_prepare_selector_views_separates_strict_and_missing_indicator_universes() -> None:
+    """Strict mode should emit value features only; indicator mode should emit all reportable indicators."""
+    x = np.asarray(
+        [
+            [0.0, np.nan],
+            [0.2, 2.0],
+            [1.0, 3.0],
+            [1.2, 4.0],
+            [0.4, np.nan],
+            [1.4, 6.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1, 0, 1], dtype=int)
+    folds = [
+        (np.asarray([0, 1, 2, 3], dtype=int), np.asarray([4, 5], dtype=int)),
+        (np.asarray([2, 3, 4, 5], dtype=int), np.asarray([0, 1], dtype=int)),
+    ]
+
+    strict = benchmark_common.prepare_selector_views(
+        x=x,
+        y=y,
+        folds=folds,
+        selector=SelectorName.F_TEST,
+        add_indicator=False,
+        selector_config={"k": 1, "n_neighbors": None},
+        raw_feature_count=2,
+        k=1,
+    )["feature_stability_df"]
+    with_indicators = benchmark_common.prepare_selector_views(
+        x=x,
+        y=y,
+        folds=folds,
+        selector=SelectorName.F_TEST,
+        add_indicator=True,
+        selector_config={"k": 1, "n_neighbors": None},
+        raw_feature_count=2,
+        k=1,
+    )["feature_stability_df"]
+
+    assert strict["feature_type"].unique().tolist() == ["value"]
+    for _resample_id, frame in with_indicators.groupby("resample_id", sort=False):
+        assert frame.sort_values("feature_index")["feature_index"].tolist() == [0, 1, 2, 3]
+        assert frame.sort_values("feature_index")["feature_type"].tolist() == [
+            "value",
+            "value",
+            "missing_indicator",
+            "missing_indicator",
+        ]
+
+
+def test_tuned_missing_indicator_stability_uses_full_feature_universe(monkeypatch) -> None:
+    """Tuned missing-indicator stability should count unavailable indicators as unselected."""
+    x_train_raw = np.asarray(
+        [
+            [1.0, np.nan],
+            [2.0, 3.0],
+            [3.0, 4.0],
+            [4.0, 5.0],
+        ],
+        dtype=float,
+    )
+    imputer = make_imputer(add_indicator=True)
+    imputer.fit(x_train_raw)
+    feature_meta = transformed_feature_metadata_from_imputer(imputer=imputer, raw_feature_count=2)
+    prepared = benchmark_tuned._OuterSelectorView(
+        x_train_sel=np.asarray([[0.0], [1.0], [0.2], [0.8]], dtype=float),
+        y_train=np.asarray([0, 1, 0, 1], dtype=int),
+        x_test_sel=np.asarray([[0.1], [0.9]], dtype=float),
+        y_test=np.asarray([0, 1], dtype=int),
+        feature_meta=feature_meta,
+        selected_local=np.asarray([2], dtype=int),
+        imputer=imputer,
+    )
+
+    monkeypatch.setattr(
+        benchmark_tuned,
+        "fit_classifier_scores",
+        lambda **_kwargs: (
+            np.asarray([0.0, 1.0, 0.2, 0.8], dtype=float),
+            np.asarray([0.1, 0.9], dtype=float),
+        ),
+    )
+
+    _row, feature_stability_df = benchmark_tuned._evaluate_outer_prepared_view(
+        prepared=prepared,
+        selector=SelectorName.F_TEST,
+        classifier=BenchmarkClassifier.KRR,
+        replication_mode=ReplicationMode.WITH_MISSING_INDICATORS,
+        selector_config={"k": 1, "n_neighbors": None},
+        classifier_config={"alpha": 1.0, "gamma": None},
+        raw_feature_count=2,
+        fold=1,
+    )
+
+    indicator_rows = feature_stability_df[
+        feature_stability_df["feature_type"].astype(str).eq("missing_indicator")
+    ].sort_values("feature_index")
+    assert indicator_rows["feature_index"].tolist() == [2, 3]
+    assert indicator_rows["selected"].tolist() == [0, 1]
+
+
+def test_original_full_fit_summary_does_not_drive_fold_performance(
+    synthetic_input_dir: Path,
+    workspace_tmp_dir: Path,
+    monkeypatch,
+) -> None:
+    """Full-dataset fit metrics should stay separate from fold-derived benchmark summary metrics."""
+    import secom.workflows.benchmark_replication as benchmark
+
+    monkeypatch.setattr(benchmark, "selector_param_grid", lambda _selector: [{"k": 2, "n_neighbors": None}])
+    monkeypatch.setattr(benchmark, "classifier_param_grid", lambda _classifier: [{"alpha": 1.0, "gamma": None}])
+
+    def fake_fit_full_dataset(**kwargs) -> dict[str, object]:
+        """Return sentinel full-fit metrics that must not appear as fold-summary metrics."""
+        prepared_full = kwargs["prepared_full"]
+        return {
+            "threshold_oof_global": 999.0,
+            "BER_full_dataset": 0.99,
+            "True+_full_dataset": 0.01,
+            "True-_full_dataset": 0.01,
+            "ROC_AUC_full_dataset": 0.01,
+            "PR_AUC_full_dataset": 0.01,
+            "MCC_full_dataset": -0.99,
+            "F2_full_dataset": 0.01,
+            "n_samples_full_dataset": int(prepared_full["n_samples_full_dataset"]),
+            "n_fails_full_dataset": int(prepared_full["n_fails_full_dataset"]),
+            "n_selected_features_full_dataset": int(prepared_full["n_selected_features_full_dataset"]),
+            "coefficient_by_feature_index": {},
+        }
+
+    monkeypatch.setattr(benchmark, "fit_full_dataset", fake_fit_full_dataset)
+
+    out_dir = workspace_tmp_dir / "out_original_full_fit_isolation"
+    run_original_benchmark_replication(
+        input_dir=synthetic_input_dir,
+        output_dir=out_dir,
+        selectors_run=[SelectorName.S2N],
+        classifiers_run=[BenchmarkClassifier.KRR],
+    )
+
+    reports = out_dir / "reports"
+    summary_df = pd.read_csv(reports / ArtifactName.BENCHMARK_SUMMARY)
+    full_fit_df = pd.read_csv(reports / ArtifactName.BENCHMARK_FULL_FIT_SUMMARY)
+
+    assert np.allclose(full_fit_df["BER_full_dataset"].to_numpy(dtype=float), 0.99)
+    assert not np.allclose(summary_df["mean_BER"].to_numpy(dtype=float), 0.99)
 
 
 def test_config_row_denormalization_converts_nan_to_none() -> None:

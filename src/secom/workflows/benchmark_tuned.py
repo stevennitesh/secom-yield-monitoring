@@ -24,7 +24,7 @@ from secom.metrics import (
     binary_metrics_at_threshold,
     find_ber_optimal_threshold,
 )
-from secom.preprocess import local_to_global_feature_indices, transformed_feature_metadata_from_imputer
+from secom.preprocess import local_to_global_feature_indices
 from secom.qa import validate_tuned_benchmark_artifacts
 from secom.selection.engine import fit_selector_pipeline
 from secom.selection.tuning import select_near_best_auc_config
@@ -37,6 +37,7 @@ from secom.workflows.benchmark_common import (
     build_benchmark_ablation_df,
     build_cluster_id_map,
     build_feature_report,
+    build_primary_feature_universe,
     build_benchmark_summary_df,
     classifier_param_grid,
     classifier_config_from_row,
@@ -326,9 +327,9 @@ def _evaluate_outer_prepared_view(
         classifier=classifier,
         replication_mode=replication_mode,
         resample_id=f"fold_{fold}",
-        feature_universe=transformed_feature_metadata_from_imputer(
-            imputer=prepared.imputer,
+        feature_universe=build_primary_feature_universe(
             raw_feature_count=raw_feature_count,
+            add_indicator=add_indicator_for_replication_mode(replication_mode),
         ),
         selected_global=selected_global,
     )

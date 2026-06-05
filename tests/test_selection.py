@@ -175,6 +175,50 @@ def test_fit_selector_pipeline_metadata_ignores_eval_only_missingness() -> None:
     assert imputer.transform(x_eval).shape[1] == 2
 
 
+@pytest.mark.parametrize(
+    ("selector", "n_neighbors"),
+    [
+        (SelectorName.S2N, None),
+        (SelectorName.TTEST, None),
+        (SelectorName.F_TEST, None),
+        (SelectorName.PEARSON, None),
+        (SelectorName.RELIEFF, 1),
+        (SelectorName.GRAM_SCHMIDT, None),
+    ],
+)
+def test_fit_selector_pipeline_supports_each_active_selector(selector: str, n_neighbors: int | None) -> None:
+    """Every active selector should produce valid selected train/eval matrices through the pipeline."""
+    x_train = np.asarray(
+        [
+            [0.0, 0.0, 1.0, 5.0],
+            [0.2, 0.0, 1.0, 4.0],
+            [0.4, 1.0, 0.0, 3.0],
+            [1.6, 1.0, 0.0, 2.0],
+            [1.8, 2.0, 1.0, 1.0],
+            [2.0, 2.0, 1.0, 0.0],
+        ],
+        dtype=float,
+    )
+    x_eval = np.asarray([[0.1, 0.0, 1.0, 4.5], [1.9, 2.0, 1.0, 0.5]], dtype=float)
+    y_train = np.asarray([0, 0, 0, 1, 1, 1], dtype=int)
+
+    x_train_sel, x_eval_sel, feature_meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
+        x_train_raw=x_train,
+        y_train=y_train,
+        x_eval_raw=x_eval,
+        method=selector,
+        k=2,
+        scaler_name=ScalerName.STANDARD,
+        add_indicator=False,
+        n_neighbors=n_neighbors,
+    )
+
+    assert x_train_sel.shape == (6, 2)
+    assert x_eval_sel.shape == (2, 2)
+    assert selected_local.shape == (2,)
+    assert int(np.max(selected_local)) < len(feature_meta)
+
+
 def test_select_best_inner_config_prefers_ber_within_near_best_auc_band() -> None:
     """Inner tuning should prefer BER inside the near-best AUC tolerance."""
     selected = select_best_inner_config(

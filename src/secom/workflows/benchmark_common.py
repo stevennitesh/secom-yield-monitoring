@@ -501,6 +501,7 @@ def build_feature_report(
     cluster_id_map: dict[int, int],
 ) -> pd.DataFrame:
     """Build the benchmark feature report from selection stability and coefficients."""
+    classifier_scoped = "classifier" in feature_stability_df.columns
     group_cols = [
         "selector",
         "replication_mode",
@@ -508,6 +509,8 @@ def build_feature_report(
         "feature_type",
         "feature_name_or_source_col",
     ]
+    if classifier_scoped:
+        group_cols.insert(1, "classifier")
     grouped = (
         feature_stability_df.groupby(group_cols, sort=False)["selected"]
         .mean()
@@ -515,7 +518,10 @@ def build_feature_report(
         .rename(columns={"selected": "selection_frequency"})
     )
     config_pairs = benchmark_configs_df[["selector", "classifier", "replication_mode"]].drop_duplicates()
-    report_df = grouped.merge(config_pairs, on=["selector", "replication_mode"], how="inner", sort=False)
+    merge_cols = (
+        ["selector", "classifier", "replication_mode"] if classifier_scoped else ["selector", "replication_mode"]
+    )
+    report_df = grouped.merge(config_pairs, on=merge_cols, how="inner", sort=False)
 
     coefficient_rows = [
         {

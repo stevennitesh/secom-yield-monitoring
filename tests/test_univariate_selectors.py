@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import types
 
 import numpy as np
 
@@ -237,6 +238,95 @@ def test_relief_rank_features_fallback_matches_known_neighborhood_geometry(monke
     assert np.allclose(scores, [2.0, -1.0])
 
 
+def test_relief_rank_features_fallback_marks_constant_columns_as_bottom_rank(monkeypatch) -> None:
+    """Fallback ReliefF should never prefer constant columns over usable features."""
+    monkeypatch.setitem(sys.modules, "skrebate", None)
+    x = np.asarray(
+        [
+            [0.0, 0.0, 5.0],
+            [0.0, 1.0, 5.0],
+            [2.0, 0.0, 5.0],
+            [2.0, 1.0, 5.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    order, scores = relief_rank_features(x, y, n_neighbors=1)
+
+    assert order.tolist() == [0, 1, 2]
+    assert np.isneginf(scores[2])
+
+
+def test_relief_rank_features_caps_fallback_neighbors_to_available_candidates(monkeypatch) -> None:
+    """Fallback ReliefF should handle neighbor requests larger than class candidate counts."""
+    monkeypatch.setitem(sys.modules, "skrebate", None)
+    x = np.asarray(
+        [
+            [0.0, 0.0],
+            [0.0, 1.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    order, scores = relief_rank_features(x, y, n_neighbors=10)
+
+    assert order.tolist() == [0, 1]
+    assert np.allclose(scores, [2.0, -0.5])
+
+
+def test_relief_rank_features_rejects_nonpositive_neighbors() -> None:
+    """ReliefF neighbor count should be positive before dispatching to any implementation."""
+    with np.testing.assert_raises_regex(ValueError, "n_neighbors must be positive"):
+        relief_rank_features(
+            np.zeros((4, 2), dtype=float),
+            np.asarray([0, 0, 1, 1], dtype=int),
+            n_neighbors=0,
+        )
+
+
+def test_relief_rank_features_external_path_sanitizes_scores_and_constants(monkeypatch) -> None:
+    """External skrebate scores should receive the same deterministic cleanup as fallback scores."""
+    captured: dict[str, int] = {}
+
+    class FakeReliefF:
+        """Minimal skrebate-compatible estimator for dispatch testing."""
+
+        def __init__(self, *, n_features_to_select: int, n_neighbors: int, n_jobs: int) -> None:
+            captured["n_features_to_select"] = n_features_to_select
+            captured["n_neighbors"] = n_neighbors
+            captured["n_jobs"] = n_jobs
+            self.feature_importances_ = np.asarray([0.5, np.nan, 99.0], dtype=float)
+
+        def fit(self, x: np.ndarray, y: np.ndarray) -> "FakeReliefF":
+            captured["fit_rows"] = int(x.shape[0])
+            captured["fit_labels"] = int(y.size)
+            return self
+
+    monkeypatch.setitem(sys.modules, "skrebate", types.SimpleNamespace(ReliefF=FakeReliefF))
+    x = np.asarray(
+        [
+            [0.0, 0.0, 7.0],
+            [1.0, 1.0, 7.0],
+            [2.0, 0.0, 7.0],
+            [3.0, 1.0, 7.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    order, scores = relief_rank_features(x, y, n_neighbors=3)
+
+    assert captured == {"n_features_to_select": 3, "n_neighbors": 3, "n_jobs": -1, "fit_rows": 4, "fit_labels": 4}
+    assert order.tolist() == [0, 1, 2]
+    assert scores[0] == 0.5
+    assert np.isneginf(scores[1])
+    assert np.isneginf(scores[2])
+
+
 def test_relief_rank_features_fallback_uses_deterministic_order(monkeypatch) -> None:
     """Fallback ReliefF ranking should sanitize invalid scores deterministically."""
     import secom.feature_select.relief as relief
@@ -249,7 +339,15 @@ def test_relief_rank_features_fallback_uses_deterministic_order(monkeypatch) -> 
     monkeypatch.setattr(relief, "_fallback_relief_scores", fake_fallback)
 
     order, scores = relief_rank_features(
-        np.zeros((4, 4), dtype=float),
+        np.asarray(
+            [
+                [0.0, 1.0, 2.0, 3.0],
+                [1.0, 2.0, 3.0, 4.0],
+                [2.0, 3.0, 4.0, 5.0],
+                [3.0, 4.0, 5.0, 6.0],
+            ],
+            dtype=float,
+        ),
         np.asarray([0, 1, 0, 1], dtype=int),
         n_neighbors=1,
     )
