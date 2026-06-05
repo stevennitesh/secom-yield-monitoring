@@ -196,6 +196,54 @@ def test_gram_schmidt_rank_features_skips_constant_columns() -> None:
     assert np.isneginf(scores[0])
 
 
+def test_gram_schmidt_rank_features_skips_nonzero_constant_columns() -> None:
+    """Gram-Schmidt constant detection should use variance, not only zero norm."""
+    x = np.asarray(
+        [
+            [5.0, 0.0],
+            [5.0, 1.0],
+            [5.0, 0.0],
+            [5.0, 1.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    order, scores = gram_schmidt_rank_features(x, y, k=2)
+
+    assert 0 not in order.tolist()
+    assert np.isneginf(scores[0])
+
+
+def test_gram_schmidt_rank_features_returns_no_order_when_all_features_invalid() -> None:
+    """Gram-Schmidt should not provide bottom-rank sentinels as selected candidates."""
+    x = np.asarray(
+        [
+            [5.0, 0.0],
+            [5.0, 0.0],
+            [5.0, 0.0],
+            [5.0, 0.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    order, scores = gram_schmidt_rank_features(x, y, k=2)
+
+    assert order.size == 0
+    assert np.isneginf(scores).all()
+
+
+def test_gram_schmidt_rank_features_rejects_nonpositive_k() -> None:
+    """Gram-Schmidt feature budget should be positive before ranking starts."""
+    with np.testing.assert_raises_regex(ValueError, "k must be positive"):
+        gram_schmidt_rank_features(
+            np.zeros((4, 2), dtype=float),
+            np.asarray([0, 0, 1, 1], dtype=int),
+            k=0,
+        )
+
+
 def test_gram_schmidt_rank_features_skips_redundant_correlated_feature() -> None:
     """Gram-Schmidt should prefer a nonredundant residual signal over a duplicate."""
     x = np.asarray(
