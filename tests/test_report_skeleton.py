@@ -57,7 +57,8 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "#### Original Feature Stability and Interpretation",
             "Gram Schmidt",
             "33.5 +/- 2.2",
-            "binary-label ANOVA F-test ranking and absolute Pearson correlation ranking are mathematically monotonic",
+            "local Ttest row uses a pooled two-sample t statistic",
+            "Binary-label ANOVA F-test ranking and absolute Pearson correlation ranking are mathematically monotonic",
             "UCI reference table reports separate Ftest and Pearson rows",
         ],
     )

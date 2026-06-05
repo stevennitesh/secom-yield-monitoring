@@ -52,6 +52,47 @@ def test_score_welch_t_matches_hand_calculated_class_separation() -> None:
     assert np.isneginf(scores[1])
 
 
+def test_score_pooled_ttest_matches_hand_calculated_class_separation() -> None:
+    """Pooled Ttest should use the common two-sample pooled variance estimate."""
+    x = np.asarray(
+        [
+            [0.0, 7.0],
+            [2.0, 7.0],
+            [3.0, 7.0],
+            [5.0, 7.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    scores = univariate.score_pooled_ttest(x, y)
+
+    pooled_var = ((2 - 1) * 2.0 + (2 - 1) * 2.0) / (2 + 2 - 2)
+    expected_feature_0 = 3.0 / np.sqrt(pooled_var * (1.0 / 2.0 + 1.0 / 2.0) + EPS_SELECTOR)
+    assert np.isclose(scores[0], expected_feature_0)
+    assert np.isneginf(scores[1])
+
+
+def test_pooled_ttest_is_available_through_rank_features() -> None:
+    """The UCI-style Ttest selector should be a first-class univariate selector."""
+    x = np.asarray(
+        [
+            [0.0, 0.0, 4.0],
+            [0.0, 1.0, 4.0],
+            [1.0, 0.0, 4.0],
+            [1.0, 1.0, 4.0],
+        ],
+        dtype=float,
+    )
+    y = np.asarray([0, 0, 1, 1], dtype=int)
+
+    order, scores = univariate.rank_features(SelectorName.TTEST, x, y)
+
+    assert order.tolist() == [0, 1, 2]
+    assert scores[0] > scores[1]
+    assert np.isneginf(scores[2])
+
+
 def test_score_f_test_skips_constant_columns(monkeypatch) -> None:
     """F-test scoring should omit constant columns from sklearn scoring."""
     x = np.array(

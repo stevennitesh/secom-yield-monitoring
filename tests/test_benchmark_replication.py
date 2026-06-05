@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from secom.config import ArtifactName, SelectorName, StudyStatus
+from secom.config import ArtifactName, BenchmarkClassifier, SelectorName, StudyStatus
 from secom.workflows.audit import run_study_audit
 from secom.workflows.benchmark_common import (
     build_cluster_id_map,
@@ -16,7 +16,7 @@ from secom.workflows.benchmark_common import (
     selector_config_from_row,
     validate_raw_feature_count,
 )
-from secom.workflows.benchmark_replication import run_benchmark_replication
+from secom.workflows.benchmark_replication import _evaluate_config_over_folds, run_benchmark_replication
 from secom.workflows import benchmark_common, benchmark_tuned
 from tests.assertions import assert_artifacts_exist, assert_columns_include
 
@@ -179,12 +179,12 @@ def test_benchmark_bundle_prepares_dataset_once(
     assert cluster_payloads == [cluster_payload, cluster_payload]
 
 
-def test_benchmark_bundle_defaults_run_pearson_only_in_original_and_krr_only_in_tuned(
+def test_benchmark_bundle_defaults_run_uci_selectors_and_krr_only_in_original(
     synthetic_input_dir: Path,
     workspace_tmp_dir: Path,
     monkeypatch,
 ) -> None:
-    """Default bundle scope should keep Pearson original-only and tune KRR only."""
+    """Default bundle scope should keep the faithful UCI selector family on KRR."""
     import secom.workflows.benchmark_replication as benchmark
     import secom.workflows.benchmark_tuned as tuned
 
@@ -225,13 +225,70 @@ def test_benchmark_bundle_defaults_run_pearson_only_in_original_and_krr_only_in_
 
     assert captured["original"] == SelectorName.ORIGINAL_BENCHMARK
     assert captured["tuned"] == SelectorName.ACTIVE
-    assert captured["original_classifiers"] == ["krr", "logreg"]
-    assert captured["tuned_classifiers"] == ["krr"]
+    assert captured["original_classifiers"] == [BenchmarkClassifier.KRR]
+    assert captured["tuned_classifiers"] == [BenchmarkClassifier.KRR]
+    assert SelectorName.TTEST in result["original_selectors_run"]
+    assert SelectorName.WELCH_T not in result["original_selectors_run"]
     assert SelectorName.PEARSON in result["original_selectors_run"]
     assert SelectorName.PEARSON not in result["tuned_selectors_run"]
-    assert result["original_classifiers_run"] == ["krr", "logreg"]
-    assert result["tuned_classifiers_run"] == ["krr"]
+    assert result["original_classifiers_run"] == [BenchmarkClassifier.KRR]
+    assert result["tuned_classifiers_run"] == [BenchmarkClassifier.KRR]
     assert progress_messages == ["tuned progress marker"]
+
+
+def test_original_benchmark_fold_metrics_use_train_thresholds(monkeypatch) -> None:
+    """Original benchmark folds should score test splits with train-derived thresholds."""
+    prepared_views = {
+        "fold_views": [
+            {
+                "fold": 1,
+                "x_train_sel": np.zeros((2, 1), dtype=float),
+                "y_train": np.asarray([0, 1], dtype=int),
+                "x_test_sel": np.zeros((2, 1), dtype=float),
+                "y_test": np.asarray([0, 1], dtype=int),
+                "n_train": 2,
+                "n_test": 2,
+                "n_test_fails": 1,
+                "n_selected_features": 1,
+            },
+            {
+                "fold": 2,
+                "x_train_sel": np.zeros((2, 1), dtype=float),
+                "y_train": np.asarray([0, 1], dtype=int),
+                "x_test_sel": np.zeros((2, 1), dtype=float),
+                "y_test": np.asarray([0, 1], dtype=int),
+                "n_train": 2,
+                "n_test": 2,
+                "n_test_fails": 1,
+                "n_selected_features": 1,
+            },
+        ]
+    }
+    fold_score_pairs = [
+        (np.asarray([0.1, 0.9], dtype=float), np.asarray([0.2, 0.9], dtype=float)),
+        (np.asarray([0.9, 0.1], dtype=float), np.asarray([0.8, 0.2], dtype=float)),
+    ]
+
+    def fake_fit_classifier_scores(**kwargs) -> tuple[np.ndarray, np.ndarray]:
+        """Return deterministic train/eval scores and require train-score requests."""
+        assert kwargs["include_train_scores"] is True
+        return fold_score_pairs.pop(0)
+
+    monkeypatch.setattr("secom.workflows.benchmark_replication.fit_classifier_scores", fake_fit_classifier_scores)
+
+    payload = _evaluate_config_over_folds(
+        prepared_views=prepared_views,
+        selector=SelectorName.TTEST,
+        classifier=BenchmarkClassifier.KRR,
+        replication_mode="strict",
+        classifier_config={"alpha": 1.0, "gamma": None},
+    )
+
+    fold_rows = payload["fold_rows"]
+    assert [row["threshold_outer_train"] for row in fold_rows] == [0.9, -np.inf]
+    assert [row["BER"] for row in fold_rows] == [0.0, 0.5]
+    assert payload["mean_BER"] == 0.25
+    assert "threshold_oof_global" in payload
 
 
 def test_benchmark_bundle_explicit_classifier_override_reaches_original_and_tuned(

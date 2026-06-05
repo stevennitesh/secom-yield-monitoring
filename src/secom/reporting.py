@@ -85,7 +85,7 @@ _UCI_ORIGINAL_BASELINE_ROWS = [
     },
     {
         "uci_method": "Ttest",
-        "selector": "Welch-t",
+        "selector": "Ttest",
         "uci_BER": "33.7 +/- 2.1",
         "uci_True+": "59.6 +/- 4.7",
         "uci_True-": "73.0 +/- 1.8",
@@ -177,11 +177,12 @@ def _uci_original_baseline_table(benchmark_summary: pd.DataFrame | None) -> list
 def _uci_selector_definition_note() -> str:
     """Explain selector-definition differences that affect UCI/local interpretation."""
     return (
-        "Interpretation note: in this local implementation, binary-label ANOVA F-test ranking and absolute Pearson "
-        "correlation ranking are mathematically monotonic for non-constant features, so they can select the same "
-        "40-feature set and produce identical local rows. The UCI reference table reports separate Ftest and Pearson "
-        "rows, which should be read as that benchmark's implementation/protocol definitions rather than a guarantee "
-        "that the two selectors are distinct under this replication."
+        "Interpretation note: the local Ttest row uses a pooled two-sample t statistic to align with the UCI "
+        "selector label; Welch-t remains available only as an explicit local selector. Binary-label ANOVA F-test "
+        "ranking and absolute Pearson correlation ranking are mathematically monotonic for non-constant features, "
+        "so they can select the same 40-feature set and produce identical local rows. The UCI reference table reports "
+        "separate Ftest and Pearson rows, which should be read as that benchmark's implementation/protocol "
+        "definitions rather than a guarantee that the two selectors are distinct under this replication."
     )
 
 
