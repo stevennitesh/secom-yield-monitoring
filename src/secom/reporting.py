@@ -186,6 +186,15 @@ def _uci_selector_definition_note() -> str:
     )
 
 
+def _feature_interpretation_claim_note() -> str:
+    """Return the feature-report claim boundary used by final and scaffold reports."""
+    return (
+        "Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof "
+        "or validated process-driver identification. Stability across resamples matters more than a single "
+        "full-fit ranking, and missing-indicator features are kept distinct from raw value features."
+    )
+
+
 def _top_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
     """Render primary benchmark BER/TPR/TNR evidence."""
     table = benchmark_summary.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).copy()
@@ -377,8 +386,10 @@ def _best_row_feature_table(
         ["expected_contribution", "selection_frequency", "feature_name_or_source_col"],
         ascending=[False, False, True],
     ).head(10)
+    claim_note = f"- {_feature_interpretation_claim_note()}"
     if rows["conditional_effect_magnitude"].isna().all():
         lines = [
+            claim_note,
             "- Effect magnitudes are unavailable for the leading classifier, so this table is shown as a stability-first view.",
             "",
             "| feature | type | selection_frequency | cluster_id |",
@@ -392,6 +403,8 @@ def _best_row_feature_table(
         return lines
 
     lines = [
+        claim_note,
+        "",
         "| feature | type | selection_frequency | effect_magnitude | expected_contribution | cluster_id |",
         "|---|---|---:|---:|---:|---:|",
     ]
@@ -1396,10 +1409,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     )
     lines.append("## Feature Stability and Interpretation")
     lines.append("")
-    lines.append(
-        "Feature outputs in this project are prioritization aids, not causal proof. Stability across resamples matters more "
-        "than a single full-fit ranking, and missing-indicator features are kept distinct from raw value features."
-    )
+    lines.append(_feature_interpretation_claim_note())
     lines.append("")
     lines.append("### Original Replication")
     lines.append("")
@@ -1437,7 +1447,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         lines,
         "Feature stability",
         "figures/feature_stability.png",
-        "Figure 3 summarizes the most stable and influential features across the benchmark studies, while preserving the distinction between raw value features and missing indicators.",
+        "Figure 3 summarizes benchmark feature-prioritization evidence across the benchmark studies, while preserving the distinction between raw value features and missing indicators.",
     )
     lines.append("## Temporal Robustness Stress Test")
     lines.append("")

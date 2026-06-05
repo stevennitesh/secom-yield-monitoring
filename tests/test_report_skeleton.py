@@ -60,6 +60,8 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "local Ttest row uses a pooled two-sample t statistic",
             "Binary-label ANOVA F-test ranking and absolute Pearson correlation ranking are mathematically monotonic",
             "UCI reference table reports separate Ftest and Pearson rows",
+            "Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof",
+            "validated process-driver identification",
         ],
     )
-    assert_text_excludes_all(text, ["PRIMARY_STUDY_STATUS", "| n/a | n/a |"])
+    assert_text_excludes_all(text, ["PRIMARY_STUDY_STATUS", "| n/a | n/a |", "most stable and influential features"])

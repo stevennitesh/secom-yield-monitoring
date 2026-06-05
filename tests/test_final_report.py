@@ -76,6 +76,23 @@ def test_final_report_surfaces_required_industrialization_gaps(
     )
 
 
+def test_final_report_scopes_feature_selection_claims(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Feature reporting should avoid causal or production-strength selector claims."""
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof",
+            "validated process-driver identification",
+            "Figure 3 summarizes benchmark feature-prioritization evidence",
+        ],
+    )
+    assert_text_excludes_all(text, ["most stable and influential features"])
+
+
 def test_final_report_writes_expected_figure_files(
     active_artifacts_output_dir: Path,
 ) -> None:
