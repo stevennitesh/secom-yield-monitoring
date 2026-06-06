@@ -803,7 +803,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
             f"- Classifier: `{best_benchmark_row['classifier']}`\n"
             f"- Replication mode: `{best_benchmark_row['replication_mode']}`\n"
             f"- Mean BER: `{_format_float(best_benchmark_row['mean_BER'])}`\n"
-            f"- 95% CI: `{_format_float(best_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_benchmark_row['CI_upper_BER'])}`\n"
+            f"- 95% fold-bootstrap CI: `{_format_float(best_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_benchmark_row['CI_upper_BER'])}`\n"
             f"- Mean ROC_AUC: `{_format_float(best_benchmark_row['mean_ROC_AUC'])}`\n"
             f"- Mean PR_AUC: `{_format_float(best_benchmark_row['mean_PR_AUC'])}`\n"
             f"- Mean MCC: `{_format_float(best_benchmark_row['mean_MCC'])}`\n"
@@ -871,7 +871,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
             f"- Classifier: `{best_tuned_benchmark_row['classifier']}`\n"
             f"- Replication mode: `{best_tuned_benchmark_row['replication_mode']}`\n"
             f"- Mean BER: `{_format_float(best_tuned_benchmark_row['mean_BER'])}`\n"
-            f"- 95% CI: `{_format_float(best_tuned_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_tuned_benchmark_row['CI_upper_BER'])}`\n"
+            f"- 95% fold-bootstrap CI: `{_format_float(best_tuned_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_tuned_benchmark_row['CI_upper_BER'])}`\n"
             f"- Mean ROC_AUC: `{_format_float(best_tuned_benchmark_row['mean_ROC_AUC'])}`\n"
             f"- Mean PR_AUC: `{_format_float(best_tuned_benchmark_row['mean_PR_AUC'])}`\n"
             f"- Mean MCC: `{_format_float(best_tuned_benchmark_row['mean_MCC'])}`\n"
@@ -1332,7 +1332,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         lines,
         "Benchmark comparison",
         "figures/benchmark_comparison.png",
-        "Figure 1 shows the strongest original and tuned benchmark rows by mean BER, with uncertainty bars where the benchmark summaries expose confidence intervals.",
+        "Figure 1 shows the strongest original and tuned benchmark rows by mean BER, with uncertainty bars where the benchmark summaries expose fold-bootstrap confidence intervals.",
     )
     if ctx.benchmark_ablation is not None and not ctx.benchmark_ablation.empty:
         lines.append("### Missing-Indicator Ablation")

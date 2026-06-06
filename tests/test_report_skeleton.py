@@ -53,6 +53,7 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "mean_PR_AUC",
             "mean_MCC",
             "mean_F2",
+            "95% fold-bootstrap CI",
             "Leading original replication configuration",
             "Leading tuned benchmark configuration",
             "#### Original Feature Stability and Interpretation",
