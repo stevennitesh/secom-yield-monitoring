@@ -56,7 +56,7 @@ The active benchmark pipeline includes:
 - raw file validation for ragged rows, label values, timestamps, and missing labels
 - deterministic row ordering by timestamp and raw row id
 - leakage-controlled imputation, optional missingness indicators, scaling, and feature selection
-- feature selectors: S2N, pooled Ttest, F-test, Pearson, ReliefF, and Gram-Schmidt
+- feature selectors: S2N, pooled T-test, F-test, Pearson, ReliefF, and Gram-Schmidt
 - classifiers: kernel ridge regression and logistic regression
 - nested/tuned benchmark paths with cached selector transformations for runtime efficiency
 - bootstrap uncertainty summaries for fold-level metrics
@@ -139,7 +139,7 @@ Original benchmark replication:
 python scripts/run_original_replication.py --input-dir data/raw --output-dir runs/original_replication --strict
 ```
 
-Use this command for the UCI original 40-feature benchmark comparison. The original replication default uses KRR with the UCI selector family, including pooled Ttest and Pearson.
+Use this command for the UCI original 40-feature benchmark comparison. The original replication default uses KRR with the UCI selector family, including pooled T-test and Pearson.
 
 Tuned benchmark:
 

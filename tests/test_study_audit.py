@@ -653,3 +653,44 @@ def test_study_audit_rejects_tuned_selected_config_drift(workspace_tmp_dir: Path
         "benchmark_tuned_search.csv vs benchmark_tuned_fold_metrics.csv: config coverage mismatch" in error
         for error in result.errors
     )
+
+
+@pytest.mark.parametrize("is_selected_config", ["False", pd.NA])
+def test_study_audit_does_not_treat_falsey_selected_config_markers_as_selected(
+    workspace_tmp_dir: Path,
+    is_selected_config: object,
+) -> None:
+    """Tuned search lineage should only accept explicit selected-config markers."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    write_artifact_row(
+        reports,
+        ArtifactName.BENCHMARK_TUNED_SEARCH,
+        {
+            "selector": "F-test",
+            "classifier": "krr",
+            "replication_mode": "strict",
+            "fold": 1,
+            "k": 20,
+            "alpha": 1.0,
+            "gamma": 0.1,
+            "C": pd.NA,
+            "n_neighbors": pd.NA,
+            "mean_inner_ROC_AUC": 0.73,
+            "mean_inner_BER": 0.28,
+            "is_selected_config": is_selected_config,
+        },
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "benchmark_tuned_search.csv vs benchmark_tuned_fold_metrics.csv: config coverage mismatch" in error
+        for error in result.errors
+    )

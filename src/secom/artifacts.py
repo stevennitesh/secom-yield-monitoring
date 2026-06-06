@@ -653,7 +653,11 @@ def _selected_tuned_search_configs(search_df: pd.DataFrame | None) -> pd.DataFra
     """Return selected tuned search rows when the marker column is available."""
     if search_df is None or "is_selected_config" not in search_df.columns:
         return search_df
-    selected = search_df[search_df["is_selected_config"].astype(bool)]
+    marker = search_df["is_selected_config"]
+    numeric_selected = pd.to_numeric(marker, errors="coerce").eq(1)
+    string_selected = marker.astype("string").str.strip().str.lower().eq("true")
+    selected_mask = (numeric_selected | string_selected).fillna(False)
+    selected = search_df[selected_mask]
     return selected
 
 
