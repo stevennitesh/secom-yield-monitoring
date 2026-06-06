@@ -120,6 +120,22 @@ _UCI_ORIGINAL_BASELINE_ROWS = [
     },
 ]
 
+_INDUSTRIALIZATION_GAPS = [
+    "No stable device/tool/chamber identifier for unseen-device validation.",
+    "No intervention or maintenance history.",
+    "No explicit regime-change metadata.",
+    "No downstream decision or action outcome data.",
+    "Anonymous features limit process interpretation.",
+    "Single-dataset evidence only.",
+    "Operational framing in this report is illustrative, not production-validated.",
+]
+
+_INDUSTRIALIZATION_NEXT_DATA = [
+    "Next data collection should add device- or tool-level identifiers, intervention logs, and longer-horizon cross-context validation.",
+    "A production-grade study would also require deployment decision objectives and cost accounting.",
+    "Stronger process claims would require additional data to support stronger causal or process claims.",
+]
+
 
 def _uci_baseline_match(benchmark_summary: pd.DataFrame | None, selector: str) -> pd.Series | None:
     """Return the local strict KRR row that best matches the UCI original benchmark setup."""
@@ -467,6 +483,15 @@ _REPORT_CONTEXT_ARTIFACTS: dict[str, str] = {
     "temporal_cost": ArtifactName.TEMPORAL_COST_CURVES,
 }
 
+_TEMPORAL_REPORT_FIELDS = (
+    "temporal_selection",
+    "temporal_lockbox",
+    "temporal_drift",
+    "temporal_mspc",
+    "temporal_manager",
+    "temporal_cost",
+)
+
 
 def _first_row(frame: pd.DataFrame | None, mask: pd.Series | None = None) -> pd.Series | None:
     """Return the first row from an optional artifact frame."""
@@ -489,6 +514,11 @@ def _load_report_context(output_dir: Path) -> ReportContext:
     frames = {
         field: read_csv_if_exists(reports / artifact_name) for field, artifact_name in _REPORT_CONTEXT_ARTIFACTS.items()
     }
+    temporal_status = str(manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN))
+    if temporal_status not in {StudyStatus.PASSED, StudyStatus.WARNING}:
+        for field in _TEMPORAL_REPORT_FIELDS:
+            frames[field] = None
+
     benchmark_summary = frames["benchmark_summary"]
     benchmark_tuned_summary = frames["benchmark_tuned_summary"]
     benchmark_tuned_best = frames["benchmark_tuned_best"]
@@ -552,6 +582,29 @@ def _load_report_context(output_dir: Path) -> ReportContext:
 def _append_bullet_list(lines: list[str], items: list[str]) -> None:
     """Append Markdown bullet lines in-place."""
     lines.extend(f"- {item}" for item in items)
+
+
+def _manifest_industrialization_notes(manifest: dict[str, object]) -> list[str]:
+    """Return non-empty run-specific industrialization notes from the manifest."""
+    notes = manifest.get("industrialization_notes", [])
+    if not isinstance(notes, list):
+        return []
+    normalized = [str(note).strip() for note in notes]
+    return [note for note in normalized if note]
+
+
+def _append_industrialization_section(lines: list[str], manifest: dict[str, object]) -> None:
+    """Append required industrialization gaps plus run-specific manifest notes."""
+    lines.append("## Industrialization Gaps")
+    lines.append("")
+    _append_bullet_list(lines, _INDUSTRIALIZATION_GAPS)
+
+    notes = _manifest_industrialization_notes(manifest)
+    if notes:
+        lines.append("")
+        lines.append("### Run-Specific Industrialization Notes")
+        lines.append("")
+        _append_bullet_list(lines, notes)
 
 
 def _append_benchmark_summary_table(
@@ -623,6 +676,19 @@ def _write_final_report_figures(ctx: ReportContext) -> None:
         ctx.temporal_cost,
         figures_dir / "workload_cost_framing.png",
     )
+
+
+def _raise_for_failed_report_audit(output_dir: Path) -> None:
+    """Block final report generation when active artifacts fail the study audit."""
+    from secom.workflows.audit import run_study_audit
+
+    audit = run_study_audit(output_dir)
+    if audit.ok:
+        return
+    details = "; ".join(audit.errors[:5])
+    if len(audit.errors) > 5:
+        details = f"{details}; ... ({len(audit.errors)} total errors)"
+    raise RuntimeError(f"Cannot render final report because study audit failed: {details}")
 
 
 def _write_markdown_with_optional_pdf(final_path: Path, lines: list[str], *, export_pdf: bool) -> None:
@@ -749,6 +815,9 @@ def write_report_skeleton(output_dir: Path) -> Path:
     lines.append("")
     lines.append("- Use a fixed feature budget with the literature-style selector/classifier comparison.")
     lines.append("- Perform preprocessing and feature selection inside each training fold only.")
+    lines.append(
+        "- Select original classifier configurations from the non-nested replication sweep; use the tuned benchmark for the stricter nested-CV estimate."
+    )
     lines.append("- Treat the missing-indicator comparison as a paired benchmark condition.")
     lines.append(
         "- Report final thresholded results through `BER`, `TPR`, and `TNR`, with supporting metrics shown separately."
@@ -800,7 +869,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
             f"- Classifier: `{best_benchmark_row['classifier']}`\n"
             f"- Replication mode: `{best_benchmark_row['replication_mode']}`\n"
             f"- Mean BER: `{_format_float(best_benchmark_row['mean_BER'])}`\n"
-            f"- 95% CI: `{_format_float(best_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_benchmark_row['CI_upper_BER'])}`\n"
+            f"- 95% fold-bootstrap CI: `{_format_float(best_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_benchmark_row['CI_upper_BER'])}`\n"
             f"- Mean ROC_AUC: `{_format_float(best_benchmark_row['mean_ROC_AUC'])}`\n"
             f"- Mean PR_AUC: `{_format_float(best_benchmark_row['mean_PR_AUC'])}`\n"
             f"- Mean MCC: `{_format_float(best_benchmark_row['mean_MCC'])}`\n"
@@ -868,7 +937,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
             f"- Classifier: `{best_tuned_benchmark_row['classifier']}`\n"
             f"- Replication mode: `{best_tuned_benchmark_row['replication_mode']}`\n"
             f"- Mean BER: `{_format_float(best_tuned_benchmark_row['mean_BER'])}`\n"
-            f"- 95% CI: `{_format_float(best_tuned_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_tuned_benchmark_row['CI_upper_BER'])}`\n"
+            f"- 95% fold-bootstrap CI: `{_format_float(best_tuned_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_tuned_benchmark_row['CI_upper_BER'])}`\n"
             f"- Mean ROC_AUC: `{_format_float(best_tuned_benchmark_row['mean_ROC_AUC'])}`\n"
             f"- Mean PR_AUC: `{_format_float(best_tuned_benchmark_row['mean_PR_AUC'])}`\n"
             f"- Mean MCC: `{_format_float(best_tuned_benchmark_row['mean_MCC'])}`\n"
@@ -1191,13 +1260,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
     lines.append("")
     lines.append("Interpret this section as robustness evidence, not as the primary basis for project success.")
     lines.append("")
-    lines.append("## Industrialization Gaps")
-    lines.append("")
-    lines.append("- No stable device/tool/chamber identifier for unseen-device validation.")
-    lines.append("- No intervention or maintenance history.")
-    lines.append("- No explicit regime-change metadata.")
-    lines.append("- Anonymous features limit process interpretation.")
-    lines.append("- Operational framing in this report is illustrative, not production-validated.")
+    _append_industrialization_section(lines, manifest)
     lines.append("")
     lines.append("## Conclusions and Next Data Requirements")
     lines.append("")
@@ -1217,9 +1280,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.append(
             "- The temporal stress test provides secondary robustness evidence without active claim restrictions in this run."
         )
-    lines.append(
-        "- A true industrial deployment study would still require stable device or tool identifiers, intervention history, and richer process metadata."
-    )
+    _append_bullet_list(lines, _INDUSTRIALIZATION_NEXT_DATA)
     lines.append("")
 
     out_path = reports / ArtifactName.REPORT_SKELETON
@@ -1229,6 +1290,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
 
 def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     """Write the final Markdown report and optionally export it through pandoc."""
+    _raise_for_failed_report_audit(output_dir)
     ctx = _load_report_context(output_dir)
     restrictions = list(ctx.manifest.get("temporal_claim_restrictions", []))
     _write_final_report_figures(ctx)
@@ -1302,13 +1364,36 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         "without being allowed to erase valid benchmark evidence by default."
     )
     lines.append("")
-    lines.append("## Benchmark Replication")
+    lines.append("## Original Replication Design")
     lines.append("")
     lines.append(
         "The original replication keeps a fixed feature budget, compares the literature-style selector and classifier families, "
         "and treats missing-indicator features as a paired ablation. The key result is not just the best row, but the fact "
         "that multiple selector/classifier combinations remain materially better than trivial failure detection."
     )
+    lines.append(
+        "Original classifier configurations are selected from the same non-nested replication sweep used for reporting, so tuned benchmark results remain the stricter estimate."
+    )
+    lines.append("")
+    lines.append("## Original Replication Search Summary")
+    lines.append("")
+    if ctx.benchmark_sweep is not None and not ctx.benchmark_sweep.empty:
+        lines.append("### Original Search Space")
+        lines.append("")
+        lines.extend(_original_search_space_table(ctx.benchmark_sweep))
+        lines.append("")
+    else:
+        lines.append("- Benchmark sweep artifact missing or empty.")
+        lines.append("")
+    if ctx.benchmark_best is not None and not ctx.benchmark_best.empty:
+        lines.append("### Original Selected Configurations")
+        lines.append("")
+        lines.extend(_original_best_config_table(ctx.benchmark_best))
+        lines.append("")
+    else:
+        lines.append("- Benchmark best-config artifact missing or empty.")
+        lines.append("")
+    lines.append("## Original Replication Results")
     lines.append("")
     _append_benchmark_summary_table(lines, "### Primary Benchmark Evidence", ctx.benchmark_summary)
     lines.append("### UCI Original Benchmark Reference")
@@ -1326,7 +1411,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         lines,
         "Benchmark comparison",
         "figures/benchmark_comparison.png",
-        "Figure 1 shows the strongest original and tuned benchmark rows by mean BER, with uncertainty bars where the benchmark summaries expose confidence intervals.",
+        "Figure 1 shows the strongest original and tuned benchmark rows by mean BER, with uncertainty bars where the benchmark summaries expose fold-bootstrap confidence intervals.",
     )
     if ctx.benchmark_ablation is not None and not ctx.benchmark_ablation.empty:
         lines.append("### Missing-Indicator Ablation")
@@ -1337,13 +1422,33 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
             for row in ctx.benchmark_ablation.itertuples(index=False)
         )
         lines.append("")
-    lines.append("## Tuned Benchmark")
+    lines.append("## Tuned Benchmark Design")
     lines.append("")
     lines.append(
         "The tuned benchmark tightens methodology by moving model and selector choices inside nested cross-validation. "
         "That makes the tuned results a better estimate of what a disciplined tuning process achieves on unseen folds, "
         "even when the headline BER ends up slightly worse than the best original replication row."
     )
+    lines.append("")
+    lines.append("## Tuned Benchmark Search Summary")
+    lines.append("")
+    if ctx.benchmark_tuned_search is not None and not ctx.benchmark_tuned_search.empty:
+        lines.append("### Tuned Search Space")
+        lines.append("")
+        lines.extend(_tuned_search_space_table(ctx.benchmark_tuned_search))
+        lines.append("")
+    else:
+        lines.append("- Tuned search artifact missing or empty.")
+        lines.append("")
+    if ctx.benchmark_tuned_best is not None and not ctx.benchmark_tuned_best.empty:
+        lines.append("### Modal Selected Configurations")
+        lines.append("")
+        lines.extend(_tuned_best_config_table(ctx.benchmark_tuned_best))
+        lines.append("")
+    else:
+        lines.append("- Tuned best-config artifact missing or empty.")
+        lines.append("")
+    lines.append("## Tuned Benchmark Results")
     lines.append("")
     _append_benchmark_summary_table(lines, "### Primary Tuned Evidence", ctx.benchmark_tuned_summary)
     _append_supporting_metrics_table(lines, "### Supporting Tuned Metrics", ctx.benchmark_tuned_summary)
@@ -1456,20 +1561,71 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         "It uses a chronological DEV/LOCKBOX split, time-aware model selection, threshold freeze, drift checks, and an MSPC comparison."
     )
     lines.append("")
+    lines.append("### Temporal Model Selection Summary")
+    lines.append("")
     if ctx.primary_temporal_row is not None:
         lines.append(
-            f"- The primary temporal selector is `{ctx.primary_temporal_row['selector']}` with mean BER `{_format_float(ctx.primary_temporal_row['mean_BER'])}`."
+            "- Primary temporal selector under the temporal protocol:"
+            f" `{ctx.primary_temporal_row['selector']}` with mean_BER=`{_format_float(ctx.primary_temporal_row['mean_BER'])}`."
         )
-    if ctx.drift_row is not None:
-        lines.append(
-            f"- The current temporal run is drift-gated as `{ctx.drift_row['drift_gate_status']}` with max PSI `{_format_float(ctx.drift_row['max_PSI'])}`."
-        )
-    if restrictions:
-        lines.append("- Active temporal claim restrictions:")
-        lines.extend(f"  - `{restriction}`" for restriction in restrictions)
+    if ctx.temporal_selection is not None and not ctx.temporal_selection.empty:
+        challenger_rows = ctx.temporal_selection[ctx.temporal_selection["is_challenger"].astype(bool)]
+        if not challenger_rows.empty:
+            challenger_row = challenger_rows.iloc[0]
+            lines.append(
+                "- Challenger selector retained for secondary comparison:"
+                f" `{challenger_row['selector']}` with mean_BER=`{_format_float(challenger_row['mean_BER'])}`."
+            )
+        else:
+            lines.append("- No challenger met the temporal eligibility rule.")
+        lines.append("")
+        lines.append("#### Selector Ranking and Modal Configurations")
+        lines.append("")
+        lines.extend(_temporal_selection_summary_table(ctx.temporal_selection))
+        lines.append("")
     else:
-        lines.append("- No temporal claim restrictions are active in this run.")
-    lines.append("")
+        lines.append("- Temporal model selection artifact missing or empty.")
+        lines.append("")
+    if str(ctx.manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN)) not in {
+        StudyStatus.PASSED,
+        StudyStatus.WARNING,
+    }:
+        lines.append(
+            f"- Temporal robustness status is `{ctx.manifest.get('temporal_robustness_status', StudyStatus.NOT_RUN)}`, so temporal result tables are treated as unavailable for canonical report claims."
+        )
+        lines.append("")
+    if ctx.drift_row is not None or restrictions:
+        lines.append("### Drift and Claim Restrictions")
+        lines.append("")
+        if ctx.drift_row is not None and ctx.temporal_drift is not None and not ctx.temporal_drift.empty:
+            lines.append(
+                f"- The current temporal run is drift-gated as `{ctx.drift_row['drift_gate_status']}` with max PSI `{_format_float(ctx.drift_row['max_PSI'])}`."
+            )
+            lines.append("")
+            drift_columns = [
+                col
+                for col in [
+                    "model_scope",
+                    "drift_gate_status",
+                    "lockbox_claims_allowed",
+                    "abs_prevalence_shift",
+                    "ks_pvalue_scores",
+                    "max_PSI",
+                    "median_PSI",
+                ]
+                if col in ctx.temporal_drift.columns
+            ]
+            lines.extend(_markdown_table(ctx.temporal_drift.sort_values("model_scope"), drift_columns))
+            lines.append("")
+        if restrictions:
+            lines.append("- Active temporal claim restrictions:")
+            lines.extend(f"  - `{restriction}`" for restriction in restrictions)
+            lines.append(
+                "- Lockbox evidence remains reportable, but restricted claims should be treated as descriptive rather than confirmatory."
+            )
+        else:
+            lines.append("- No temporal claim restrictions are active in this run.")
+        lines.append("")
     if ctx.temporal_lockbox is not None and not ctx.temporal_lockbox.empty:
         lines.append("### Lockbox Metrics")
         lines.append("")
@@ -1519,20 +1675,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         "figures/workload_cost_framing.png",
         "Figure 6 combines weekly workload framing with illustrative cost curves so operational impact can be discussed without overstating production readiness.",
     )
-    lines.append("## Industrialization Gaps")
-    lines.append("")
-    _append_bullet_list(
-        lines,
-        [
-            "No stable device/tool/chamber identifier for unseen-device validation.",
-            "No intervention or maintenance history.",
-            "No explicit regime-change metadata.",
-            "No downstream decision or action outcome data.",
-            "Anonymous features limit process interpretation.",
-            "Single-dataset evidence only.",
-            "Operational framing in this report is illustrative, not production-validated.",
-        ],
-    )
+    _append_industrialization_section(lines, ctx.manifest)
     lines.append("")
     lines.append("## Conclusions and Next Data Requirements")
     lines.append("")
@@ -1554,9 +1697,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
                 if restrictions
                 else "The temporal study adds secondary robustness evidence without active claim restrictions in this run."
             ),
-            "Next data collection should add device- or tool-level identifiers, intervention logs, and longer-horizon cross-context validation.",
-            "A production-grade study would also require deployment decision objectives and cost accounting.",
-            "Stronger process claims would require additional data to support stronger causal or process claims.",
+            *_INDUSTRIALIZATION_NEXT_DATA,
         ],
     )
     lines.append("")

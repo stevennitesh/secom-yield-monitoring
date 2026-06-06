@@ -61,6 +61,15 @@ def _small_temporal_grid(selector: str) -> list[dict[str, object]]:
     ]
 
 
+def _ci_fields(values_by_metric: dict[str, float]) -> dict[str, float]:
+    """Return symmetric lower/upper CI fields for compact artifact fixtures."""
+    return {
+        f"CI_{bound}_{metric}": float(value)
+        for metric, value in values_by_metric.items()
+        for bound in ("lower", "upper")
+    }
+
+
 def _run_fast_temporal_study(input_dir: Path, output_dir: Path) -> dict[str, object]:
     """Run temporal robustness with reduced seeds and selector grid."""
     import secom.workflows.temporal_robustness as temporal
@@ -100,7 +109,7 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "benchmark_original_status": StudyStatus.PASSED,
         "benchmark_tuned_status": StudyStatus.PASSED,
         "temporal_robustness_status": StudyStatus.WARNING,
-        "temporal_claim_restrictions": ["high_shift_blocks_lockbox_superiority_claim"],
+        "temporal_claim_restrictions": ["primary_high_shift_blocks_lockbox_superiority_claim"],
         "industrialization_notes": ["No downstream decision or action outcome data."],
     }
     write_manifest(manifest, reports / ArtifactName.MANIFEST)
@@ -123,6 +132,16 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "mean_PR_AUC": 0.42,
         "mean_MCC": 0.31,
         "mean_F2": 0.58,
+        **_ci_fields(
+            {
+                "True+": 0.72,
+                "True-": 0.86,
+                "ROC_AUC": 0.79,
+                "PR_AUC": 0.42,
+                "MCC": 0.31,
+                "F2": 0.58,
+            }
+        ),
     }
     tuned_row = {
         **benchmark_row,
@@ -135,6 +154,16 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "mean_PR_AUC": 0.47,
         "mean_MCC": 0.36,
         "mean_F2": 0.62,
+        **_ci_fields(
+            {
+                "True+": 0.76,
+                "True-": 0.88,
+                "ROC_AUC": 0.83,
+                "PR_AUC": 0.47,
+                "MCC": 0.36,
+                "F2": 0.62,
+            }
+        ),
     }
     write_artifact_row(reports, ArtifactName.BENCHMARK_SWEEP, benchmark_row)
     write_artifact_row(reports, ArtifactName.BENCHMARK_BEST_CONFIG, benchmark_row)
@@ -184,6 +213,7 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
             "gamma": 0.1,
             "C": np.nan,
             "n_neighbors": np.nan,
+            "threshold_full_dataset": 0.42,
             "BER_full_dataset": 0.19,
             "True+_full_dataset": 0.75,
             "True-_full_dataset": 0.87,
@@ -281,6 +311,7 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
             "gamma": 0.1,
             "C": np.nan,
             "n_neighbors": np.nan,
+            "threshold_full_dataset": 0.43,
             "BER_full_dataset": 0.17,
             "True+_full_dataset": 0.78,
             "True-_full_dataset": 0.89,
@@ -359,42 +390,73 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
             "is_selected_config": True,
         },
     )
-    write_artifact_row(
+    write_artifact_rows(
         reports,
         ArtifactName.TEMPORAL_FREEZE,
-        {"role": "primary", "selector": "F-test", "is_frozen_config": True},
+        [
+            {"role": "primary", "selector": "F-test", "is_frozen_config": True},
+            {"role": "challenger", "selector": "S2N", "is_frozen_config": True},
+        ],
     )
-    write_artifact_row(
+    write_artifact_rows(
         reports,
         ArtifactName.TEMPORAL_LOCKBOX,
-        {
-            "role": "primary",
-            "threshold_policy": ThresholdPolicy.SCIENTIFIC,
-            "BER": 0.28,
-            "True+": 0.6,
-            "True-": 0.84,
-            "ROC_AUC": 0.72,
-            "PR_AUC": 0.35,
-            "MCC": 0.22,
-            "F2": 0.48,
-            "threshold_at_TNR90": 0.6,
-            "TNR_at_TNR90": 0.9,
-            "TPR_at_TNR90": 0.5,
-            "lockbox_fails": 5,
-        },
+        [
+            {
+                "role": "primary",
+                "threshold_policy": ThresholdPolicy.SCIENTIFIC,
+                "BER": 0.28,
+                "True+": 0.6,
+                "True-": 0.84,
+                "ROC_AUC": 0.72,
+                "PR_AUC": 0.35,
+                "MCC": 0.22,
+                "F2": 0.48,
+                "threshold_at_TNR90": 0.6,
+                "TNR_at_TNR90": 0.9,
+                "TPR_at_TNR90": 0.5,
+                "lockbox_fails": 5,
+            },
+            {
+                "role": "challenger",
+                "threshold_policy": ThresholdPolicy.SCIENTIFIC,
+                "BER": 0.32,
+                "True+": 0.55,
+                "True-": 0.81,
+                "ROC_AUC": 0.70,
+                "PR_AUC": 0.32,
+                "MCC": 0.18,
+                "F2": 0.44,
+                "threshold_at_TNR90": 0.58,
+                "TNR_at_TNR90": 0.9,
+                "TPR_at_TNR90": 0.25,
+                "lockbox_fails": 5,
+            },
+        ],
     )
-    write_artifact_row(
+    write_artifact_rows(
         reports,
         ArtifactName.TEMPORAL_DRIFT,
-        {
-            "model_scope": "primary",
-            "drift_gate_status": "HIGH_SHIFT",
-            "lockbox_claims_allowed": False,
-            "abs_prevalence_shift": 0.08,
-            "ks_pvalue_scores": 0.01,
-            "max_PSI": 0.4,
-            "median_PSI": 0.12,
-        },
+        [
+            {
+                "model_scope": "primary",
+                "drift_gate_status": "HIGH_SHIFT",
+                "lockbox_claims_allowed": False,
+                "abs_prevalence_shift": 0.08,
+                "ks_pvalue_scores": 0.01,
+                "max_PSI": 0.4,
+                "median_PSI": 0.12,
+            },
+            {
+                "model_scope": "challenger",
+                "drift_gate_status": "PASS",
+                "lockbox_claims_allowed": True,
+                "abs_prevalence_shift": 0.01,
+                "ks_pvalue_scores": 0.30,
+                "max_PSI": 0.1,
+                "median_PSI": 0.05,
+            },
+        ],
     )
     write_artifact_row(
         reports,
@@ -418,19 +480,31 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
             "all_flag_baseline": 1.5,
             "primary_scientific": 0.8,
             "primary_operational": 0.9,
+            "challenger_scientific": 0.85,
+            "challenger_operational": 0.95,
         },
     )
-    write_artifact_row(
+    write_artifact_rows(
         reports,
         ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
-        {
-            "role": "primary",
-            "threshold_policy": ThresholdPolicy.SCIENTIFIC,
-            "predicted_flag_fraction": 0.2,
-            "mean_weekly_flagged_wafers": 12.0,
-            "mean_weekly_fail_captures": 3.0,
-            "mean_weekly_fail_misses": 2.0,
-        },
+        [
+            {
+                "role": "primary",
+                "threshold_policy": ThresholdPolicy.SCIENTIFIC,
+                "predicted_flag_fraction": 0.2,
+                "mean_weekly_flagged_wafers": 12.0,
+                "mean_weekly_fail_captures": 3.0,
+                "mean_weekly_fail_misses": 2.0,
+            },
+            {
+                "role": "challenger",
+                "threshold_policy": ThresholdPolicy.SCIENTIFIC,
+                "predicted_flag_fraction": 0.18,
+                "mean_weekly_flagged_wafers": 10.0,
+                "mean_weekly_fail_captures": 2.0,
+                "mean_weekly_fail_misses": 3.0,
+            },
+        ],
     )
     return output_dir
 

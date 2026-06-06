@@ -2,15 +2,30 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 
-import matplotlib
+import numpy as np
+import pandas as pd
+
+
+def _configure_matplotlib_cache() -> None:
+    """Use a writable Matplotlib config directory when callers have not set one."""
+    if "MPLCONFIGDIR" in os.environ:
+        return
+    cache_dir = Path(tempfile.gettempdir()) / "secom-matplotlib"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["MPLCONFIGDIR"] = str(cache_dir)
+
+
+_configure_matplotlib_cache()
+
+import matplotlib  # noqa: E402
 
 matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
+import matplotlib.pyplot as plt  # noqa: E402
 
 FIGURE_DPI = 180
 
@@ -211,10 +226,18 @@ def write_lockbox_vs_mspc_figure(
         float(supervised_row.get("TPR_at_TNR90", np.nan)),
         float(mspc_row.get("best_MSPC_TPR_at_TNR90", np.nan)),
     ]
+    finite_values = [value for value in values if np.isfinite(value)]
+    if not finite_values:
+        _save_placeholder_figure(
+            output_path,
+            "Lockbox Supervised vs MSPC",
+            "Matched-TNR90 TPR values are missing.",
+        )
+        return
 
     fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.bar(labels, values, color=["#264653", "#f4a261"])
-    ax.set_ylim(0, max(1.0, max(value for value in values if not np.isnan(value)) + 0.1))
+    ax.set_ylim(0, max(1.0, max(finite_values) + 0.1))
     ax.set_title("Lockbox TPR at Matched TNR90")
     ax.set_ylabel("TPR_at_TNR90")
     fig.tight_layout()

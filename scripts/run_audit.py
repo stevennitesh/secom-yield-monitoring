@@ -11,7 +11,7 @@ ensure_src_on_path()
 
 from secom.workflows import run_study_audit
 
-DEFAULT_OUTPUT_DIR = "runs"
+DEFAULT_OUTPUT_DIR = "runs/full_study"
 
 
 def parse_args() -> argparse.Namespace:

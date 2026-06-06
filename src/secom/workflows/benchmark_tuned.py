@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 from secom.artifacts import ensure_reports_dir, write_csv
+from secom.common.paths import project_root_from_repo_structure
 from secom.config import (
     ArtifactName,
     BENCHMARK_INNER_SPLITS,
@@ -52,7 +54,7 @@ from secom.workflows.benchmark_common import (
     prepare_full_selector_view,
     selector_config_from_row,
 )
-from secom.workflows.manifest import write_benchmark_status
+from secom.workflows.manifest import write_benchmark_failure, write_benchmark_status
 
 
 @dataclass(frozen=True)
@@ -431,6 +433,38 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_tuned_benchmark_replication(
+    input_dir: Path,
+    output_dir: Path,
+    *,
+    classifiers_run: list[str] | None = None,
+    selectors_run: list[str] | None = None,
+    progress: Callable[[str], None] | None = None,
+    _prepared_data: dict[str, Any] | None = None,
+    _cluster_id_map: dict[int, int] | None = None,
+) -> dict[str, Any]:
+    """Run the tuned benchmark and persist failed status before re-raising errors."""
+    try:
+        return _run_tuned_benchmark_replication(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            classifiers_run=classifiers_run,
+            selectors_run=selectors_run,
+            progress=progress,
+            _prepared_data=_prepared_data,
+            _cluster_id_map=_cluster_id_map,
+        )
+    except Exception:
+        with suppress(Exception):
+            ensure_reports_dir(output_dir)
+            write_benchmark_failure(
+                manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
+                project_root=project_root_from_repo_structure(),
+                tuned_failed=True,
+            )
+        raise
+
+
+def _run_tuned_benchmark_replication(
     input_dir: Path,
     output_dir: Path,
     *,
