@@ -31,7 +31,6 @@ def main() -> None:
     result = run_original_benchmark_replication(Path(args.input_dir), Path(args.output_dir))
 
     print(f"BENCHMARK_ORIGINAL_STATUS: {result['benchmark_original_status']}")
-    print(f"PRIMARY_STUDY_STATUS: {result['primary_study_status']}")
 
     if args.strict and result["benchmark_original_status"] != PASSED_STATUS:
         raise SystemExit(1)

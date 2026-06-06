@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.full_study import run_full_study
 
@@ -72,6 +74,71 @@ def test_report_and_audit_cli_defaults_target_full_study_run(monkeypatch) -> Non
         monkeypatch.setattr(sys, "argv", [f"{module_name}.py"])
 
         assert module.parse_args().output_dir == "runs/full_study"
+
+
+def test_standalone_benchmark_clis_report_only_layer_status(monkeypatch, capsys) -> None:
+    """Standalone benchmark commands should not print aggregate primary status."""
+    cases = (
+        (
+            "run_original_replication",
+            "run_original_benchmark_replication",
+            {"benchmark_original_status": StudyStatus.PASSED, "primary_study_status": StudyStatus.NOT_RUN},
+            "BENCHMARK_ORIGINAL_STATUS: passed",
+        ),
+        (
+            "run_benchmark_tuned",
+            "run_tuned_benchmark_replication",
+            {"benchmark_tuned_status": StudyStatus.PASSED, "primary_study_status": StudyStatus.NOT_RUN},
+            "BENCHMARK_TUNED_STATUS: passed",
+        ),
+    )
+    for module_name, workflow_name, result, expected_line in cases:
+        module = _script_module(module_name)
+        monkeypatch.setattr(sys, "argv", [f"{module_name}.py"])
+        monkeypatch.setattr(module, workflow_name, lambda *_args, **_kwargs: result)
+
+        module.main()
+        captured = capsys.readouterr()
+
+        assert expected_line in captured.out
+        assert "PRIMARY_STUDY_STATUS" not in captured.out
+
+
+def test_temporal_cli_strict_fails_when_temporal_study_is_not_run(monkeypatch, capsys) -> None:
+    """Strict temporal CLI runs should fail when the requested temporal study cannot execute."""
+    module = _script_module("run_temporal_robustness")
+    monkeypatch.setattr(sys, "argv", ["run_temporal_robustness.py", "--strict"])
+    monkeypatch.setattr(
+        module,
+        "run_temporal_robustness",
+        lambda *_args, **_kwargs: {"temporal_robustness_status": StudyStatus.NOT_RUN},
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        module.main()
+
+    assert raised.value.code == 1
+    assert "TEMPORAL_ROBUSTNESS_STATUS: not_run" in capsys.readouterr().out
+
+
+def test_temporal_cli_strict_allows_temporal_warnings(monkeypatch, capsys) -> None:
+    """Strict temporal CLI runs should keep warning-level temporal evidence nonblocking."""
+    module = _script_module("run_temporal_robustness")
+    monkeypatch.setattr(sys, "argv", ["run_temporal_robustness.py", "--strict"])
+    monkeypatch.setattr(
+        module,
+        "run_temporal_robustness",
+        lambda *_args, **_kwargs: {
+            "temporal_robustness_status": StudyStatus.WARNING,
+            "claim_restrictions": ["high_shift_blocks_lockbox_superiority_claim"],
+        },
+    )
+
+    module.main()
+    captured = capsys.readouterr()
+
+    assert "TEMPORAL_ROBUSTNESS_STATUS: warning" in captured.out
+    assert "CLAIM_RESTRICTION: high_shift_blocks_lockbox_superiority_claim" in captured.out
 
 
 def test_full_study_writes_canonical_report_after_passing_audit(
