@@ -192,15 +192,62 @@ def test_final_report_labels_uncertainty_as_fold_bootstrap(
 def test_final_report_surfaces_required_industrialization_gaps(
     active_artifacts_output_dir: Path,
 ) -> None:
-    """Final report should keep industrialization limits visible."""
+    """Final report should keep all required industrialization limits visible."""
     text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
 
     assert_text_contains_all(
         text,
         [
+            "No stable device/tool/chamber identifier for unseen-device validation",
+            "No intervention or maintenance history",
+            "No explicit regime-change metadata",
             "No downstream decision or action outcome data",
+            "Anonymous features limit process interpretation",
             "Single-dataset evidence only",
+            "Operational framing in this report is illustrative, not production-validated",
+        ],
+    )
+
+
+def test_final_report_surfaces_required_industrialization_next_data(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Final report conclusions should state the required production-study inputs."""
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "device- or tool-level identifiers",
+            "intervention logs",
+            "longer-horizon cross-context validation",
             "deployment decision objectives and cost accounting",
+            "stronger causal or process claims",
+        ],
+    )
+
+
+def test_final_report_surfaces_manifest_industrialization_notes(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Run-specific industrialization notes from the manifest should be rendered."""
+    manifest_path = active_artifacts_output_dir / "reports" / ArtifactName.MANIFEST
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["industrialization_notes"] = [
+        "Temporal robustness not run: no feasible chronological fold plan.",
+        "",
+        123,
+    ]
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2), encoding="utf-8")
+
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "### Run-Specific Industrialization Notes",
+            "Temporal robustness not run: no feasible chronological fold plan.",
+            "123",
         ],
     )
 

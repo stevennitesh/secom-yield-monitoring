@@ -64,6 +64,9 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "UCI reference table reports separate Ftest and Pearson rows",
             "Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof",
             "validated process-driver identification",
+            "No downstream decision or action outcome data",
+            "Single-dataset evidence only",
+            "deployment decision objectives and cost accounting",
         ],
     )
     assert_text_excludes_all(text, ["PRIMARY_STUDY_STATUS", "| n/a | n/a |", "most stable and influential features"])
