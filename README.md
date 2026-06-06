@@ -1,90 +1,201 @@
-# SECOM Yield Monitoring Study
+# SECOM Yield Monitoring
 
-A benchmark-first machine learning case study for semiconductor yield risk monitoring.
+[![CI](https://github.com/stevennitesh/secom-yield-monitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/stevennitesh/secom-yield-monitoring/actions/workflows/ci.yml)
 
-The project uses the UCI SECOM dataset to predict pass/fail manufacturing outcomes from high-dimensional sensor data, replicate the original public benchmark, improve the benchmark with tuned models, and separate research evidence from operational claims. The emphasis is not only model accuracy; it is disciplined evaluation, reproducible artifacts, and clear business interpretation.
+Production-style machine learning study for semiconductor yield risk monitoring.
 
-## Project Snapshot
+This project turns the public [UCI SECOM dataset](https://archive.ics.uci.edu/dataset/179/secom) into a reproducible Python study pipeline. It predicts wafer pass/fail outcomes from high-dimensional manufacturing sensor data, compares benchmark and tuned models under leakage-controlled evaluation, and generates audit-ready artifacts plus a final markdown report.
+
+The repo is designed as a defensible ML engineering case study. It emphasizes reproducibility, careful evaluation, transparent artifacts, and clear limits on what can and cannot be claimed from a public benchmark dataset.
+
+## At A Glance
 
 | Area | Summary |
 | --- | --- |
-| Business problem | Identify wafers at elevated failure risk so process teams can prioritize investigation and reduce yield loss. |
-| Dataset | [UCI SECOM](https://archive.ics.uci.edu/dataset/179/secom): 1,567 manufacturing examples, 591 real-valued process features, missing values, and 104 failures. |
-| Modeling challenge | Severe class imbalance, many noisy or redundant sensor signals, missingness, and limited failure examples. |
-| Primary metric | Balanced Error Rate (BER), supported by True+ / fail recall, True- / pass specificity, ROC AUC, PR AUC, MCC, and F2. |
-| Study style | Original benchmark replication first, tuned benchmark second, temporal robustness as a separate stress test. |
-| Main deliverable | A reproducible Python study pipeline that generates benchmark artifacts, audit results, figures, and a final markdown report. |
+| Domain | Semiconductor manufacturing yield monitoring |
+| Business question | Can sensor data identify wafers at elevated failure risk early enough to prioritize engineering review? |
+| Dataset | UCI SECOM: 1,567 manufacturing examples, 591 process features, missing values, and 104 failures |
+| ML task | Imbalanced binary classification for pass/fail risk scoring |
+| Primary metric | Balanced Error Rate (BER), supported by fail recall, pass specificity, ROC AUC, PR AUC, MCC, and F2 |
+| Study design | Benchmark replication first, tuned benchmark second, temporal robustness as a separate stress test |
+| Deliverable | Python package and CLI pipeline that produce metrics, manifests, audits, figures, and a final report |
+| Stack | Python 3.11+, pandas, NumPy, SciPy, scikit-learn, skrebate, pytest, Ruff, GitHub Actions |
 
-## What This Demonstrates
+## What This Project Demonstrates
 
-This repo is designed to show practical data science and ML engineering judgment:
+This repository is meant to show practical data science and ML engineering judgment:
 
-- converting messy public manufacturing data into a validated modeling dataset
-- handling imbalanced classification where missed failures and false alarms have different business costs
+- turning messy public manufacturing data into validated modeling inputs
+- handling severe class imbalance where missed failures and false alarms have different business costs
 - comparing feature-selection methods on a high-dimensional sensor problem
 - preserving benchmark comparability before introducing tuned improvements
 - avoiding leakage in preprocessing, feature selection, cross-validation, and model evaluation
-- producing audit-friendly artifacts instead of one-off notebook results
-- stating industrialization limits clearly instead of overstating production readiness
+- generating reproducible artifacts instead of one-off notebook results
+- separating research evidence from production-readiness claims
 
 ## Why This Problem Matters
 
-Manufacturing yield problems create direct margin pressure: failed units waste production capacity, late detection slows root-cause analysis, and noisy alerts consume engineering time. A useful monitoring model must therefore balance two risks:
+Yield loss creates direct margin pressure in semiconductor manufacturing. Failed units waste capacity, delayed detection slows root-cause analysis, and noisy alerts consume engineering time.
 
-- catching enough true failures to support early intervention
-- keeping false alarms low enough that investigation workload remains credible
+A useful monitoring model therefore has to balance two competing risks:
 
-The SECOM dataset is a good portfolio problem because it forces that tradeoff in a realistic setting: many sensor variables, few failures, missing values, and a public benchmark that makes the modeling claims checkable.
+- catching enough true failures to support earlier investigation
+- keeping false alarms low enough that the alert workload remains credible
+
+The SECOM dataset is a useful public portfolio problem because it exposes that tradeoff in a realistic setting: many sensor variables, few failures, missing values, and a benchmark target that makes modeling claims checkable.
 
 ## Study Design
 
 The project is organized around four evidence layers.
 
-| Layer | Purpose | Business Question |
+| Layer | What It Does | Why It Matters |
 | --- | --- | --- |
-| Original benchmark replication | Reproduce the literature-style 40-feature benchmark family. | Can the project match the known baseline before claiming improvements? |
-| Tuned benchmark | Tune selectors and classifiers under the same benchmark framing. | Does tuning improve the risk-scoring model without changing the comparison target? |
-| Temporal robustness | Stress-test the workflow with chronological development and lockbox splits. | Would the signal hold up when future wafers differ from historical wafers? |
-| Industrialization-gap analysis | Document what is still missing for deployment. | What decisions, cost data, monitoring, and governance would be required before production use? |
+| Original benchmark replication | Reproduces the literature-style 40-feature benchmark family. | Establishes that the project can match the known comparison target before claiming improvements. |
+| Tuned benchmark | Tunes selectors and classifiers under the same benchmark framing. | Tests whether a better risk-scoring model is possible without changing the study target. |
+| Temporal robustness | Runs chronological development and lockbox stress tests. | Checks whether signal quality changes when future wafers differ from historical wafers. |
+| Industrialization-gap analysis | Documents missing deployment evidence. | Makes clear what cost, workflow, governance, and monitoring decisions would be needed before production use. |
 
-The key design choice is separation of claims. Temporal robustness can limit operational confidence, but it does not erase the value of the original benchmark replication or tuned benchmark comparison.
+The key design choice is claim separation. Temporal robustness can restrict operational confidence, but it does not automatically invalidate the original benchmark replication or tuned benchmark comparison.
 
-## Modeling Approach
+## Current Results
 
-The active benchmark pipeline includes:
+A regenerated full-study run on June 6, 2026 produced the canonical report at `runs/full_study/reports/final_report.md`. Lower BER is better because it averages the error rate across the failure and pass classes.
 
-- raw file validation for ragged rows, label values, timestamps, and missing labels
-- deterministic row ordering by timestamp and raw row id
-- leakage-controlled imputation, optional missingness indicators, scaling, and feature selection
-- feature selectors: S2N, pooled T-test, F-test, Pearson, ReliefF, and Gram-Schmidt
-- classifiers: kernel ridge regression and logistic regression
-- nested/tuned benchmark paths with cached selector transformations for runtime efficiency
-- bootstrap uncertainty summaries for fold-level metrics
-- manifest, audit, and report generation for provenance and claim control
+| Evidence Layer | Headline Result | How To Read It |
+| --- | --- | --- |
+| Original benchmark replication | Best row: `ReliefF` + `krr` with missing indicators, mean BER `0.292` | The benchmark protocol finds a credible yield-risk signal in the SECOM measurements. |
+| Tuned benchmark | Best row: `ReliefF` + `krr` in strict mode, mean BER `0.319` | This is the more conservative benchmark estimate because hyperparameters are selected inside nested cross-validation. |
+| Temporal robustness | Primary chronological candidate: `ReliefF`, mean BER `0.471` | The future-looking stress test is much harder than the benchmark setting. |
+| Temporal claim status | `HIGH_SHIFT` drift gate with one active claim restriction | Lockbox results remain useful diagnostics, but not confirmatory proof of operational superiority. |
+
+Plain-language interpretation:
+
+- The benchmark studies support the core project claim: SECOM sensor data contains usable signal for yield-risk modeling.
+- The tuned benchmark is intentionally stricter than the original replication, so its slightly worse BER is not a regression; it is a more conservative estimate.
+- The temporal study warns that future wafers look materially different from the development period. The development failure rate was `7.13%`, while the lockbox failure rate was `3.83%`; the score-distribution KS p-value was `3.79e-08`, max PSI was `5.125`, and median PSI was `0.569`.
+- Because of that shift, the report does not claim production readiness. It reports the lockbox evidence as descriptive stress-test evidence and keeps deployment requirements explicit.
+
+## Key Engineering Choices
+
+- **Benchmark-first workflow:** replication is treated as a separate evidence layer, not overwritten by later tuning.
+- **Leakage-controlled modeling:** imputation, scaling, feature selection, and model fitting stay inside the evaluation flow.
+- **Imbalance-aware metrics:** BER is the primary metric because pass/fail classes are highly imbalanced.
+- **Audit-friendly outputs:** runs produce manifests, artifact checks, figures, and report files for traceability.
+- **Explicit claim boundaries:** the generated report distinguishes benchmark findings, temporal stress-test warnings, and production gaps.
+
+## How To Review This Repo
+
+For a fast hiring review:
+
+1. Read this README for the problem framing, study structure, and claim boundaries.
+2. Inspect `src/secom/workflows/benchmark_replication.py` and `src/secom/workflows/benchmark_tuned.py` for orchestration.
+3. Inspect `src/secom/selection/engine.py`, `src/secom/metrics.py`, and `src/secom/io.py` for the core ML and data-quality logic.
+4. Read `tests/test_benchmark_replication.py`, `tests/test_metrics_threshold_optimization.py`, and `tests/test_io.py` for representative regression coverage.
+5. Run `make check` after local setup to verify Ruff linting, Ruff formatting, and pytest.
+
+For a deeper technical review:
+
+- read the active study specs under `docs/spec/`
+- run the full study pipeline and open `runs/full_study/reports/final_report.md`
+- inspect `runs/full_study/reports/run_manifest.json` and the audit output for artifact provenance
+- compare the benchmark, tuned benchmark, and temporal robustness sections without merging their claims
 
 ## Repository Map
 
 | Path | What It Contains |
 | --- | --- |
-| `src/secom/` | Production-style study package: parsing, preprocessing, feature selection, metrics, workflows, audits, and reporting. |
-| `scripts/` | CLI entry points for running each study layer and generating reports. |
-| `tests/` | Regression tests for parsing, metrics, selectors, benchmark workflows, audit rules, and report output. |
-| `docs/spec/` | Canonical study contract, artifact schemas, report structure, and claim semantics. |
-| `docs/plans/` | Historical implementation plans for the report design. |
-| `reports/` | Historical tracked artifacts from the earlier pre-reframe lane; useful context, not the active output contract. |
-| `runs/` | Generated active study outputs. This directory is intentionally gitignored so results can be regenerated cleanly. |
+| `src/secom/` | Study package for parsing, preprocessing, feature selection, metrics, workflows, audits, and reporting |
+| `scripts/` | CLI entry points for each study layer and report-generation path |
+| `tests/` | Regression tests for parsing, metrics, selectors, workflows, audit rules, and report output |
+| `docs/spec/` | Canonical study contract, artifact schemas, report structure, and claim semantics |
+| `docs/plans/` | Historical implementation plans for the report design |
+| `runs/` | Generated active study outputs; intentionally gitignored so results can be regenerated cleanly |
 
-## How To Review This Repo
+## Run Locally
 
-For a quick hiring review:
+Create a Python 3.11+ virtual environment and install the project. Use any supported interpreter; replace `python3.11` with `python3.12` if that is your local version.
 
-1. Read this README for the problem framing and project scope.
-2. Inspect `src/secom/workflows/benchmark_replication.py` and `src/secom/workflows/benchmark_tuned.py` for the study orchestration.
-3. Inspect `src/secom/selection/engine.py`, `src/secom/metrics.py`, and `src/secom/io.py` for the core ML/data-quality logic.
-4. Read `tests/test_benchmark_replication.py`, `tests/test_metrics_threshold_optimization.py`, and `tests/test_io.py` for the regression surface.
-5. Run `make PYTHON=.venv/bin/python check` to verify lint, formatting, and tests.
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+make install
+```
 
-For a deeper technical review, read the active specs in this order:
+Run the standard local gate:
+
+```bash
+make check
+```
+
+Download the UCI SECOM data and place the raw files under `data/raw/`:
+
+```text
+data/raw/secom.data
+data/raw/secom_labels.data
+```
+
+The `data/` directory is intentionally gitignored. The repository stores the study code and contracts, not the external dataset files.
+
+Run the full study:
+
+```bash
+python scripts/run_full_study.py --input-dir data/raw --output-dir runs/full_study --strict
+```
+
+When the full-study audit passes, the canonical generated report is written to:
+
+```text
+runs/full_study/reports/final_report.md
+```
+
+## Useful Commands
+
+The commands below assume the virtual environment is active.
+
+| Task | Command |
+| --- | --- |
+| Original benchmark replication | `python scripts/run_original_replication.py --input-dir data/raw --output-dir runs/original_replication --strict` |
+| Tuned benchmark | `python scripts/run_benchmark_tuned.py --input-dir data/raw --output-dir runs/benchmark_tuned --strict` |
+| Benchmark bundle | `python scripts/run_benchmark_replication.py --input-dir data/raw --output-dir runs/benchmark_replication --strict` |
+| Temporal robustness study | `python scripts/run_temporal_robustness.py --input-dir data/raw --output-dir runs/temporal_robustness --strict` |
+| Audit generated artifacts | `python scripts/run_audit.py --output-dir runs/full_study --strict` |
+| Regenerate final report | `python scripts/run_final_report.py --output-dir runs/full_study` |
+| Optional PDF export | `python scripts/run_final_report.py --output-dir runs/full_study --export-pdf` |
+| Lint only | `make lint` |
+| Format check only | `make format-check` |
+| Tests only | `make test` |
+
+## Generated Artifacts
+
+Active outputs are written under `runs/<study>/reports/`.
+
+Key generated files include:
+
+- `run_manifest.json` for provenance
+- `final_report.md` for the canonical generated report
+- `figures/*.png` for report figures
+- `benchmark_*` artifacts for the original benchmark layer
+- `benchmark_tuned_*` artifacts for the tuned benchmark layer
+- `temporal_*` artifacts for the temporal robustness layer
+- audit entries classified as `ERROR`, `WARNING`, or `CLAIM_RESTRICTION`
+
+`final_report_skeleton.md` may also be generated as a scaffold/debugging aid, but `final_report.md` is the report artifact to review.
+
+## Limitations And Next Data Needed
+
+This project is intentionally careful about claim boundaries. The current study can compare benchmark methods and stress-test temporal robustness, but production deployment would still require:
+
+- downstream action and outcome data showing whether alerts changed process decisions
+- explicit cost ratios for missed failures, false alarms, inspection time, and scrap or rework
+- operating-point approval from process engineering or business owners
+- monitoring for data drift, calibration drift, and alert workload
+- validation on additional products, tools, or manufacturing time periods
+
+Those gaps are part of the analysis, not hidden caveats.
+
+## Technical Reference
+
+The active study contract lives in `docs/spec/`:
 
 1. `docs/spec/01-study-goal.md`
 2. `docs/spec/02-benchmark-replication-study.md`
@@ -94,149 +205,3 @@ For a deeper technical review, read the active specs in this order:
 6. `docs/spec/06-report-structure.md`
 7. `docs/spec/07-artifact-contracts.md`
 8. `docs/spec/08-audit-and-claim-semantics.md`
-
-## Setup
-
-Create and populate a local virtual environment:
-
-```bash
-python -m venv .venv
-make PYTHON=.venv/bin/python install
-```
-
-Run the standard local gate:
-
-```bash
-make PYTHON=.venv/bin/python check
-```
-
-Useful focused commands:
-
-```bash
-make PYTHON=.venv/bin/python lint
-make PYTHON=.venv/bin/python format-check
-make PYTHON=.venv/bin/python format
-make PYTHON=.venv/bin/python test
-make PYTHON=.venv/bin/python coverage
-```
-
-## Data
-
-Download the [UCI SECOM dataset](https://archive.ics.uci.edu/dataset/179/secom) and place the raw files under `data/raw/`:
-
-```text
-data/raw/secom.data
-data/raw/secom_labels.data
-```
-
-The `data/` directory is intentionally gitignored. The repository stores the study code and contracts, not the external dataset files.
-
-## Running The Study
-
-Original benchmark replication:
-
-```bash
-python scripts/run_original_replication.py --input-dir data/raw --output-dir runs/original_replication --strict
-```
-
-Use this command for the UCI original 40-feature benchmark comparison. The original replication default uses KRR with the UCI selector family, including pooled T-test and Pearson.
-
-Tuned benchmark:
-
-```bash
-python scripts/run_benchmark_tuned.py --input-dir data/raw --output-dir runs/benchmark_tuned --strict
-```
-
-The tuned benchmark defaults to KRR for the primary improved-benchmark pass. To explicitly run the full classifier family:
-
-```bash
-python scripts/run_benchmark_tuned.py --input-dir data/raw --output-dir runs/benchmark_tuned --classifiers krr,logreg --strict
-```
-
-Benchmark study bundle:
-
-```bash
-python scripts/run_benchmark_replication.py --input-dir data/raw --output-dir runs/benchmark_replication --strict
-```
-
-The bundle uses original-replication defaults for the original layer and tuned KRR defaults for the tuned layer. To force both classifiers through both layers:
-
-```bash
-python scripts/run_benchmark_replication.py --input-dir data/raw --output-dir runs/benchmark_replication --classifiers krr,logreg --strict
-```
-
-Secondary temporal study:
-
-```bash
-python scripts/run_temporal_robustness.py --input-dir data/raw --output-dir runs/temporal_robustness --strict
-```
-
-Full study bundle:
-
-```bash
-python scripts/run_full_study.py --input-dir data/raw --output-dir runs/full_study --strict
-```
-
-When the full-study audit passes, this command also writes the canonical
-`runs/full_study/reports/final_report.md`.
-
-Audit-generated artifacts:
-
-```bash
-python scripts/run_audit.py --output-dir runs/full_study --strict
-```
-
-Regenerate the canonical markdown report from an existing audited run:
-
-```bash
-python scripts/run_final_report.py --output-dir runs/full_study
-```
-
-Optional PDF export:
-
-```bash
-python scripts/run_final_report.py --output-dir runs/full_study --export-pdf
-```
-
-## Output Model
-
-Generated active outputs are written under `runs/<study>/reports/`.
-
-Original benchmark artifacts use the `benchmark_*` family plus:
-
-- `feature_stability.csv`
-- `feature_report.csv`
-
-Tuned benchmark artifacts use the `benchmark_tuned_*` family plus:
-
-- `benchmark_tuned_feature_stability.csv`
-- `benchmark_tuned_feature_report.csv`
-
-Temporal robustness artifacts use the `temporal_*` family.
-
-Shared report outputs include:
-
-- `run_manifest.json`
-- `final_report.md`
-- `final_report_skeleton.md`
-- `figures/*.png`
-
-`final_report.md` is the canonical generated report artifact. `final_report_skeleton.md` remains available as a scaffold/debugging aid.
-
-Audit output distinguishes:
-
-- `ERROR`
-- `WARNING`
-- `CLAIM_RESTRICTION`
-
-## Limitations And Next Data Needed
-
-This project is intentionally careful about claim boundaries. The current study can compare benchmark methods and stress-test temporal robustness, but production deployment would still require:
-
-- downstream action/outcome data showing whether alerts changed process decisions
-- explicit cost ratios for missed failures, false alarms, inspection time, and scrap/rework
-- operating-point approval from process engineering or business owners
-- monitoring for data drift, calibration drift, and alert workload
-- validation on additional products, tools, or manufacturing time periods
-
-Those gaps are part of the analysis, not hidden caveats.
