@@ -10,7 +10,7 @@ import pytest
 from secom.artifacts import ensure_reports_dir, write_manifest
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.audit import run_study_audit
-from tests.artifact_writers import write_artifact_row
+from tests.artifact_writers import write_artifact_row, write_artifact_rows
 
 
 def _base_manifest(
@@ -694,5 +694,31 @@ def test_study_audit_does_not_treat_falsey_selected_config_markers_as_selected(
     assert not result.ok
     assert any(
         "benchmark_tuned_search.csv vs benchmark_tuned_fold_metrics.csv: config coverage mismatch" in error
+        for error in result.errors
+    )
+
+
+def test_study_audit_rejects_duplicate_tuned_selected_configs(workspace_tmp_dir: Path) -> None:
+    """Persisted tuned search artifacts must mark exactly one selected config per outer fold."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+
+    selected_row = pd.read_csv(reports / ArtifactName.BENCHMARK_TUNED_SEARCH).iloc[0].to_dict()
+    write_artifact_rows(
+        reports,
+        ArtifactName.BENCHMARK_TUNED_SEARCH,
+        [selected_row, dict(selected_row)],
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "benchmark_tuned_search.csv: each selector/classifier/mode/fold must mark exactly one selected config" in error
         for error in result.errors
     )
