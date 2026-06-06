@@ -457,6 +457,50 @@ def test_study_audit_primary_status_requires_tuned_artifacts(workspace_tmp_dir: 
     assert any(ArtifactName.BENCHMARK_TUNED_SUMMARY in error for error in result.errors)
 
 
+def test_study_audit_rejects_primary_pass_without_tuned_status(workspace_tmp_dir: Path) -> None:
+    """Primary pass status should be consistent with both benchmark layer statuses."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(_base_manifest(), reports / ArtifactName.MANIFEST)
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "run_manifest.json: primary_study_status passed conflicts with benchmark layer statuses" in error
+        for error in result.errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_error"),
+    [
+        ("manifest_version", "1.0", "run_manifest.json: manifest_version must be 2.0"),
+        ("study_spec_path", "legacy/spec", "run_manifest.json: study_spec_path must be docs/spec"),
+        ("study_spec_sha256", "MISSING", "run_manifest.json: study_spec_sha256 must identify the active spec set"),
+    ],
+)
+def test_study_audit_rejects_invalid_manifest_provenance(
+    workspace_tmp_dir: Path,
+    field: str,
+    value: object,
+    expected_error: str,
+) -> None:
+    """Manifest provenance fields should not accept stale paths or missing spec hashes."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    manifest = _base_manifest(tuned_status=StudyStatus.PASSED)
+    manifest[field] = value
+    write_manifest(manifest, reports / ArtifactName.MANIFEST)
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(expected_error in error for error in result.errors)
+
+
 def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_dir: Path) -> None:
     """Temporal claim restrictions should warn without blocking the audit."""
     reports = ensure_reports_dir(workspace_tmp_dir)
