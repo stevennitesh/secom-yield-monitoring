@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
+import matplotlib.image as mpimg
 import numpy as np
 import pandas as pd
 
@@ -19,6 +20,16 @@ def assert_columns_include(frame: pd.DataFrame, expected_columns: Iterable[str])
     """Assert a DataFrame contains all expected columns."""
     missing = set(expected_columns) - set(frame.columns)
     assert not missing, f"missing columns: {sorted(missing)}"
+
+
+def assert_renderable_png(path: Path) -> None:
+    """Assert a generated figure is a nonblank readable PNG."""
+    assert path.exists(), path
+    assert path.stat().st_size > 0, path
+    image = mpimg.imread(path)
+    assert image.size > 0, path
+    assert np.isfinite(image).all(), path
+    assert float(np.std(image)) > 0.0, path
 
 
 def assert_text_contains_all(text: str, expected_fragments: Iterable[str]) -> None:

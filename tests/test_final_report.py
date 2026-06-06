@@ -10,7 +10,7 @@ import pytest
 
 from secom.config import ArtifactName, StudyStatus
 from secom.reporting import write_final_report
-from tests.assertions import assert_text_contains_all, assert_text_excludes_all
+from tests.assertions import assert_renderable_png, assert_text_contains_all, assert_text_excludes_all
 
 
 def test_final_report_is_generated_from_active_artifacts(
@@ -229,12 +229,15 @@ def test_final_report_writes_expected_figure_files(
     write_final_report(active_artifacts_output_dir)
 
     figures_dir = active_artifacts_output_dir / "reports" / "figures"
-    assert (figures_dir / "benchmark_comparison.png").exists()
-    assert (figures_dir / "tuned_vs_original_delta.png").exists()
-    assert (figures_dir / "feature_stability.png").exists()
-    assert (figures_dir / "temporal_drift.png").exists()
-    assert (figures_dir / "lockbox_vs_mspc.png").exists()
-    assert (figures_dir / "workload_cost_framing.png").exists()
+    for name in [
+        "benchmark_comparison.png",
+        "tuned_vs_original_delta.png",
+        "feature_stability.png",
+        "temporal_drift.png",
+        "lockbox_vs_mspc.png",
+        "workload_cost_framing.png",
+    ]:
+        assert_renderable_png(figures_dir / name)
 
 
 def test_final_report_pdf_export_is_optional_when_tool_missing(
