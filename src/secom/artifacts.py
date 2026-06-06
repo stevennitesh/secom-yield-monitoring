@@ -44,7 +44,7 @@ _BENCHMARK_TRIPLET_COLUMNS = {"selector", "classifier", "replication_mode"}
 _BENCHMARK_CONFIG_COLUMNS = {"k", "C", "alpha", "gamma", "n_neighbors"}
 _BENCHMARK_METRIC_COLUMNS = {"BER", "True+", "True-", "ROC_AUC", "PR_AUC", "MCC", "F2"}
 _BENCHMARK_MEAN_METRIC_COLUMNS = {f"mean_{metric}" for metric in _BENCHMARK_METRIC_COLUMNS}
-_BENCHMARK_BER_CI_COLUMNS = {"CI_lower_BER", "CI_upper_BER"}
+_BENCHMARK_CI_COLUMNS = {f"CI_{bound}_{metric}" for metric in _BENCHMARK_METRIC_COLUMNS for bound in ("lower", "upper")}
 _BENCHMARK_FULL_DATASET_METRIC_COLUMNS = {f"{metric}_full_dataset" for metric in _BENCHMARK_METRIC_COLUMNS}
 _BENCHMARK_FULL_DATASET_LINEAGE_COLUMNS = {"threshold_full_dataset"}
 _BENCHMARK_ABLATION_COLUMNS = {"selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"}
@@ -83,7 +83,7 @@ _BENCHMARK_ORIGINAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_SUMMARY: {
         *_BENCHMARK_TRIPLET_COLUMNS,
         *_BENCHMARK_MEAN_METRIC_COLUMNS,
-        *_BENCHMARK_BER_CI_COLUMNS,
+        *_BENCHMARK_CI_COLUMNS,
     },
     ArtifactName.BENCHMARK_ABLATION: _BENCHMARK_ABLATION_COLUMNS,
     ArtifactName.BENCHMARK_FULL_FIT_SUMMARY: {
@@ -124,7 +124,7 @@ _BENCHMARK_TUNED_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_TUNED_SUMMARY: {
         *_BENCHMARK_TRIPLET_COLUMNS,
         *_BENCHMARK_MEAN_METRIC_COLUMNS,
-        *_BENCHMARK_BER_CI_COLUMNS,
+        *_BENCHMARK_CI_COLUMNS,
     },
     ArtifactName.BENCHMARK_TUNED_ABLATION: _BENCHMARK_ABLATION_COLUMNS,
     ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY: {

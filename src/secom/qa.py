@@ -8,6 +8,9 @@ import pandas as pd
 from secom.config import BenchmarkClassifier, ReplicationMode, SelectorName
 
 _TRIPLET_COLS = ["selector", "classifier", "replication_mode"]
+_BENCHMARK_METRICS = ("BER", "True+", "True-", "ROC_AUC", "PR_AUC", "MCC", "F2")
+_BENCHMARK_MEAN_METRIC_COLUMNS = {f"mean_{metric}" for metric in _BENCHMARK_METRICS}
+_BENCHMARK_CI_COLUMNS = {f"CI_{bound}_{metric}" for metric in _BENCHMARK_METRICS for bound in ("lower", "upper")}
 _VALID_CLASSIFIERS = set(BenchmarkClassifier.ALL)
 _VALID_REPLICATION_MODES = {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS}
 _VALID_SELECTORS = set(SelectorName.ALL)
@@ -115,7 +118,11 @@ def validate_benchmark_replication_artifacts(
         ("benchmark_sweep", sweep_df, {"selector", "classifier", "replication_mode"}),
         ("benchmark_best_config", best_df, {"selector", "classifier", "replication_mode"}),
         ("benchmark_fold_metrics", fold_metrics_df, {"selector", "classifier", "replication_mode", "fold", "BER"}),
-        ("benchmark_summary", summary_df, {"selector", "classifier", "replication_mode", "mean_BER"}),
+        (
+            "benchmark_summary",
+            summary_df,
+            {"selector", "classifier", "replication_mode", *_BENCHMARK_MEAN_METRIC_COLUMNS, *_BENCHMARK_CI_COLUMNS},
+        ),
         (
             "benchmark_ablation",
             ablation_df,
@@ -204,7 +211,7 @@ def validate_tuned_benchmark_artifacts(
         (
             "benchmark_tuned_summary",
             summary_df,
-            {"selector", "classifier", "replication_mode", "mean_BER", "mean_ROC_AUC"},
+            {"selector", "classifier", "replication_mode", *_BENCHMARK_MEAN_METRIC_COLUMNS, *_BENCHMARK_CI_COLUMNS},
         ),
         (
             "benchmark_tuned_ablation",

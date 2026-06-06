@@ -75,6 +75,15 @@ def test_final_report_distinguishes_original_and_tuned_classifier_selection(
     )
 
 
+def test_final_report_labels_uncertainty_as_fold_bootstrap(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Final report should identify benchmark intervals as fold-bootstrap summaries."""
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert "fold-bootstrap confidence intervals" in text
+
+
 def test_final_report_surfaces_required_industrialization_gaps(
     active_artifacts_output_dir: Path,
 ) -> None:

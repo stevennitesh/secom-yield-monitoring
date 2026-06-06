@@ -61,6 +61,15 @@ def _small_temporal_grid(selector: str) -> list[dict[str, object]]:
     ]
 
 
+def _ci_fields(values_by_metric: dict[str, float]) -> dict[str, float]:
+    """Return symmetric lower/upper CI fields for compact artifact fixtures."""
+    return {
+        f"CI_{bound}_{metric}": float(value)
+        for metric, value in values_by_metric.items()
+        for bound in ("lower", "upper")
+    }
+
+
 def _run_fast_temporal_study(input_dir: Path, output_dir: Path) -> dict[str, object]:
     """Run temporal robustness with reduced seeds and selector grid."""
     import secom.workflows.temporal_robustness as temporal
@@ -123,6 +132,16 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "mean_PR_AUC": 0.42,
         "mean_MCC": 0.31,
         "mean_F2": 0.58,
+        **_ci_fields(
+            {
+                "True+": 0.72,
+                "True-": 0.86,
+                "ROC_AUC": 0.79,
+                "PR_AUC": 0.42,
+                "MCC": 0.31,
+                "F2": 0.58,
+            }
+        ),
     }
     tuned_row = {
         **benchmark_row,
@@ -135,6 +154,16 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "mean_PR_AUC": 0.47,
         "mean_MCC": 0.36,
         "mean_F2": 0.62,
+        **_ci_fields(
+            {
+                "True+": 0.76,
+                "True-": 0.88,
+                "ROC_AUC": 0.83,
+                "PR_AUC": 0.47,
+                "MCC": 0.36,
+                "F2": 0.62,
+            }
+        ),
     }
     write_artifact_row(reports, ArtifactName.BENCHMARK_SWEEP, benchmark_row)
     write_artifact_row(reports, ArtifactName.BENCHMARK_BEST_CONFIG, benchmark_row)

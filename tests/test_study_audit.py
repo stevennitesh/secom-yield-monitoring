@@ -13,6 +13,15 @@ from secom.workflows.audit import run_study_audit
 from tests.artifact_writers import write_artifact_row, write_artifact_rows
 
 
+def _ci_fields(values_by_metric: dict[str, float]) -> dict[str, float]:
+    """Return symmetric lower/upper CI fields for compact artifact fixtures."""
+    return {
+        f"CI_{bound}_{metric}": float(value)
+        for metric, value in values_by_metric.items()
+        for bound in ("lower", "upper")
+    }
+
+
 def _base_manifest(
     *,
     primary_status: str = StudyStatus.PASSED,
@@ -114,6 +123,16 @@ def _write_primary_artifacts(reports: Path) -> None:
             "mean_PR_AUC": 0.41,
             "mean_MCC": 0.33,
             "mean_F2": 0.57,
+            **_ci_fields(
+                {
+                    "True+": 0.60,
+                    "True-": 0.80,
+                    "ROC_AUC": 0.72,
+                    "PR_AUC": 0.41,
+                    "MCC": 0.33,
+                    "F2": 0.57,
+                }
+            ),
         },
     )
     write_artifact_row(
@@ -488,6 +507,35 @@ def test_study_audit_missing_tuned_artifact_is_blocking(workspace_tmp_dir: Path)
 
     assert not result.ok
     assert any(ArtifactName.BENCHMARK_TUNED_SUMMARY in error for error in result.errors)
+
+
+@pytest.mark.parametrize(
+    ("artifact_name", "missing_column"),
+    [
+        (ArtifactName.BENCHMARK_SUMMARY, "CI_lower_True+"),
+        (ArtifactName.BENCHMARK_TUNED_SUMMARY, "CI_upper_MCC"),
+    ],
+)
+def test_study_audit_requires_all_benchmark_metric_ci_columns(
+    workspace_tmp_dir: Path,
+    artifact_name: str,
+    missing_column: str,
+) -> None:
+    """Benchmark summaries must keep CI columns for every emitted benchmark metric."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    summary_df = pd.read_csv(reports / artifact_name).drop(columns=[missing_column])
+    summary_df.to_csv(reports / artifact_name, index=False)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(f"{artifact_name}: missing columns ['{missing_column}']" in error for error in result.errors)
 
 
 def test_study_audit_rejects_feature_report_without_benchmark_lineage(workspace_tmp_dir: Path) -> None:
