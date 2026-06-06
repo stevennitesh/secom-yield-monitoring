@@ -465,8 +465,9 @@ def _validate_binary_selected_values(name: str, df: pd.DataFrame, errors: list[s
     """Validate feature-stability selected flags are binary."""
     if "selected" not in df.columns:
         return
-    values = set(pd.to_numeric(df["selected"], errors="coerce").dropna().astype(int).unique())
-    if values - {0, 1}:
+    values = pd.to_numeric(df["selected"], errors="coerce")
+    valid_binary = values.notna() & values.isin([0, 1])
+    if not bool(valid_binary.all()):
         errors.append(f"{name}: selected must contain only 0/1 values")
 
 

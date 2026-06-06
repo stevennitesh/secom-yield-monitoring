@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from secom.artifacts import ensure_reports_dir, write_manifest
 from secom.config import ArtifactName, StudyStatus
@@ -574,6 +575,43 @@ def test_study_audit_rejects_tuned_feature_stability_triplet_mismatch(workspace_
 
     assert not result.ok
     assert any("benchmark_tuned_feature_stability.csv: triplet coverage mismatch" in error for error in result.errors)
+
+
+@pytest.mark.parametrize("selected_value", [0.5, "not_binary"])
+def test_study_audit_rejects_non_binary_feature_stability_selected_values(
+    workspace_tmp_dir: Path,
+    selected_value: object,
+) -> None:
+    """Feature-stability selected flags must be exactly binary values."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    write_artifact_row(
+        reports,
+        ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+        {
+            "selector": "F-test",
+            "classifier": "krr",
+            "replication_mode": "strict",
+            "resample_id": "fold_1",
+            "feature_index": 0,
+            "feature_type": "value",
+            "feature_name_or_source_col": "sensor_000",
+            "selected": selected_value,
+        },
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "benchmark_tuned_feature_stability.csv: selected must contain only 0/1 values" in error
+        for error in result.errors
+    )
 
 
 def test_study_audit_rejects_tuned_selected_config_drift(workspace_tmp_dir: Path) -> None:
