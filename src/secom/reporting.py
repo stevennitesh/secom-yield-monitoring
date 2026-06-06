@@ -749,6 +749,9 @@ def write_report_skeleton(output_dir: Path) -> Path:
     lines.append("")
     lines.append("- Use a fixed feature budget with the literature-style selector/classifier comparison.")
     lines.append("- Perform preprocessing and feature selection inside each training fold only.")
+    lines.append(
+        "- Select original classifier configurations from the non-nested replication sweep; use the tuned benchmark for the stricter nested-CV estimate."
+    )
     lines.append("- Treat the missing-indicator comparison as a paired benchmark condition.")
     lines.append(
         "- Report final thresholded results through `BER`, `TPR`, and `TNR`, with supporting metrics shown separately."
@@ -1308,6 +1311,9 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         "The original replication keeps a fixed feature budget, compares the literature-style selector and classifier families, "
         "and treats missing-indicator features as a paired ablation. The key result is not just the best row, but the fact "
         "that multiple selector/classifier combinations remain materially better than trivial failure detection."
+    )
+    lines.append(
+        "Original classifier configurations are selected from the same non-nested replication sweep used for reporting, so tuned benchmark results remain the stricter estimate."
     )
     lines.append("")
     _append_benchmark_summary_table(lines, "### Primary Benchmark Evidence", ctx.benchmark_summary)

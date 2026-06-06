@@ -799,7 +799,7 @@ def test_original_full_fit_summary_does_not_drive_fold_performance(
         """Return sentinel full-fit metrics that must not appear as fold-summary metrics."""
         prepared_full = kwargs["prepared_full"]
         return {
-            "threshold_oof_global": 999.0,
+            "threshold_full_dataset": 999.0,
             "BER_full_dataset": 0.99,
             "True+_full_dataset": 0.01,
             "True-_full_dataset": 0.01,
@@ -828,6 +828,7 @@ def test_original_full_fit_summary_does_not_drive_fold_performance(
     full_fit_df = pd.read_csv(reports / ArtifactName.BENCHMARK_FULL_FIT_SUMMARY)
 
     assert np.allclose(full_fit_df["BER_full_dataset"].to_numpy(dtype=float), 0.99)
+    assert np.allclose(full_fit_df["threshold_full_dataset"].to_numpy(dtype=float), 999.0)
     assert not np.allclose(summary_df["mean_BER"].to_numpy(dtype=float), 0.99)
 
 

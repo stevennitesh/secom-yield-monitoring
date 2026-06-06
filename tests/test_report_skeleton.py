@@ -48,6 +48,7 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "### Illustrative Operational Framing",
             "#### Cost Curves",
             "| F-test | krr | strict |",
+            "Select original classifier configurations from the non-nested replication sweep",
             "mean_ROC_AUC",
             "mean_PR_AUC",
             "mean_MCC",
