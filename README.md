@@ -68,9 +68,23 @@ A regenerated full-study run on June 6, 2026 produced the public evidence snapsh
 | Temporal robustness | Primary chronological candidate: `ReliefF`, mean BER `0.471` | The future-looking stress test is much harder than the benchmark setting. |
 | Temporal claim status | `HIGH_SHIFT` drift gate with one active claim restriction | Lockbox results remain useful diagnostics, but not confirmatory proof of operational superiority. |
 
+### Original Benchmark Comparison
+
+The apples-to-apples baseline comparison is the UCI 40-feature kernel-ridge benchmark versus this repo's strict original-replication KRR rows. Lower BER is better, so positive improvement means the local replication reduced balanced error relative to the published benchmark reference.
+
+| UCI method | Local selector | UCI BER % | Local BER % | BER improvement |
+| --- | --- | ---: | ---: | ---: |
+| S2N | S2N | 34.5 | 35.3 | -0.8 pp |
+| Ttest | Ttest | 33.7 | 31.0 | 2.7 pp |
+| Relief | ReliefF | 40.1 | 32.5 | 7.6 pp |
+| Pearson | Pearson | 34.1 | 31.0 | 3.1 pp |
+| Ftest | F-test | 33.5 | 31.0 | 2.5 pp |
+| Gram Schmidt | Gram-Schmidt | 35.6 | 33.5 | 2.1 pp |
+
 Plain-language interpretation:
 
 - The benchmark studies support the core project claim: SECOM sensor data contains usable signal for yield-risk modeling.
+- Against the original UCI benchmark setup, the strict local KRR replication improves BER for five of six selector rows; the largest apples-to-apples gain is `7.6 pp` for ReliefF.
 - The tuned benchmark is intentionally stricter than the original replication, so its slightly worse BER is not a regression; it is a more conservative estimate.
 - The temporal study warns that future wafers look materially different from the development period. The development failure rate was `7.13%`, while the lockbox failure rate was `3.83%`; the score-distribution KS p-value was `3.79e-08`, max PSI was `5.125`, and median PSI was `0.569`.
 - Because of that shift, the report does not claim production readiness. It reports the lockbox evidence as descriptive stress-test evidence and keeps deployment requirements explicit.
