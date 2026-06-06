@@ -1,7 +1,7 @@
 {
   "benchmark_original_status": "passed",
   "benchmark_tuned_status": "passed",
-  "git_commit": "094315c4ea9f0f57ae5915009aa2f61e9a55ad3a",
+  "git_commit": "public-snapshot-containing-commit",
   "git_dirty": false,
   "industrialization_notes": [],
   "library_versions": {
@@ -16,6 +16,7 @@
   "manifest_version": "2.0",
   "primary_study_status": "passed",
   "python_executable": "/home/steve/code/secom-yield-monitoring/.venv/bin/python",
+  "snapshot_provenance": "This checked-in public snapshot is audited by the repository commit that contains docs/results; source artifacts were copied from runs/full_study before publication.",
   "study_spec_path": "docs/spec",
   "study_spec_sha256": "96dee0e0de2ca45a0c2f8a32e506bdde5363e4eb08cb6d0885e913bf3b453d47",
   "temporal_claim_restrictions": [
