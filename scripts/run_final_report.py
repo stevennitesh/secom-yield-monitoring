@@ -9,7 +9,7 @@ from _script_path import ensure_src_on_path
 
 ensure_src_on_path()
 
-DEFAULT_OUTPUT_DIR = "runs"
+DEFAULT_OUTPUT_DIR = "runs/full_study"
 
 
 def parse_args() -> argparse.Namespace:
