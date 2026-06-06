@@ -45,7 +45,7 @@ def aggregate_primary_status(original_status: str, tuned_status: str) -> str:
         return StudyStatus.FAILED
     if any(status == StudyStatus.WARNING for status in statuses):
         return StudyStatus.WARNING
-    if any(status == StudyStatus.PASSED for status in statuses):
+    if all(status == StudyStatus.PASSED for status in statuses):
         return StudyStatus.PASSED
     return StudyStatus.NOT_RUN
 

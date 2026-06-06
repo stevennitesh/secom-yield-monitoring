@@ -23,6 +23,7 @@ from secom.workflows.benchmark_replication import (
     run_benchmark_replication,
     run_original_benchmark_replication,
 )
+from secom.workflows.manifest import aggregate_primary_status
 from secom.workflows import benchmark_common, benchmark_tuned
 from tests.assertions import assert_artifacts_exist, assert_columns_include
 
@@ -382,6 +383,13 @@ def test_benchmark_bundle_defaults_run_uci_selectors_and_krr_only_in_original(
     assert result["original_classifiers_run"] == [BenchmarkClassifier.KRR]
     assert result["tuned_classifiers_run"] == [BenchmarkClassifier.KRR]
     assert progress_messages == ["tuned progress marker"]
+
+
+def test_primary_status_requires_original_and_tuned_passes() -> None:
+    """Primary benchmark status should only pass after both benchmark layers pass."""
+    assert aggregate_primary_status(StudyStatus.PASSED, StudyStatus.PASSED) == StudyStatus.PASSED
+    assert aggregate_primary_status(StudyStatus.PASSED, StudyStatus.NOT_RUN) == StudyStatus.NOT_RUN
+    assert aggregate_primary_status(StudyStatus.NOT_RUN, StudyStatus.PASSED) == StudyStatus.NOT_RUN
 
 
 def test_benchmark_selector_grids_match_study_scope_and_reject_unknowns() -> None:

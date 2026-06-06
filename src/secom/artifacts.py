@@ -205,6 +205,9 @@ _TEMPORAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
 _BENCHMARK_ORIGINAL_ARTIFACTS = tuple(_BENCHMARK_ORIGINAL_REQUIRED_COLUMNS)
 _BENCHMARK_TUNED_ARTIFACTS = tuple(_BENCHMARK_TUNED_REQUIRED_COLUMNS)
 _TEMPORAL_ARTIFACTS = tuple(_TEMPORAL_REQUIRED_COLUMNS)
+_MANIFEST_VERSION = "2.0"
+_STUDY_SPEC_PATH = "docs/spec"
+_MISSING_SPEC_HASH = "MISSING"
 
 
 def ensure_reports_dir(output_dir: Path) -> Path:
@@ -355,6 +358,14 @@ def _validate_manifest_fields(
     if missing_manifest_keys:
         errors.append(f"{ArtifactName.MANIFEST}: missing keys {missing_manifest_keys}")
 
+    if manifest.get("manifest_version") != _MANIFEST_VERSION:
+        errors.append(f"{ArtifactName.MANIFEST}: manifest_version must be {_MANIFEST_VERSION}")
+    if manifest.get("study_spec_path") != _STUDY_SPEC_PATH:
+        errors.append(f"{ArtifactName.MANIFEST}: study_spec_path must be {_STUDY_SPEC_PATH}")
+    spec_hash = manifest.get("study_spec_sha256")
+    if not isinstance(spec_hash, str) or not spec_hash.strip() or spec_hash == _MISSING_SPEC_HASH:
+        errors.append(f"{ArtifactName.MANIFEST}: study_spec_sha256 must identify the active spec set")
+
     statuses = {
         "primary_study_status": str(manifest.get("primary_study_status", StudyStatus.NOT_RUN)),
         "benchmark_original_status": str(manifest.get("benchmark_original_status", StudyStatus.NOT_RUN)),
@@ -380,6 +391,11 @@ def _validate_manifest_fields(
         errors.append("primary study status indicates failure")
     elif statuses["primary_study_status"] == StudyStatus.WARNING:
         warnings.append("primary study status indicates warnings")
+    elif statuses["primary_study_status"] == StudyStatus.PASSED and (
+        statuses["benchmark_original_status"] != StudyStatus.PASSED
+        or statuses["benchmark_tuned_status"] != StudyStatus.PASSED
+    ):
+        errors.append(f"{ArtifactName.MANIFEST}: primary_study_status passed conflicts with benchmark layer statuses")
 
     if statuses["temporal_robustness_status"] == StudyStatus.FAILED:
         warnings.append("temporal robustness status indicates failure")
