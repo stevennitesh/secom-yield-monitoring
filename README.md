@@ -63,14 +63,14 @@ A regenerated full-study run on June 6, 2026 produced the public evidence snapsh
 
 | Evidence Layer | Headline Result | How To Read It |
 | --- | --- | --- |
-| Original benchmark replication | Best row: `ReliefF` + `krr` with missing indicators, mean BER `0.292` | The benchmark protocol finds a credible yield-risk signal in the SECOM measurements. |
+| Original benchmark replication | Strict UCI-style baseline: best local row mean BER `0.310`; missing-indicator ablation winner mean BER `0.292` | The strict rows compare directly with the published benchmark, while missing indicators show the best result from the original-replication study. |
 | Tuned benchmark | Best row: `ReliefF` + `krr` in strict mode, mean BER `0.319` | This is the more conservative benchmark estimate because hyperparameters are selected inside nested cross-validation. |
 | Temporal robustness | Primary chronological candidate: `ReliefF`, mean BER `0.471` | The future-looking stress test is much harder than the benchmark setting. |
 | Temporal claim status | `HIGH_SHIFT` drift gate with one active claim restriction | Lockbox results remain useful diagnostics, but not confirmatory proof of operational superiority. |
 
 ### Original Benchmark Comparison
 
-The apples-to-apples baseline comparison is the UCI 40-feature kernel-ridge benchmark versus this repo's strict original-replication KRR rows. Lower BER is better, so positive improvement means the local replication reduced balanced error relative to the published benchmark reference.
+The apples-to-apples baseline comparison is the UCI 40-feature kernel-ridge benchmark versus this repo's strict original-replication KRR rows. Lower BER is better, so positive improvement means the local replication reduced balanced error relative to the published benchmark reference. The stronger `0.292` headline result comes from the paired missing-indicator ablation, not from this strict UCI-style comparison.
 
 | UCI method | Local selector | UCI BER % | Local BER % | BER improvement |
 | --- | --- | ---: | ---: | ---: |
@@ -85,6 +85,7 @@ Plain-language interpretation:
 
 - The benchmark studies support the core project claim: SECOM sensor data contains usable signal for yield-risk modeling.
 - Against the original UCI benchmark setup, the strict local KRR replication improves BER for five of six selector rows; the largest apples-to-apples gain is `7.6 pp` for ReliefF.
+- Missing-indicator features further improve the best original-replication row: ReliefF KRR moves from strict BER `0.325` to BER `0.292`, a `3.2 pp` reduction.
 - The tuned benchmark is intentionally stricter than the original replication, so its slightly worse BER is not a regression; it is a more conservative estimate.
 - The temporal study warns that future wafers look materially different from the development period. The development failure rate was `7.13%`, while the lockbox failure rate was `3.83%`; the score-distribution KS p-value was `3.79e-08`, max PSI was `5.125`, and median PSI was `0.569`.
 - Because of that shift, the report does not claim production readiness. It reports the lockbox evidence as descriptive stress-test evidence and keeps deployment requirements explicit.
