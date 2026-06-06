@@ -10,7 +10,9 @@ import pytest
 
 from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, SelectorName, StudyStatus
 from secom.preprocess import make_imputer, transformed_feature_metadata_from_imputer
+from secom.artifacts import read_manifest
 from secom.workflows.audit import run_study_audit
+import secom.workflows.benchmark_replication as benchmark_replication
 from secom.workflows.benchmark_common import (
     build_cluster_id_map,
     build_feature_report,
@@ -23,9 +25,20 @@ from secom.workflows.benchmark_replication import (
     run_benchmark_replication,
     run_original_benchmark_replication,
 )
-from secom.workflows.manifest import aggregate_primary_status
+from secom.workflows.manifest import aggregate_primary_status, write_benchmark_status
 from secom.workflows import benchmark_common, benchmark_tuned
 from tests.assertions import assert_artifacts_exist, assert_columns_include
+
+
+def _small_prepared_benchmark_data(project_root: Path) -> dict[str, object]:
+    """Return minimal prepared benchmark data for failure-path tests."""
+    return {
+        "project_root": project_root,
+        "feature_columns": ["sensor_000", "sensor_001", "sensor_002"],
+        "x": np.ones((6, 3), dtype=float),
+        "y": np.asarray([0, 0, 0, 1, 1, 1], dtype=int),
+        "folds": [(np.asarray([0, 1, 2, 3], dtype=int), np.asarray([4, 5], dtype=int))],
+    }
 
 
 def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
@@ -113,6 +126,66 @@ def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
     audit = run_study_audit(out_dir)
     assert audit.ok, audit.errors
     assert audit.claim_restrictions == []
+
+
+def test_original_failure_overwrites_stale_pass_manifest(workspace_tmp_dir: Path, monkeypatch) -> None:
+    """Failed original reruns should not leave stale passed benchmark status."""
+    out_dir = workspace_tmp_dir / "out"
+    reports = out_dir / "reports"
+    write_benchmark_status(
+        manifest_path=reports / ArtifactName.MANIFEST,
+        project_root=workspace_tmp_dir,
+        original_status=StudyStatus.PASSED,
+        tuned_status=StudyStatus.PASSED,
+    )
+
+    def fail_selector_views(**_kwargs):
+        """Simulate a workflow failure after run context is available."""
+        raise RuntimeError("forced original failure")
+
+    monkeypatch.setattr(benchmark_replication, "prepare_selector_views", fail_selector_views)
+
+    with pytest.raises(RuntimeError, match="forced original failure"):
+        run_original_benchmark_replication(
+            input_dir=workspace_tmp_dir / "raw",
+            output_dir=out_dir,
+            _prepared_data=_small_prepared_benchmark_data(workspace_tmp_dir),
+        )
+
+    manifest = read_manifest(reports / ArtifactName.MANIFEST)
+    assert manifest["benchmark_original_status"] == StudyStatus.FAILED
+    assert manifest["benchmark_tuned_status"] == StudyStatus.PASSED
+    assert manifest["primary_study_status"] == StudyStatus.FAILED
+
+
+def test_tuned_failure_overwrites_stale_pass_manifest(workspace_tmp_dir: Path, monkeypatch) -> None:
+    """Failed tuned reruns should not leave stale passed benchmark status."""
+    out_dir = workspace_tmp_dir / "out"
+    reports = out_dir / "reports"
+    write_benchmark_status(
+        manifest_path=reports / ArtifactName.MANIFEST,
+        project_root=workspace_tmp_dir,
+        original_status=StudyStatus.PASSED,
+        tuned_status=StudyStatus.PASSED,
+    )
+
+    def fail_inner_selector_views(*_args, **_kwargs):
+        """Simulate a tuned workflow failure after run context is available."""
+        raise RuntimeError("forced tuned failure")
+
+    monkeypatch.setattr(benchmark_tuned, "_cached_inner_selector_views", fail_inner_selector_views)
+
+    with pytest.raises(RuntimeError, match="forced tuned failure"):
+        benchmark_tuned.run_tuned_benchmark_replication(
+            input_dir=workspace_tmp_dir / "raw",
+            output_dir=out_dir,
+            _prepared_data=_small_prepared_benchmark_data(workspace_tmp_dir),
+        )
+
+    manifest = read_manifest(reports / ArtifactName.MANIFEST)
+    assert manifest["benchmark_original_status"] == StudyStatus.PASSED
+    assert manifest["benchmark_tuned_status"] == StudyStatus.FAILED
+    assert manifest["primary_study_status"] == StudyStatus.FAILED
 
 
 def test_benchmark_replication_feature_report_aligns_with_requested_classifier(

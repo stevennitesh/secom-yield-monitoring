@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from secom.config import ArtifactName, ScalerName, SelectorName
+from secom.artifacts import read_manifest
+from secom.config import ArtifactName, ScalerName, SelectorName, StudyStatus
 from secom.types import FittedRoleModel, RoleConfig
 from secom.workflows import temporal_robustness
 from secom.workflows.audit import run_study_audit
+from secom.workflows.manifest import write_benchmark_status, write_temporal_status
 from tests.assertions import assert_artifacts_exist, assert_columns_include
 
 
@@ -45,6 +50,66 @@ def test_temporal_robustness_emits_temporal_artifacts_and_audit_is_non_blocking(
 
     audit = run_study_audit(out_dir)
     assert audit.ok, audit.errors
+
+
+def test_temporal_failure_overwrites_stale_pass_manifest(workspace_tmp_dir: Path, monkeypatch) -> None:
+    """Failed temporal reruns should preserve benchmark status while marking temporal failure."""
+    out_dir = workspace_tmp_dir / "out"
+    reports = out_dir / "reports"
+    write_benchmark_status(
+        manifest_path=reports / ArtifactName.MANIFEST,
+        project_root=workspace_tmp_dir,
+        original_status=StudyStatus.PASSED,
+        tuned_status=StudyStatus.PASSED,
+    )
+    write_temporal_status(
+        manifest_path=reports / ArtifactName.MANIFEST,
+        project_root=workspace_tmp_dir,
+        temporal_status=StudyStatus.PASSED,
+    )
+    fold = SimpleNamespace(
+        train_index=np.asarray([0, 1, 2, 3], dtype=int),
+        test_index=np.asarray([4, 5], dtype=int),
+        outer_fold=1,
+    )
+    frame = pd.DataFrame(
+        {
+            "sensor_000": np.ones(6, dtype=float),
+            "sensor_001": np.ones(6, dtype=float),
+            "y_bin": [0, 0, 0, 1, 1, 1],
+            "week_label": [1, 1, 2, 2, 3, 3],
+        }
+    )
+    bundle = SimpleNamespace(
+        all_data=frame,
+        dev=frame,
+        lockbox=frame,
+        temporal_feasible=True,
+        temporal_infeasible_reason=None,
+        fold_plan=SimpleNamespace(folds=[fold]),
+        dev_with_weeks=frame,
+        feature_columns=["sensor_000", "sensor_001"],
+    )
+
+    monkeypatch.setattr(temporal_robustness, "_build_bundle", lambda _input_dir: bundle)
+    monkeypatch.setattr(
+        temporal_robustness,
+        "_fit_eval_with_labels",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("forced temporal failure")),
+    )
+
+    with pytest.raises(RuntimeError, match="forced temporal failure"):
+        temporal_robustness.run_temporal_robustness(
+            input_dir=workspace_tmp_dir / "raw",
+            output_dir=out_dir,
+            selectors_run=[SelectorName.S2N],
+        )
+
+    manifest = read_manifest(reports / ArtifactName.MANIFEST)
+    assert manifest["primary_study_status"] == StudyStatus.PASSED
+    assert manifest["benchmark_original_status"] == StudyStatus.PASSED
+    assert manifest["benchmark_tuned_status"] == StudyStatus.PASSED
+    assert manifest["temporal_robustness_status"] == StudyStatus.FAILED
 
 
 def test_temporal_selector_grids_match_stage_scope_and_reject_unknowns() -> None:
