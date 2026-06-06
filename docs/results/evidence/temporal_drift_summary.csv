@@ -1,0 +1,2 @@
+model_scope,dev_fail_rate,lockbox_fail_rate,abs_prevalence_shift,ks_pvalue_scores,max_PSI,median_PSI,psi_feature_count,drift_gate_status,lockbox_claims_allowed
+primary,0.07132132132132132,0.03829787234042553,0.03302344898089579,3.7850056205603096e-08,5.125045488646568,0.5687121501112258,10,HIGH_SHIFT,False
