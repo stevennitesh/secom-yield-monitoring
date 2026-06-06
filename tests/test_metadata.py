@@ -6,6 +6,8 @@ import hashlib
 import tomllib
 from pathlib import Path
 
+import numpy as np
+
 from secom.common.meta import library_versions, strategy_sha256, study_spec_path
 
 _SPEC_FILENAMES = [
@@ -112,3 +114,16 @@ def test_install_target_uses_pinned_requirements_before_editable_install() -> No
     assert "install --upgrade pip setuptools wheel" not in makefile
     assert "$(PIP) install -r requirements.txt" in makefile
     assert "$(PIP) install -e . --no-build-isolation" in makefile
+
+
+def test_skrebate_pin_imports_and_fits_with_runtime_stack() -> None:
+    """skrebate should import and run a minimal ReliefF fit with pinned runtime dependencies."""
+    from skrebate import ReliefF
+
+    x = np.asarray([[0.0, 1.0], [1.0, 0.0], [0.9, 0.2], [0.1, 0.8]], dtype=float)
+    y = np.asarray([0, 1, 1, 0], dtype=int)
+
+    model = ReliefF(n_features_to_select=1, n_neighbors=1, n_jobs=1)
+    model.fit(x, y)
+
+    assert model.feature_importances_.shape == (2,)

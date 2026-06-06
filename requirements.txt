@@ -5,8 +5,8 @@ pandas==3.0.3
 scikit-learn==1.9.0
 scipy==1.17.1
 # Python >=3.11 compatibility note: skrebate==0.62 publishes a pure py3 wheel
-# with Python 3 classifiers and no Requires-Python cap; ReliefF import/fit is
-# smoke-tested under the pinned Python 3.12 stack used by CI.
+# with Python 3 classifiers and no Requires-Python cap; CI imports and fits
+# ReliefF with the pinned stack on Python 3.11 and 3.12.
 skrebate==0.62
 
 # Development and test dependencies
