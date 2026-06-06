@@ -523,6 +523,25 @@ def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_
     assert any("temporal robustness status indicates warnings" in w for w in result.warnings)
 
 
+def test_study_audit_temporal_failure_without_temporal_artifacts_is_non_blocking(workspace_tmp_dir: Path) -> None:
+    """Temporal failure should be visible without invalidating primary benchmark artifacts."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(
+            tuned_status=StudyStatus.PASSED,
+            temporal_status=StudyStatus.FAILED,
+        ),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert result.ok, result.errors
+    assert any("temporal robustness status indicates failure" in w for w in result.warnings)
+
+
 def test_study_audit_missing_primary_artifact_is_blocking(workspace_tmp_dir: Path) -> None:
     """Missing required primary artifacts should fail the audit."""
     reports = ensure_reports_dir(workspace_tmp_dir)

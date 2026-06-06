@@ -289,7 +289,7 @@ def _required_artifacts_by_study(
         primary_status != StudyStatus.NOT_RUN and benchmark_original_status != StudyStatus.NOT_RUN
     ):
         names.extend(_BENCHMARK_TUNED_ARTIFACTS)
-    if temporal_status != StudyStatus.NOT_RUN:
+    if temporal_status in {StudyStatus.PASSED, StudyStatus.WARNING}:
         names.extend(_TEMPORAL_ARTIFACTS)
     return names
 
@@ -830,7 +830,7 @@ def validate_schema_and_logic(
     active_tuned = state.tuned_status != StudyStatus.NOT_RUN or (
         state.primary_status != StudyStatus.NOT_RUN and state.original_status != StudyStatus.NOT_RUN
     )
-    active_temporal = state.temporal_status != StudyStatus.NOT_RUN
+    active_temporal = state.temporal_status in {StudyStatus.PASSED, StudyStatus.WARNING}
 
     _validate_artifact_family(
         reports=reports,
@@ -889,7 +889,7 @@ def validate_schema_and_logic(
         artifact_frames=artifact_frames,
         artifact_names=_TEMPORAL_ARTIFACTS,
         active=active_temporal,
-        warning_prefix=f"temporal artifact present while temporal robustness status is {StudyStatus.NOT_RUN}",
+        warning_prefix="temporal artifact present without completed temporal robustness status",
         warnings=warnings,
     )
 

@@ -54,7 +54,7 @@ from secom.preprocess import make_imputer, make_scaler, transformed_feature_meta
 from secom.selection.engine import fit_selector_pipeline, select_features
 from secom.selection.tuning import select_best_inner_config
 from secom.types import DataBundle, FittedRoleModel, RoleConfig
-from secom.workflows.manifest import write_temporal_status
+from secom.workflows.manifest import write_temporal_failure, write_temporal_status
 
 STAGE_A_FEATURE_BUDGET = 40
 STAGE_B_K_VALUES = [10, 20, 40]
@@ -1015,7 +1015,34 @@ def _run_stage_b_model_selection(
     return pd.DataFrame(inner_rows), pd.DataFrame(outer_eval_rows)
 
 
+def _project_root() -> Path:
+    """Return the repository root for temporal failure manifests."""
+    return Path(__file__).resolve().parents[3]
+
+
 def run_temporal_robustness(
+    input_dir: Path,
+    output_dir: Path,
+    *,
+    selectors_run: list[str] | None = None,
+) -> dict[str, Any]:
+    """Run temporal robustness and persist failed status before re-raising errors."""
+    try:
+        return _run_temporal_robustness(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            selectors_run=selectors_run,
+        )
+    except Exception as exc:
+        write_temporal_failure(
+            manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
+            project_root=_project_root(),
+            reason=str(exc),
+        )
+        raise
+
+
+def _run_temporal_robustness(
     input_dir: Path,
     output_dir: Path,
     *,

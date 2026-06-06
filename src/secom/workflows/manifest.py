@@ -71,6 +71,22 @@ def write_benchmark_status(
     return manifest
 
 
+def write_benchmark_failure(
+    *,
+    manifest_path: Path,
+    project_root: Path,
+    original_failed: bool = False,
+    tuned_failed: bool = False,
+) -> dict[str, Any]:
+    """Persist failed benchmark layer status before re-raising workflow errors."""
+    return write_benchmark_status(
+        manifest_path=manifest_path,
+        project_root=project_root,
+        original_status=StudyStatus.FAILED if original_failed else None,
+        tuned_status=StudyStatus.FAILED if tuned_failed else None,
+    )
+
+
 def write_temporal_status(
     *,
     manifest_path: Path,
@@ -90,3 +106,14 @@ def write_temporal_status(
         manifest["industrialization_notes"] = notes
     write_manifest(manifest, manifest_path)
     return manifest
+
+
+def write_temporal_failure(*, manifest_path: Path, project_root: Path, reason: str | None = None) -> dict[str, Any]:
+    """Persist failed temporal status while preserving benchmark-layer manifest state."""
+    note = None if reason is None else f"temporal robustness failed: {reason}"
+    return write_temporal_status(
+        manifest_path=manifest_path,
+        project_root=project_root,
+        temporal_status=StudyStatus.FAILED,
+        industrialization_note=note,
+    )

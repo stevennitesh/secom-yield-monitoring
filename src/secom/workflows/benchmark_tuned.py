@@ -52,7 +52,7 @@ from secom.workflows.benchmark_common import (
     prepare_full_selector_view,
     selector_config_from_row,
 )
-from secom.workflows.manifest import write_benchmark_status
+from secom.workflows.manifest import write_benchmark_failure, write_benchmark_status
 
 
 @dataclass(frozen=True)
@@ -430,7 +430,42 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _project_root() -> Path:
+    """Return the repository root for failure manifests when prepared data is unavailable."""
+    return Path(__file__).resolve().parents[3]
+
+
 def run_tuned_benchmark_replication(
+    input_dir: Path,
+    output_dir: Path,
+    *,
+    classifiers_run: list[str] | None = None,
+    selectors_run: list[str] | None = None,
+    progress: Callable[[str], None] | None = None,
+    _prepared_data: dict[str, Any] | None = None,
+    _cluster_id_map: dict[int, int] | None = None,
+) -> dict[str, Any]:
+    """Run the tuned benchmark and persist failed status before re-raising errors."""
+    try:
+        return _run_tuned_benchmark_replication(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            classifiers_run=classifiers_run,
+            selectors_run=selectors_run,
+            progress=progress,
+            _prepared_data=_prepared_data,
+            _cluster_id_map=_cluster_id_map,
+        )
+    except Exception:
+        write_benchmark_failure(
+            manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
+            project_root=_project_root(),
+            tuned_failed=True,
+        )
+        raise
+
+
+def _run_tuned_benchmark_replication(
     input_dir: Path,
     output_dir: Path,
     *,
