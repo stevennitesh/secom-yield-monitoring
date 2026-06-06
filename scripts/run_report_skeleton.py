@@ -21,9 +21,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Generate the scaffold report used for debugging report assembly."""
+    args = parse_args()
+
     from secom.reporting import write_report_skeleton
 
-    args = parse_args()
     out = write_report_skeleton(Path(args.output_dir))
     print(out)
 
