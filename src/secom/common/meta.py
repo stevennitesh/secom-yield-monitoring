@@ -58,13 +58,21 @@ def strategy_sha256(project_root: Path) -> str:
 
     digest = hashlib.sha256()
     for path in spec_paths:
-        digest.update(path.read_bytes())
+        content = path.read_bytes()
+        rel_path = path.relative_to(project_root).as_posix().encode()
+        digest.update(rel_path)
+        digest.update(b"\0")
+        digest.update(str(len(content)).encode())
+        digest.update(b"\0")
+        digest.update(content)
+        digest.update(b"\0")
     return digest.hexdigest()
 
 
 def library_versions() -> dict[str, str]:
     """Return runtime library versions recorded in workflow manifests."""
     # Imports stay local so simple metadata callers do not pay import cost unless needed.
+    import matplotlib
     import numpy
     import pandas
     import scipy
@@ -79,6 +87,7 @@ def library_versions() -> dict[str, str]:
 
     return {
         "python": sys.version.split()[0],
+        "matplotlib": matplotlib.__version__,
         "numpy": numpy.__version__,
         "pandas": pandas.__version__,
         "sklearn": sklearn.__version__,

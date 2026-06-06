@@ -6,7 +6,7 @@ import hashlib
 import tomllib
 from pathlib import Path
 
-from secom.common.meta import strategy_sha256, study_spec_path
+from secom.common.meta import library_versions, strategy_sha256, study_spec_path
 
 _SPEC_FILENAMES = [
     "01-study-goal.md",
@@ -35,13 +35,21 @@ def _write_spec_set(project_root: Path) -> list[bytes]:
 
 
 def test_strategy_sha256_hashes_ordered_numbered_specs(workspace_tmp_dir: Path) -> None:
-    """Strategy hashes should use the ordered active numbered spec files."""
+    """Strategy hashes should include spec filenames and content boundaries."""
     contents = _write_spec_set(workspace_tmp_dir)
 
-    expected = hashlib.sha256(b"".join(contents)).hexdigest()
+    expected = hashlib.sha256()
+    for filename, content in zip(_SPEC_FILENAMES, contents, strict=True):
+        rel_path = f"docs/spec/{filename}".encode()
+        expected.update(rel_path)
+        expected.update(b"\0")
+        expected.update(str(len(content)).encode())
+        expected.update(b"\0")
+        expected.update(content)
+        expected.update(b"\0")
 
     assert study_spec_path() == "docs/spec"
-    assert strategy_sha256(workspace_tmp_dir) == expected
+    assert strategy_sha256(workspace_tmp_dir) == expected.hexdigest()
 
 
 def test_strategy_sha256_returns_missing_when_required_spec_is_absent(workspace_tmp_dir: Path) -> None:
@@ -74,6 +82,19 @@ def test_runtime_dependencies_are_exact_pinned_and_match_requirements() -> None:
         name, separator, version = dependency.partition("==")
         assert separator == "==", f"project dependency is not exact-pinned: {dependency}"
         assert requirements[name.lower()] == version
+
+
+def test_manifest_library_versions_cover_runtime_dependencies() -> None:
+    """Manifest library metadata should include every runtime package that affects artifacts."""
+    pyproject = tomllib.loads((_PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    versions = library_versions()
+    package_key_aliases = {"scikit-learn": "sklearn"}
+
+    for dependency in pyproject["project"]["dependencies"]:
+        name = dependency.split("==", maxsplit=1)[0].lower()
+        metadata_key = package_key_aliases.get(name, name)
+        assert metadata_key in versions
+        assert versions[metadata_key]
 
 
 def test_build_system_dependencies_are_exact_pinned() -> None:
