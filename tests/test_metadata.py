@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import tomllib
 from pathlib import Path
 
 from secom.common.meta import strategy_sha256, study_spec_path
@@ -17,6 +18,7 @@ _SPEC_FILENAMES = [
     "07-artifact-contracts.md",
     "08-audit-and-claim-semantics.md",
 ]
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _write_spec_set(project_root: Path) -> list[bytes]:
@@ -48,3 +50,35 @@ def test_strategy_sha256_returns_missing_when_required_spec_is_absent(workspace_
     (workspace_tmp_dir / "docs" / "spec" / "04-temporal-robustness-study.md").unlink()
 
     assert strategy_sha256(workspace_tmp_dir) == "MISSING"
+
+
+def _requirement_pins(path: Path) -> dict[str, str]:
+    """Return exact package pins from a requirements-style file."""
+    pins: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, separator, version = line.partition("==")
+        assert separator == "==", f"requirement is not exact-pinned: {line}"
+        pins[name.lower()] = version
+    return pins
+
+
+def test_runtime_dependencies_are_exact_pinned_and_match_requirements() -> None:
+    """Package metadata and requirements should use the same exact runtime dependency pins."""
+    pyproject = tomllib.loads((_PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    requirements = _requirement_pins(_PROJECT_ROOT / "requirements.txt")
+
+    for dependency in pyproject["project"]["dependencies"]:
+        name, separator, version = dependency.partition("==")
+        assert separator == "==", f"project dependency is not exact-pinned: {dependency}"
+        assert requirements[name.lower()] == version
+
+
+def test_build_system_dependencies_are_exact_pinned() -> None:
+    """Build-system dependencies should also avoid unbounded resolver drift."""
+    pyproject = tomllib.loads((_PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    for dependency in pyproject["build-system"]["requires"]:
+        assert "==" in dependency, f"build dependency is not exact-pinned: {dependency}"
