@@ -120,6 +120,22 @@ _UCI_ORIGINAL_BASELINE_ROWS = [
     },
 ]
 
+_INDUSTRIALIZATION_GAPS = [
+    "No stable device/tool/chamber identifier for unseen-device validation.",
+    "No intervention or maintenance history.",
+    "No explicit regime-change metadata.",
+    "No downstream decision or action outcome data.",
+    "Anonymous features limit process interpretation.",
+    "Single-dataset evidence only.",
+    "Operational framing in this report is illustrative, not production-validated.",
+]
+
+_INDUSTRIALIZATION_NEXT_DATA = [
+    "Next data collection should add device- or tool-level identifiers, intervention logs, and longer-horizon cross-context validation.",
+    "A production-grade study would also require deployment decision objectives and cost accounting.",
+    "Stronger process claims would require additional data to support stronger causal or process claims.",
+]
+
 
 def _uci_baseline_match(benchmark_summary: pd.DataFrame | None, selector: str) -> pd.Series | None:
     """Return the local strict KRR row that best matches the UCI original benchmark setup."""
@@ -566,6 +582,29 @@ def _load_report_context(output_dir: Path) -> ReportContext:
 def _append_bullet_list(lines: list[str], items: list[str]) -> None:
     """Append Markdown bullet lines in-place."""
     lines.extend(f"- {item}" for item in items)
+
+
+def _manifest_industrialization_notes(manifest: dict[str, object]) -> list[str]:
+    """Return non-empty run-specific industrialization notes from the manifest."""
+    notes = manifest.get("industrialization_notes", [])
+    if not isinstance(notes, list):
+        return []
+    normalized = [str(note).strip() for note in notes]
+    return [note for note in normalized if note]
+
+
+def _append_industrialization_section(lines: list[str], manifest: dict[str, object]) -> None:
+    """Append required industrialization gaps plus run-specific manifest notes."""
+    lines.append("## Industrialization Gaps")
+    lines.append("")
+    _append_bullet_list(lines, _INDUSTRIALIZATION_GAPS)
+
+    notes = _manifest_industrialization_notes(manifest)
+    if notes:
+        lines.append("")
+        lines.append("### Run-Specific Industrialization Notes")
+        lines.append("")
+        _append_bullet_list(lines, notes)
 
 
 def _append_benchmark_summary_table(
@@ -1221,13 +1260,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
     lines.append("")
     lines.append("Interpret this section as robustness evidence, not as the primary basis for project success.")
     lines.append("")
-    lines.append("## Industrialization Gaps")
-    lines.append("")
-    lines.append("- No stable device/tool/chamber identifier for unseen-device validation.")
-    lines.append("- No intervention or maintenance history.")
-    lines.append("- No explicit regime-change metadata.")
-    lines.append("- Anonymous features limit process interpretation.")
-    lines.append("- Operational framing in this report is illustrative, not production-validated.")
+    _append_industrialization_section(lines, manifest)
     lines.append("")
     lines.append("## Conclusions and Next Data Requirements")
     lines.append("")
@@ -1247,9 +1280,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.append(
             "- The temporal stress test provides secondary robustness evidence without active claim restrictions in this run."
         )
-    lines.append(
-        "- A true industrial deployment study would still require stable device or tool identifiers, intervention history, and richer process metadata."
-    )
+    _append_bullet_list(lines, _INDUSTRIALIZATION_NEXT_DATA)
     lines.append("")
 
     out_path = reports / ArtifactName.REPORT_SKELETON
@@ -1644,20 +1675,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         "figures/workload_cost_framing.png",
         "Figure 6 combines weekly workload framing with illustrative cost curves so operational impact can be discussed without overstating production readiness.",
     )
-    lines.append("## Industrialization Gaps")
-    lines.append("")
-    _append_bullet_list(
-        lines,
-        [
-            "No stable device/tool/chamber identifier for unseen-device validation.",
-            "No intervention or maintenance history.",
-            "No explicit regime-change metadata.",
-            "No downstream decision or action outcome data.",
-            "Anonymous features limit process interpretation.",
-            "Single-dataset evidence only.",
-            "Operational framing in this report is illustrative, not production-validated.",
-        ],
-    )
+    _append_industrialization_section(lines, ctx.manifest)
     lines.append("")
     lines.append("## Conclusions and Next Data Requirements")
     lines.append("")
@@ -1679,9 +1697,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
                 if restrictions
                 else "The temporal study adds secondary robustness evidence without active claim restrictions in this run."
             ),
-            "Next data collection should add device- or tool-level identifiers, intervention logs, and longer-horizon cross-context validation.",
-            "A production-grade study would also require deployment decision objectives and cost accounting.",
-            "Stronger process claims would require additional data to support stronger causal or process claims.",
+            *_INDUSTRIALIZATION_NEXT_DATA,
         ],
     )
     lines.append("")
