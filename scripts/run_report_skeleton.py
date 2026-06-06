@@ -9,8 +9,6 @@ from _script_path import ensure_src_on_path
 
 ensure_src_on_path()
 
-from secom.reporting import write_report_skeleton
-
 DEFAULT_OUTPUT_DIR = "runs"
 
 
@@ -23,6 +21,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Generate the scaffold report used for debugging report assembly."""
+    from secom.reporting import write_report_skeleton
+
     args = parse_args()
     out = write_report_skeleton(Path(args.output_dir))
     print(out)
