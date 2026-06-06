@@ -508,7 +508,7 @@ def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_
         _base_manifest(
             tuned_status=StudyStatus.PASSED,
             temporal_status=StudyStatus.WARNING,
-            temporal_claim_restrictions=["high_shift_blocks_lockbox_superiority_claim"],
+            temporal_claim_restrictions=["primary_high_shift_blocks_lockbox_superiority_claim"],
         ),
         reports / ArtifactName.MANIFEST,
     )
@@ -519,8 +519,161 @@ def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_
     result = run_study_audit(workspace_tmp_dir)
 
     assert result.ok, result.errors
-    assert "high_shift_blocks_lockbox_superiority_claim" in result.claim_restrictions
+    assert "primary_high_shift_blocks_lockbox_superiority_claim" in result.claim_restrictions
     assert any("temporal robustness status indicates warnings" in w for w in result.warnings)
+
+
+def test_study_audit_rejects_temporal_claim_restriction_mismatch(workspace_tmp_dir: Path) -> None:
+    """Temporal claim restrictions should match drift, lockbox, and MSPC artifact evidence."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(
+            tuned_status=StudyStatus.PASSED,
+            temporal_status=StudyStatus.PASSED,
+            temporal_claim_restrictions=[],
+        ),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert "primary_high_shift_blocks_lockbox_superiority_claim" in result.claim_restrictions
+    assert any("temporal_claim_restrictions mismatch artifact evidence" in error for error in result.errors)
+
+
+def test_study_audit_rejects_temporal_primary_cardinality_mismatch(workspace_tmp_dir: Path) -> None:
+    """Temporal model selection must mark exactly one primary selector."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED, temporal_status=StudyStatus.WARNING),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+    selected_row = pd.read_csv(reports / ArtifactName.TEMPORAL_MODEL_SELECTION).iloc[0].to_dict()
+    write_artifact_rows(reports, ArtifactName.TEMPORAL_MODEL_SELECTION, [selected_row, dict(selected_row)])
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "temporal_model_selection.csv: exactly one row must be marked primary" in error for error in result.errors
+    )
+
+
+def test_study_audit_rejects_invalid_temporal_enum_values(workspace_tmp_dir: Path) -> None:
+    """Temporal role, threshold, and drift-status labels should stay in controlled vocabularies."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED, temporal_status=StudyStatus.WARNING),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_LOCKBOX,
+        {
+            "role": "secondary",
+            "threshold_policy": "manager",
+            "BER": 0.42,
+            "True+": 0.50,
+            "True-": 0.75,
+            "TPR_at_TNR90": 0.40,
+        },
+    )
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_DRIFT,
+        {"model_scope": "primary", "drift_gate_status": "OK", "lockbox_claims_allowed": False},
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any("temporal_lockbox.csv: role contains invalid values" in error for error in result.errors)
+    assert any("temporal_lockbox.csv: threshold_policy contains invalid values" in error for error in result.errors)
+    assert any(
+        "temporal_drift_summary.csv: drift_gate_status contains invalid values" in error for error in result.errors
+    )
+
+
+def test_study_audit_rejects_invalid_temporal_numeric_ranges(workspace_tmp_dir: Path) -> None:
+    """Temporal probabilities and operations-facing counts should stay within valid ranges."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED, temporal_status=StudyStatus.WARNING),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+        {
+            "role": "primary",
+            "threshold_policy": "scientific",
+            "predicted_flag_fraction": 1.5,
+            "mean_weekly_flagged_wafers": -1.0,
+        },
+    )
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_COST_CURVES,
+        {"cost_ratio": -5, "all_pass_baseline": -0.2, "all_flag_baseline": -0.1},
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "temporal_manager_outputs.csv: predicted_flag_fraction must be between 0 and 1" in error
+        for error in result.errors
+    )
+    assert any(
+        "temporal_manager_outputs.csv: mean_weekly_flagged_wafers must be nonnegative" in error
+        for error in result.errors
+    )
+    assert any("temporal_cost_curves.csv: cost_ratio must be positive" in error for error in result.errors)
+    assert any("temporal_cost_curves.csv: all_pass_baseline must be nonnegative" in error for error in result.errors)
+
+
+def test_study_audit_rejects_temporal_role_policy_lineage_mismatch(workspace_tmp_dir: Path) -> None:
+    """Temporal manager-facing rows should match persisted lockbox role/policy rows."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(
+            tuned_status=StudyStatus.PASSED,
+            temporal_status=StudyStatus.WARNING,
+            temporal_claim_restrictions=["primary_high_shift_blocks_lockbox_superiority_claim"],
+        ),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+        {
+            "role": "challenger",
+            "threshold_policy": "scientific",
+            "predicted_flag_fraction": 0.15,
+            "mean_weekly_flagged_wafers": 4.0,
+        },
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any("temporal_manager_outputs.csv: role/policy coverage mismatch" in error for error in result.errors)
 
 
 def test_study_audit_temporal_failure_without_temporal_artifacts_is_non_blocking(workspace_tmp_dir: Path) -> None:

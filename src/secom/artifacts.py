@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from secom.config import ArtifactName, MANIFEST_REQUIRED_KEYS, StudyStatus
+from secom.config import ArtifactName, MANIFEST_REQUIRED_KEYS, ModelScope, StudyStatus, ThresholdPolicy
 
 
 @dataclass(frozen=True)
@@ -205,6 +205,11 @@ _TEMPORAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
 _BENCHMARK_ORIGINAL_ARTIFACTS = tuple(_BENCHMARK_ORIGINAL_REQUIRED_COLUMNS)
 _BENCHMARK_TUNED_ARTIFACTS = tuple(_BENCHMARK_TUNED_REQUIRED_COLUMNS)
 _TEMPORAL_ARTIFACTS = tuple(_TEMPORAL_REQUIRED_COLUMNS)
+_TEMPORAL_ROLES = {ModelScope.PRIMARY, ModelScope.CHALLENGER}
+_TEMPORAL_THRESHOLD_POLICIES = {ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPERATIONAL}
+_TEMPORAL_MODEL_SELECTION_STATUSES = {"primary", "challenger", "supporting"}
+_TEMPORAL_DRIFT_GATE_STATUSES = {"PASS", "CAUTION", "HIGH_SHIFT"}
+_TEMPORAL_MSPC_SOURCES = {"T2", "Q"}
 _MANIFEST_VERSION = "2.0"
 _STUDY_SPEC_PATH = "docs/spec"
 _MISSING_SPEC_HASH = "MISSING"
@@ -558,6 +563,99 @@ def _validate_feature_stability_coverage(
     _validate_binary_selected_values(artifact_name, feature_stability, errors)
 
 
+def _normalized_bool_cell(value: Any) -> bool | None:
+    """Normalize artifact boolean-like cells without accepting arbitrary truthy strings."""
+    if pd.isna(value):
+        return None
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer)) and value in {0, 1}:
+        return bool(value)
+    if isinstance(value, (float, np.floating)) and value in {0.0, 1.0}:
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"true", "1"}:
+        return True
+    if text in {"false", "0"}:
+        return False
+    return None
+
+
+def _normalized_bool_values(df: pd.DataFrame, column: str) -> list[bool | None]:
+    """Return normalized boolean values for one artifact column."""
+    if column not in df.columns:
+        return []
+    return [_normalized_bool_cell(value) for value in df[column]]
+
+
+def _validate_boolean_column(name: str, df: pd.DataFrame, column: str, errors: list[str]) -> None:
+    """Validate an artifact column is encoded as boolean values."""
+    values = _normalized_bool_values(df, column)
+    if any(value is None for value in values):
+        errors.append(f"{name}: {column} must contain only boolean values")
+
+
+def _validate_allowed_values(
+    name: str,
+    df: pd.DataFrame,
+    column: str,
+    allowed: set[str],
+    errors: list[str],
+) -> None:
+    """Validate string values in one artifact column against a controlled vocabulary."""
+    if column not in df.columns:
+        return
+    invalid = sorted({str(value) for value in df[column].dropna().unique()} - allowed)
+    if invalid:
+        errors.append(f"{name}: {column} contains invalid values {invalid}")
+
+
+def _numeric_values(df: pd.DataFrame, column: str) -> pd.Series | None:
+    """Return numeric artifact values for a present column."""
+    if column not in df.columns:
+        return None
+    return pd.to_numeric(df[column], errors="coerce")
+
+
+def _validate_probability_column(name: str, df: pd.DataFrame, column: str, errors: list[str]) -> None:
+    """Validate a numeric artifact column is finite and in [0, 1]."""
+    values = _numeric_values(df, column)
+    if values is None:
+        return
+    if values.isna().any() or (values < 0.0).any() or (values > 1.0).any():
+        errors.append(f"{name}: {column} must be between 0 and 1")
+
+
+def _validate_nonnegative_column(
+    name: str,
+    df: pd.DataFrame,
+    column: str,
+    errors: list[str],
+    *,
+    allow_missing: bool = False,
+) -> None:
+    """Validate a numeric artifact column is nonnegative, optionally allowing blanks."""
+    values = _numeric_values(df, column)
+    if values is None:
+        return
+    invalid_numeric = values.isna() & df[column].notna()
+    if invalid_numeric.any():
+        errors.append(f"{name}: {column} must be nonnegative")
+        return
+    checked_values = values.dropna() if allow_missing else values
+    if checked_values.isna().any() or (checked_values < 0.0).any():
+        errors.append(f"{name}: {column} must be nonnegative")
+
+
+def _validate_positive_column(name: str, df: pd.DataFrame, column: str, errors: list[str]) -> None:
+    """Validate a numeric artifact column is finite and strictly positive."""
+    values = _numeric_values(df, column)
+    if values is None:
+        return
+    if values.isna().any() or (values <= 0.0).any():
+        errors.append(f"{name}: {column} must be positive")
+
+
 def _validate_feature_lineage(
     *,
     artifact_frames: dict[str, pd.DataFrame] | None,
@@ -802,6 +900,334 @@ def _validate_selector_config_lineage(
         )
 
 
+def _validate_temporal_model_selection(model_selection: pd.DataFrame | None, errors: list[str]) -> None:
+    """Validate temporal role-assignment semantics."""
+    if model_selection is None:
+        return
+    name = ArtifactName.TEMPORAL_MODEL_SELECTION
+    _validate_allowed_values(name, model_selection, "status", _TEMPORAL_MODEL_SELECTION_STATUSES, errors)
+    _validate_boolean_column(name, model_selection, "is_primary", errors)
+    _validate_boolean_column(name, model_selection, "is_challenger", errors)
+    _validate_probability_column(name, model_selection, "mean_BER", errors)
+
+    primary_flags = _normalized_bool_values(model_selection, "is_primary")
+    challenger_flags = _normalized_bool_values(model_selection, "is_challenger")
+    if primary_flags and primary_flags.count(True) != 1:
+        errors.append(f"{name}: exactly one row must be marked primary")
+    if challenger_flags and challenger_flags.count(True) > 1:
+        errors.append(f"{name}: at most one row may be marked challenger")
+
+
+def _validate_temporal_enums(
+    *,
+    freeze: pd.DataFrame | None,
+    lockbox: pd.DataFrame | None,
+    drift: pd.DataFrame | None,
+    mspc: pd.DataFrame | None,
+    manager: pd.DataFrame | None,
+    errors: list[str],
+) -> None:
+    """Validate controlled vocabularies across temporal artifacts."""
+    if freeze is not None:
+        _validate_allowed_values(ArtifactName.TEMPORAL_FREEZE, freeze, "role", _TEMPORAL_ROLES, errors)
+        _validate_boolean_column(ArtifactName.TEMPORAL_FREEZE, freeze, "is_frozen_config", errors)
+    if lockbox is not None:
+        _validate_allowed_values(ArtifactName.TEMPORAL_LOCKBOX, lockbox, "role", _TEMPORAL_ROLES, errors)
+        _validate_allowed_values(
+            ArtifactName.TEMPORAL_LOCKBOX,
+            lockbox,
+            "threshold_policy",
+            _TEMPORAL_THRESHOLD_POLICIES,
+            errors,
+        )
+    if drift is not None:
+        _validate_allowed_values(ArtifactName.TEMPORAL_DRIFT, drift, "model_scope", _TEMPORAL_ROLES, errors)
+        _validate_allowed_values(
+            ArtifactName.TEMPORAL_DRIFT,
+            drift,
+            "drift_gate_status",
+            _TEMPORAL_DRIFT_GATE_STATUSES,
+            errors,
+        )
+        _validate_boolean_column(ArtifactName.TEMPORAL_DRIFT, drift, "lockbox_claims_allowed", errors)
+    if mspc is not None:
+        _validate_allowed_values(ArtifactName.TEMPORAL_MSPC, mspc, "eval_scope", {"outer_fold", "lockbox"}, errors)
+        _validate_allowed_values(ArtifactName.TEMPORAL_MSPC, mspc, "best_MSPC_source", _TEMPORAL_MSPC_SOURCES, errors)
+    if manager is not None:
+        _validate_allowed_values(ArtifactName.TEMPORAL_MANAGER_OUTPUTS, manager, "role", _TEMPORAL_ROLES, errors)
+        _validate_allowed_values(
+            ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+            manager,
+            "threshold_policy",
+            _TEMPORAL_THRESHOLD_POLICIES,
+            errors,
+        )
+
+
+def _validate_temporal_numeric_ranges(
+    *,
+    screening: pd.DataFrame | None,
+    model_selection: pd.DataFrame | None,
+    inner_cv: pd.DataFrame | None,
+    lockbox: pd.DataFrame | None,
+    drift: pd.DataFrame | None,
+    mspc: pd.DataFrame | None,
+    cost: pd.DataFrame | None,
+    manager: pd.DataFrame | None,
+    errors: list[str],
+) -> None:
+    """Validate temporal metric, workload, and cost ranges."""
+    probability_columns = {
+        ArtifactName.TEMPORAL_SELECTOR_SCREENING: (screening, ["mean_BER"]),
+        ArtifactName.TEMPORAL_MODEL_SELECTION: (model_selection, ["mean_BER"]),
+        ArtifactName.TEMPORAL_INNER_CV: (inner_cv, ["mean_inner_BER", "mean_inner_ROC_AUC"]),
+        ArtifactName.TEMPORAL_LOCKBOX: (lockbox, ["BER", "True+", "True-", "TPR_at_TNR90"]),
+        ArtifactName.TEMPORAL_DRIFT: (drift, ["abs_prevalence_shift", "ks_pvalue_scores"]),
+        ArtifactName.TEMPORAL_MSPC: (mspc, ["best_MSPC_TPR_at_TNR90", "T2_AUC", "Q_AUC", "alarm_rate"]),
+        ArtifactName.TEMPORAL_MANAGER_OUTPUTS: (manager, ["predicted_flag_fraction"]),
+    }
+    for artifact_name, (frame, columns) in probability_columns.items():
+        if frame is None:
+            continue
+        for column in columns:
+            _validate_probability_column(artifact_name, frame, column, errors)
+
+    nonnegative_columns = {
+        ArtifactName.TEMPORAL_SELECTOR_SCREENING: (screening, ["std_BER"]),
+        ArtifactName.TEMPORAL_DRIFT: (drift, ["max_PSI"]),
+        ArtifactName.TEMPORAL_MSPC: (mspc, ["empirical_ARL0"]),
+        ArtifactName.TEMPORAL_COST_CURVES: (
+            cost,
+            [column for column in (list(cost.columns) if cost is not None else []) if column != "cost_ratio"],
+        ),
+        ArtifactName.TEMPORAL_MANAGER_OUTPUTS: (
+            manager,
+            ["mean_weekly_flagged_wafers", "mean_weekly_fail_captures", "mean_weekly_fail_misses"],
+        ),
+    }
+    for artifact_name, (frame, columns) in nonnegative_columns.items():
+        if frame is None:
+            continue
+        for column in columns:
+            _validate_nonnegative_column(
+                artifact_name,
+                frame,
+                column,
+                errors,
+                allow_missing=artifact_name == ArtifactName.TEMPORAL_COST_CURVES,
+            )
+    if cost is not None:
+        _validate_positive_column(ArtifactName.TEMPORAL_COST_CURVES, cost, "cost_ratio", errors)
+
+
+def _role_policy_tuples(df: pd.DataFrame | None) -> set[tuple[str, str]]:
+    """Return role/policy tuples for artifacts that expose both fields."""
+    required = {"role", "threshold_policy"}
+    if df is None or not required.issubset(df.columns):
+        return set()
+    return {
+        (str(row.role), str(row.threshold_policy))
+        for row in df.loc[:, ["role", "threshold_policy"]].drop_duplicates().itertuples(index=False)
+    }
+
+
+def _selected_temporal_roles(model_selection: pd.DataFrame | None) -> set[str]:
+    """Return temporal roles marked by the model-selection artifact."""
+    if model_selection is None:
+        return set()
+    roles: set[str] = set()
+    if any(value is True for value in _normalized_bool_values(model_selection, "is_primary")):
+        roles.add(ModelScope.PRIMARY)
+    if any(value is True for value in _normalized_bool_values(model_selection, "is_challenger")):
+        roles.add(ModelScope.CHALLENGER)
+    return roles
+
+
+def _artifact_roles(df: pd.DataFrame | None, column: str) -> set[str]:
+    """Return distinct role/scope labels from one artifact column."""
+    if df is None or column not in df.columns:
+        return set()
+    return {str(value) for value in df[column].dropna().unique()}
+
+
+def _validate_role_coverage(
+    *,
+    artifact_name: str,
+    actual_roles: set[str],
+    expected_roles: set[str],
+    errors: list[str],
+) -> None:
+    """Validate artifact roles match temporal model-selection roles when both are knowable."""
+    if expected_roles and actual_roles != expected_roles:
+        errors.append(
+            f"{artifact_name}: role coverage mismatch "
+            f"missing={sorted(expected_roles - actual_roles)} extra={sorted(actual_roles - expected_roles)}"
+        )
+
+
+def _validate_temporal_role_policy_lineage(
+    *,
+    model_selection: pd.DataFrame | None,
+    freeze: pd.DataFrame | None,
+    lockbox: pd.DataFrame | None,
+    drift: pd.DataFrame | None,
+    manager: pd.DataFrame | None,
+    errors: list[str],
+) -> None:
+    """Validate temporal role and role/policy coverage across related artifacts."""
+    selected_roles = _selected_temporal_roles(model_selection)
+    frozen = freeze
+    if frozen is not None and "is_frozen_config" in frozen.columns:
+        frozen_flags = _normalized_bool_values(frozen, "is_frozen_config")
+        frozen = frozen[[value is True for value in frozen_flags]]
+
+    _validate_role_coverage(
+        artifact_name=ArtifactName.TEMPORAL_FREEZE,
+        actual_roles=_artifact_roles(frozen, "role"),
+        expected_roles=selected_roles,
+        errors=errors,
+    )
+    _validate_role_coverage(
+        artifact_name=ArtifactName.TEMPORAL_LOCKBOX,
+        actual_roles=_artifact_roles(lockbox, "role"),
+        expected_roles=selected_roles,
+        errors=errors,
+    )
+    _validate_role_coverage(
+        artifact_name=ArtifactName.TEMPORAL_DRIFT,
+        actual_roles=_artifact_roles(drift, "model_scope"),
+        expected_roles=selected_roles,
+        errors=errors,
+    )
+    _validate_role_coverage(
+        artifact_name=ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+        actual_roles=_artifact_roles(manager, "role"),
+        expected_roles=selected_roles,
+        errors=errors,
+    )
+
+    lockbox_tuples = _role_policy_tuples(lockbox)
+    manager_tuples = _role_policy_tuples(manager)
+    if lockbox_tuples and manager_tuples and manager_tuples != lockbox_tuples:
+        errors.append(
+            f"{ArtifactName.TEMPORAL_MANAGER_OUTPUTS}: role/policy coverage mismatch "
+            f"missing={sorted(lockbox_tuples - manager_tuples)} extra={sorted(manager_tuples - lockbox_tuples)}"
+        )
+
+
+def _expected_temporal_claim_restrictions(
+    lockbox: pd.DataFrame | None,
+    drift: pd.DataFrame | None,
+    mspc: pd.DataFrame | None,
+) -> list[str]:
+    """Recompute temporal claim restrictions from persisted temporal artifacts."""
+    required_lockbox = {"role", "threshold_policy", "TPR_at_TNR90"}
+    required_drift = {"model_scope", "drift_gate_status"}
+    required_mspc = {"eval_scope", "best_MSPC_TPR_at_TNR90"}
+    if (
+        lockbox is None
+        or drift is None
+        or mspc is None
+        or not required_lockbox.issubset(lockbox.columns)
+        or not required_drift.issubset(drift.columns)
+        or not required_mspc.issubset(mspc.columns)
+    ):
+        return []
+
+    mspc_lock = mspc[mspc["eval_scope"].astype(str) == "lockbox"]
+    if mspc_lock.empty:
+        return []
+    mspc_tpr = pd.to_numeric(mspc_lock["best_MSPC_TPR_at_TNR90"], errors="coerce").iloc[0]
+    if pd.isna(mspc_tpr):
+        return []
+
+    restrictions: list[str] = []
+    scientific = lockbox[lockbox["threshold_policy"].astype(str) == ThresholdPolicy.SCIENTIFIC].copy()
+    scientific["TPR_at_TNR90"] = pd.to_numeric(scientific["TPR_at_TNR90"], errors="coerce")
+    for row in scientific.itertuples(index=False):
+        role = str(row.role)
+        if role not in _TEMPORAL_ROLES or pd.isna(row.TPR_at_TNR90):
+            continue
+        drift_row = drift[drift["model_scope"].astype(str) == role]
+        if drift_row.empty:
+            continue
+        status = str(drift_row.iloc[0]["drift_gate_status"])
+        if status == "HIGH_SHIFT" and float(row.TPR_at_TNR90) > float(mspc_tpr):
+            restrictions.append(f"{role}_high_shift_blocks_lockbox_superiority_claim")
+    return sorted(dict.fromkeys(restrictions))
+
+
+def _validate_temporal_claim_restriction_lineage(
+    *,
+    manifest_restrictions: list[str],
+    lockbox: pd.DataFrame | None,
+    drift: pd.DataFrame | None,
+    mspc: pd.DataFrame | None,
+    errors: list[str],
+) -> list[str]:
+    """Validate manifest temporal restrictions against persisted artifact evidence."""
+    expected = set(_expected_temporal_claim_restrictions(lockbox, drift, mspc))
+    actual = set(manifest_restrictions)
+    if expected != actual:
+        errors.append(
+            f"{ArtifactName.MANIFEST}: temporal_claim_restrictions mismatch artifact evidence "
+            f"missing={sorted(expected - actual)} extra={sorted(actual - expected)}"
+        )
+    return sorted(expected | actual)
+
+
+def _validate_temporal_semantics(
+    *,
+    reports: Path,
+    artifact_frames: dict[str, pd.DataFrame] | None,
+    active_temporal: bool,
+    manifest_restrictions: list[str],
+    errors: list[str],
+) -> list[str]:
+    """Validate temporal artifact semantics and return derived claim restrictions."""
+    if not active_temporal:
+        return manifest_restrictions
+    frames = {
+        name: _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
+        for name in _TEMPORAL_ARTIFACTS
+    }
+    _validate_temporal_model_selection(frames[ArtifactName.TEMPORAL_MODEL_SELECTION], errors)
+    _validate_temporal_enums(
+        freeze=frames[ArtifactName.TEMPORAL_FREEZE],
+        lockbox=frames[ArtifactName.TEMPORAL_LOCKBOX],
+        drift=frames[ArtifactName.TEMPORAL_DRIFT],
+        mspc=frames[ArtifactName.TEMPORAL_MSPC],
+        manager=frames[ArtifactName.TEMPORAL_MANAGER_OUTPUTS],
+        errors=errors,
+    )
+    _validate_temporal_numeric_ranges(
+        screening=frames[ArtifactName.TEMPORAL_SELECTOR_SCREENING],
+        model_selection=frames[ArtifactName.TEMPORAL_MODEL_SELECTION],
+        inner_cv=frames[ArtifactName.TEMPORAL_INNER_CV],
+        lockbox=frames[ArtifactName.TEMPORAL_LOCKBOX],
+        drift=frames[ArtifactName.TEMPORAL_DRIFT],
+        mspc=frames[ArtifactName.TEMPORAL_MSPC],
+        cost=frames[ArtifactName.TEMPORAL_COST_CURVES],
+        manager=frames[ArtifactName.TEMPORAL_MANAGER_OUTPUTS],
+        errors=errors,
+    )
+    _validate_temporal_role_policy_lineage(
+        model_selection=frames[ArtifactName.TEMPORAL_MODEL_SELECTION],
+        freeze=frames[ArtifactName.TEMPORAL_FREEZE],
+        lockbox=frames[ArtifactName.TEMPORAL_LOCKBOX],
+        drift=frames[ArtifactName.TEMPORAL_DRIFT],
+        manager=frames[ArtifactName.TEMPORAL_MANAGER_OUTPUTS],
+        errors=errors,
+    )
+    return _validate_temporal_claim_restriction_lineage(
+        manifest_restrictions=manifest_restrictions,
+        lockbox=frames[ArtifactName.TEMPORAL_LOCKBOX],
+        drift=frames[ArtifactName.TEMPORAL_DRIFT],
+        mspc=frames[ArtifactName.TEMPORAL_MSPC],
+        errors=errors,
+    )
+
+
 def validate_schema_and_logic(
     output_dir: Path,
     artifact_frames: dict[str, pd.DataFrame] | None = None,
@@ -867,6 +1293,13 @@ def validate_schema_and_logic(
         active_tuned=active_tuned,
         errors=errors,
     )
+    temporal_claim_restrictions = _validate_temporal_semantics(
+        reports=reports,
+        artifact_frames=artifact_frames,
+        active_temporal=active_temporal,
+        manifest_restrictions=state.claim_restrictions,
+        errors=errors,
+    )
 
     _warn_stale_artifact_family(
         reports=reports,
@@ -894,7 +1327,7 @@ def validate_schema_and_logic(
     )
 
     deduped_warnings = list(dict.fromkeys(warnings))
-    deduped_restrictions = list(dict.fromkeys(state.claim_restrictions))
+    deduped_restrictions = list(dict.fromkeys(temporal_claim_restrictions))
     return ValidationResult(
         ok=len(errors) == 0,
         errors=errors,
