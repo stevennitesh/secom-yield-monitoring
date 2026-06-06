@@ -160,7 +160,7 @@ def test_temporal_cli_prints_failed_manifest_after_workflow_exception(
             _manifest_with_statuses(
                 {
                     "temporal_robustness_status": StudyStatus.FAILED,
-                    "temporal_claim_restrictions": ["high_shift_blocks_lockbox_superiority_claim"],
+                    "temporal_claim_restrictions": ["primary_high_shift_blocks_lockbox_superiority_claim"],
                 }
             ),
             reports / ArtifactName.MANIFEST,
@@ -175,7 +175,7 @@ def test_temporal_cli_prints_failed_manifest_after_workflow_exception(
 
     assert raised.value.code == 1
     assert "TEMPORAL_ROBUSTNESS_STATUS: failed" in captured.out
-    assert "CLAIM_RESTRICTION: high_shift_blocks_lockbox_superiority_claim" in captured.out
+    assert "CLAIM_RESTRICTION: primary_high_shift_blocks_lockbox_superiority_claim" in captured.out
     assert "WORKFLOW_ERROR: temporal: temporal crashed" in captured.out
 
 
@@ -233,7 +233,7 @@ def test_temporal_cli_strict_allows_temporal_warnings(monkeypatch, capsys) -> No
         "run_temporal_robustness",
         lambda *_args, **_kwargs: {
             "temporal_robustness_status": StudyStatus.WARNING,
-            "claim_restrictions": ["high_shift_blocks_lockbox_superiority_claim"],
+            "claim_restrictions": ["primary_high_shift_blocks_lockbox_superiority_claim"],
         },
     )
 
@@ -241,7 +241,7 @@ def test_temporal_cli_strict_allows_temporal_warnings(monkeypatch, capsys) -> No
     captured = capsys.readouterr()
 
     assert "TEMPORAL_ROBUSTNESS_STATUS: warning" in captured.out
-    assert "CLAIM_RESTRICTION: high_shift_blocks_lockbox_superiority_claim" in captured.out
+    assert "CLAIM_RESTRICTION: primary_high_shift_blocks_lockbox_superiority_claim" in captured.out
 
 
 def test_full_study_writes_canonical_report_after_passing_audit(
