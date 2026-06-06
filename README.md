@@ -180,7 +180,7 @@ python scripts/run_full_study.py --input-dir data/raw --output-dir runs/full_stu
 When the full-study audit passes, this command also writes the canonical
 `runs/full_study/reports/final_report.md`.
 
-Audit generated artifacts:
+Audit-generated artifacts:
 
 ```bash
 python scripts/run_audit.py --output-dir runs/full_study --strict

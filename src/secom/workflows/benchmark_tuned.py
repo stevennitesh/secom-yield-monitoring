@@ -12,6 +12,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 from secom.artifacts import ensure_reports_dir, write_csv
+from secom.common.paths import project_root_from_repo_structure
 from secom.config import (
     ArtifactName,
     BENCHMARK_INNER_SPLITS,
@@ -430,11 +431,6 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _project_root() -> Path:
-    """Return the repository root for failure manifests when prepared data is unavailable."""
-    return Path(__file__).resolve().parents[3]
-
-
 def run_tuned_benchmark_replication(
     input_dir: Path,
     output_dir: Path,
@@ -459,7 +455,7 @@ def run_tuned_benchmark_replication(
     except Exception:
         write_benchmark_failure(
             manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
-            project_root=_project_root(),
+            project_root=project_root_from_repo_structure(),
             tuned_failed=True,
         )
         raise

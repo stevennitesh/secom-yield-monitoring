@@ -17,6 +17,7 @@ from sklearn.preprocessing import StandardScaler
 
 from secom.artifacts import ensure_reports_dir, write_csv
 from secom.common.drift import psi_for_feature
+from secom.common.paths import project_root_from_repo_structure
 from secom.common.thresholds import operational_threshold
 from secom.config import (
     ArtifactName,
@@ -1015,11 +1016,6 @@ def _run_stage_b_model_selection(
     return pd.DataFrame(inner_rows), pd.DataFrame(outer_eval_rows)
 
 
-def _project_root() -> Path:
-    """Return the repository root for temporal failure manifests."""
-    return Path(__file__).resolve().parents[3]
-
-
 def run_temporal_robustness(
     input_dir: Path,
     output_dir: Path,
@@ -1036,7 +1032,7 @@ def run_temporal_robustness(
     except Exception as exc:
         write_temporal_failure(
             manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
-            project_root=_project_root(),
+            project_root=project_root_from_repo_structure(),
             reason=str(exc),
         )
         raise
@@ -1066,7 +1062,7 @@ def _run_temporal_robustness(
     write_csv(split_meta, reports / ArtifactName.TEMPORAL_SPLIT_METADATA)
 
     manifest_path = reports / ArtifactName.MANIFEST
-    project_root = Path(__file__).resolve().parents[3]
+    project_root = project_root_from_repo_structure()
     if not bundle.temporal_feasible or bundle.fold_plan is None:
         # Still write split metadata so the audit explains why temporal artifacts are absent.
         infeasible_reason = bundle.temporal_infeasible_reason or "no_feasible_plan"

@@ -13,6 +13,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 from sklearn.model_selection import StratifiedKFold
 
+from secom.common.paths import project_root_from_repo_structure
 from secom.config import (
     BENCHMARK_KRR_ALPHA_GRID,
     BENCHMARK_KRR_GAMMA_GRID,
@@ -191,7 +192,7 @@ def prepare_cv(
 
 def prepare_benchmark_dataset(input_dir: Path) -> dict[str, Any]:
     """Load raw SECOM data and prepare arrays shared by original and tuned benchmarks."""
-    project_root = Path(__file__).resolve().parents[3]
+    project_root = project_root_from_repo_structure()
     loaded = load_raw_secom(input_dir)
     df = parse_sort_and_label(loaded.frame)
     x, y, folds = prepare_cv(df=df, feature_cols=loaded.feature_columns)

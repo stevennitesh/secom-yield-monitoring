@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from secom.artifacts import ensure_reports_dir, write_csv
+from secom.common.paths import project_root_from_repo_structure
 from secom.config import ArtifactName, BenchmarkClassifier, SelectorName, StudyStatus
 from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold, safe_std
 from secom.qa import validate_benchmark_replication_artifacts
@@ -113,11 +114,6 @@ def _evaluate_config_over_folds(
     }
 
 
-def _project_root() -> Path:
-    """Return the repository root for failure manifests when prepared data is unavailable."""
-    return Path(__file__).resolve().parents[3]
-
-
 def run_original_benchmark_replication(
     input_dir: Path,
     output_dir: Path,
@@ -140,7 +136,7 @@ def run_original_benchmark_replication(
     except Exception:
         write_benchmark_failure(
             manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
-            project_root=_project_root(),
+            project_root=project_root_from_repo_structure(),
             original_failed=True,
         )
         raise
