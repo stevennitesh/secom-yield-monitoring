@@ -26,7 +26,11 @@ def main() -> None:
 
     from secom.reporting import write_final_report
 
-    out = write_final_report(Path(args.output_dir), export_pdf=args.export_pdf)
+    try:
+        out = write_final_report(Path(args.output_dir), export_pdf=args.export_pdf)
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}")
+        raise SystemExit(1) from None
     print(out)
 
 
