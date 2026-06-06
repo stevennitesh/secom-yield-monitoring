@@ -338,7 +338,8 @@ Figure 6 combines weekly workload framing with illustrative cost curves so opera
 
 - Generated artifact: `final_report.md`
 - Source run directory: `runs/full_study`
-- Git commit: `094315c4ea9f0f57ae5915009aa2f61e9a55ad3a`
+- Git commit: `public-snapshot-containing-commit`
+- Public snapshot provenance: this checked-in `docs/results/` tree is audited by the repository commit that contains it.
 - Git dirty: `False`
 - Python executable: `/home/steve/code/secom-yield-monitoring/.venv/bin/python`
 - Study spec path: `docs/spec`

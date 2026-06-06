@@ -10,7 +10,7 @@ The full `runs/` directory stays gitignored because it contains large generated 
 | --- | --- |
 | `final_report.md` | Canonical generated report with the benchmark, tuned benchmark, temporal robustness, and industrialization-gap narrative. |
 | `figures/*.png` | Report figures used by `final_report.md`. |
-| `evidence/run_manifest.json` | Provenance record for the snapshot, including git commit, dirty status, Python version, library versions, study spec hash, and study-layer statuses. |
+| `evidence/run_manifest.json` | Provenance record for the snapshot, including the public snapshot marker, dirty status, Python version, library versions, study spec hash, and study-layer statuses. |
 | `evidence/benchmark_summary.csv` | Original benchmark replication summary behind the headline BER result. |
 | `evidence/benchmark_tuned_summary.csv` | Tuned benchmark summary behind the stricter nested-CV result. |
 | `evidence/temporal_drift_summary.csv` | Drift evidence behind the temporal robustness warning. |
@@ -19,7 +19,7 @@ The full `runs/` directory stays gitignored because it contains large generated 
 ## Snapshot Status
 
 - Source run: `runs/full_study`
-- Git commit: `094315c4ea9f0f57ae5915009aa2f61e9a55ad3a`
+- Public snapshot revision: the repository commit containing this `docs/results/` tree
 - Git dirty at manifest refresh: `false`
 - Primary benchmark study: `passed`
 - Temporal robustness: `warning`
