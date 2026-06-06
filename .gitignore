@@ -6,8 +6,9 @@
 .vscode/
 .venv/
 
-# Data directories
+# Data and generated output directories
 data/
+reports/
 runs/
 
 # Python bytecode and caches

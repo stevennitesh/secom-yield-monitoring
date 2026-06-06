@@ -38,7 +38,7 @@ Use `docs/spec/` as the active source of truth, in README reading order:
 7. `docs/spec/07-artifact-contracts.md`
 8. `docs/spec/08-audit-and-claim-semantics.md`
 
-Treat `archive/pre_reframe_snapshot/` and legacy `reports/lane_*` outputs as historical evidence only, not contracts to preserve.
+Historical pre-reframe snapshots and legacy report outputs are not active contracts. If recovered from git history, treat them as context only.
 
 ## Artifact And Claim Rules
 
