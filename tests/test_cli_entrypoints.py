@@ -19,6 +19,7 @@ from secom.workflows.manifest import initial_study_manifest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+RUN_SCRIPT_NAMES = tuple(script.name for script in sorted(SCRIPTS_DIR.glob("run_*.py")))
 
 
 def _manifest_with_statuses(statuses: dict[str, object]) -> dict[str, object]:
@@ -63,13 +64,7 @@ def test_benchmark_bundle_help_matches_active_classifier_defaults() -> None:
 
 def test_script_help_paths_are_quiet() -> None:
     """Script help should parse without importing plotting/reporting side effects."""
-    for script_name in (
-        "run_audit.py",
-        "run_benchmark_replication.py",
-        "run_benchmark_tuned.py",
-        "run_final_report.py",
-        "run_report_skeleton.py",
-    ):
+    for script_name in RUN_SCRIPT_NAMES:
         result = _run_script_help(script_name)
 
         assert result.returncode == 0, script_name
@@ -83,6 +78,105 @@ def test_report_and_audit_cli_defaults_target_full_study_run(monkeypatch) -> Non
         monkeypatch.setattr(sys, "argv", [f"{module_name}.py"])
 
         assert module.parse_args().output_dir == "runs/full_study"
+
+
+def test_final_report_cli_prints_structured_audit_failure(monkeypatch, capsys) -> None:
+    """Expected report audit failures should not surface as Python tracebacks."""
+    import secom.reporting as reporting
+
+    module = _script_module("run_final_report")
+    monkeypatch.setattr(sys, "argv", ["run_final_report.py"])
+
+    def fail_report(*_args, **_kwargs) -> None:
+        raise RuntimeError("Cannot render final report because study audit failed: missing artifact")
+
+    monkeypatch.setattr(reporting, "write_final_report", fail_report)
+
+    with pytest.raises(SystemExit) as raised:
+        module.main()
+    captured = capsys.readouterr()
+
+    assert raised.value.code == 1
+    assert "ERROR: Cannot render final report because study audit failed: missing artifact" in captured.out
+    assert captured.err == ""
+
+
+def test_benchmark_bundle_cli_prints_failed_manifest_after_workflow_exception(
+    workspace_tmp_dir: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Benchmark CLI crashes should still report persisted study statuses."""
+    module = _script_module("run_benchmark_replication")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_benchmark_replication.py", "--output-dir", str(workspace_tmp_dir)],
+    )
+
+    def fail_benchmark(*_args, **_kwargs) -> None:
+        reports = ensure_reports_dir(workspace_tmp_dir)
+        write_manifest(
+            _manifest_with_statuses(
+                {
+                    "primary_study_status": StudyStatus.FAILED,
+                    "benchmark_original_status": StudyStatus.FAILED,
+                    "benchmark_tuned_status": StudyStatus.NOT_RUN,
+                }
+            ),
+            reports / ArtifactName.MANIFEST,
+        )
+        raise RuntimeError("benchmark crashed")
+
+    monkeypatch.setattr(module, "run_benchmark_replication", fail_benchmark)
+
+    with pytest.raises(SystemExit) as raised:
+        module.main()
+    captured = capsys.readouterr()
+
+    assert raised.value.code == 1
+    assert "PRIMARY_STUDY_STATUS: failed" in captured.out
+    assert "BENCHMARK_ORIGINAL_STATUS: failed" in captured.out
+    assert "BENCHMARK_TUNED_STATUS: not_run" in captured.out
+    assert "WORKFLOW_ERROR: benchmark: benchmark crashed" in captured.out
+
+
+def test_temporal_cli_prints_failed_manifest_after_workflow_exception(
+    workspace_tmp_dir: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """Temporal CLI crashes should still report persisted temporal status."""
+    module = _script_module("run_temporal_robustness")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_temporal_robustness.py", "--output-dir", str(workspace_tmp_dir)],
+    )
+
+    def fail_temporal(*_args, **_kwargs) -> None:
+        reports = ensure_reports_dir(workspace_tmp_dir)
+        write_manifest(
+            _manifest_with_statuses(
+                {
+                    "temporal_robustness_status": StudyStatus.FAILED,
+                    "temporal_claim_restrictions": ["high_shift_blocks_lockbox_superiority_claim"],
+                }
+            ),
+            reports / ArtifactName.MANIFEST,
+        )
+        raise RuntimeError("temporal crashed")
+
+    monkeypatch.setattr(module, "run_temporal_robustness", fail_temporal)
+
+    with pytest.raises(SystemExit) as raised:
+        module.main()
+    captured = capsys.readouterr()
+
+    assert raised.value.code == 1
+    assert "TEMPORAL_ROBUSTNESS_STATUS: failed" in captured.out
+    assert "CLAIM_RESTRICTION: high_shift_blocks_lockbox_superiority_claim" in captured.out
+    assert "WORKFLOW_ERROR: temporal: temporal crashed" in captured.out
 
 
 def test_standalone_benchmark_clis_report_only_layer_status(monkeypatch, capsys) -> None:
