@@ -11,12 +11,21 @@ from types import SimpleNamespace
 
 import pytest
 
+from secom.artifacts import ensure_reports_dir, write_manifest
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.full_study import run_full_study
+from secom.workflows.manifest import initial_study_manifest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+
+
+def _manifest_with_statuses(statuses: dict[str, object]) -> dict[str, object]:
+    """Build a complete study manifest with caller-supplied status overrides."""
+    manifest = initial_study_manifest(PROJECT_ROOT)
+    manifest.update(statuses)
+    return manifest
 
 
 def _run_script_help(script_name: str) -> subprocess.CompletedProcess[str]:
@@ -213,3 +222,135 @@ def test_full_study_skips_report_when_audit_fails(
 
     assert result["report_path"] is None
     assert report_calls == []
+
+
+def test_full_study_renders_report_after_temporal_failure_when_audit_allows_it(
+    workspace_tmp_dir: Path,
+    monkeypatch,
+) -> None:
+    """Temporal workflow failures should stay warning-level when benchmark evidence is valid."""
+    import secom.workflows.full_study as full_study
+
+    final_report = workspace_tmp_dir / "reports" / ArtifactName.FINAL_REPORT
+
+    monkeypatch.setattr(
+        full_study,
+        "run_benchmark_replication",
+        lambda **_kwargs: {
+            "benchmark_original_status": StudyStatus.PASSED,
+            "benchmark_tuned_status": StudyStatus.PASSED,
+            "primary_study_status": StudyStatus.PASSED,
+        },
+    )
+
+    def fail_temporal(**kwargs) -> None:
+        reports = ensure_reports_dir(kwargs["output_dir"])
+        write_manifest(
+            _manifest_with_statuses(
+                {
+                    "primary_study_status": StudyStatus.PASSED,
+                    "benchmark_original_status": StudyStatus.PASSED,
+                    "benchmark_tuned_status": StudyStatus.PASSED,
+                    "temporal_robustness_status": StudyStatus.FAILED,
+                    "temporal_claim_restrictions": [],
+                }
+            ),
+            reports / ArtifactName.MANIFEST,
+        )
+        raise RuntimeError("temporal crashed")
+
+    monkeypatch.setattr(full_study, "run_temporal_robustness", fail_temporal)
+    monkeypatch.setattr(
+        full_study,
+        "run_study_audit",
+        lambda **_kwargs: SimpleNamespace(
+            ok=True,
+            errors=[],
+            warnings=["temporal robustness status indicates failure"],
+            claim_restrictions=[],
+        ),
+    )
+    monkeypatch.setattr(full_study, "write_final_report", lambda *, output_dir: final_report, raising=False)
+
+    result = run_full_study(input_dir=workspace_tmp_dir / "raw", output_dir=workspace_tmp_dir)
+
+    assert result["temporal"]["temporal_robustness_status"] == StudyStatus.FAILED
+    assert result["report_path"] == str(final_report)
+    assert result["workflow_errors"] == [{"step": "temporal", "error": "temporal crashed"}]
+
+
+def test_full_study_stops_after_benchmark_failure_and_skips_report(
+    workspace_tmp_dir: Path,
+    monkeypatch,
+) -> None:
+    """Benchmark failures should remain hard blockers for full-study reporting."""
+    import secom.workflows.full_study as full_study
+
+    temporal_calls = []
+    report_calls = []
+
+    def fail_benchmark(**kwargs) -> None:
+        reports = ensure_reports_dir(kwargs["output_dir"])
+        write_manifest(
+            _manifest_with_statuses(
+                {
+                    "primary_study_status": StudyStatus.FAILED,
+                    "benchmark_original_status": StudyStatus.FAILED,
+                    "benchmark_tuned_status": StudyStatus.NOT_RUN,
+                    "temporal_robustness_status": StudyStatus.NOT_RUN,
+                    "temporal_claim_restrictions": [],
+                }
+            ),
+            reports / ArtifactName.MANIFEST,
+        )
+        raise RuntimeError("benchmark crashed")
+
+    monkeypatch.setattr(full_study, "run_benchmark_replication", fail_benchmark)
+    monkeypatch.setattr(full_study, "run_temporal_robustness", lambda **_kwargs: temporal_calls.append(_kwargs))
+    monkeypatch.setattr(
+        full_study,
+        "run_study_audit",
+        lambda **_kwargs: SimpleNamespace(
+            ok=False,
+            errors=["primary study status indicates failure"],
+            warnings=[],
+            claim_restrictions=[],
+        ),
+    )
+    monkeypatch.setattr(
+        full_study, "write_final_report", lambda *, output_dir: report_calls.append(output_dir), raising=False
+    )
+
+    result = run_full_study(input_dir=workspace_tmp_dir / "raw", output_dir=workspace_tmp_dir)
+
+    assert result["benchmark"]["primary_study_status"] == StudyStatus.FAILED
+    assert result["temporal"]["temporal_robustness_status"] == StudyStatus.NOT_RUN
+    assert result["report_path"] is None
+    assert result["workflow_errors"] == [{"step": "benchmark", "error": "benchmark crashed"}]
+    assert temporal_calls == []
+    assert report_calls == []
+
+
+def test_full_study_cli_prints_workflow_errors(monkeypatch, capsys) -> None:
+    """The full-study CLI should surface child workflow exceptions in structured output."""
+    module = _script_module("run_full_study")
+    monkeypatch.setattr(sys, "argv", ["run_full_study.py"])
+    monkeypatch.setattr(
+        module,
+        "run_full_study",
+        lambda *_args: {
+            "benchmark": {"primary_study_status": StudyStatus.PASSED},
+            "benchmark_original_status": StudyStatus.PASSED,
+            "benchmark_tuned_status": StudyStatus.PASSED,
+            "temporal": {"temporal_robustness_status": StudyStatus.FAILED},
+            "audit": SimpleNamespace(ok=True, errors=[], warnings=["temporal failed"], claim_restrictions=[]),
+            "report_path": "runs/full_study/reports/final_report.md",
+            "workflow_errors": [{"step": "temporal", "error": "temporal crashed"}],
+        },
+    )
+
+    module.main()
+    captured = capsys.readouterr()
+
+    assert "WORKFLOW_ERROR: temporal: temporal crashed" in captured.out
+    assert "FINAL_REPORT: runs/full_study/reports/final_report.md" in captured.out
