@@ -59,7 +59,7 @@ The key design choice is claim separation. Temporal robustness can restrict oper
 
 ## Current Results
 
-A regenerated full-study run on June 6, 2026 produced the canonical report at `runs/full_study/reports/final_report.md`. Lower BER is better because it averages the error rate across the failure and pass classes.
+A regenerated full-study run on June 6, 2026 produced the public evidence snapshot under `docs/results/`, including the generated report at `docs/results/final_report.md`. Lower BER is better because it averages the error rate across the failure and pass classes.
 
 | Evidence Layer | Headline Result | How To Read It |
 | --- | --- | --- |
@@ -85,19 +85,21 @@ Plain-language interpretation:
 
 ## How To Review This Repo
 
-For a fast hiring review:
+For a quick project review:
 
 1. Read this README for the problem framing, study structure, and claim boundaries.
-2. Inspect `src/secom/workflows/benchmark_replication.py` and `src/secom/workflows/benchmark_tuned.py` for orchestration.
-3. Inspect `src/secom/selection/engine.py`, `src/secom/metrics.py`, and `src/secom/io.py` for the core ML and data-quality logic.
-4. Read `tests/test_benchmark_replication.py`, `tests/test_metrics_threshold_optimization.py`, and `tests/test_io.py` for representative regression coverage.
-5. Run `make check` after local setup to verify Ruff linting, Ruff formatting, and pytest.
+2. Open `docs/results/final_report.md` for the generated result narrative and figures.
+3. Inspect `src/secom/workflows/benchmark_replication.py` and `src/secom/workflows/benchmark_tuned.py` for orchestration.
+4. Inspect `src/secom/selection/engine.py`, `src/secom/metrics.py`, and `src/secom/io.py` for the core ML and data-quality logic.
+5. Read `tests/test_benchmark_replication.py`, `tests/test_metrics_threshold_optimization.py`, and `tests/test_io.py` for representative regression coverage.
+6. Run `make check` after local setup to verify Ruff linting, Ruff formatting, and pytest.
 
 For a deeper technical review:
 
 - read the active study specs under `docs/spec/`
-- run the full study pipeline and open `runs/full_study/reports/final_report.md`
-- inspect `runs/full_study/reports/run_manifest.json` and the audit output for artifact provenance
+- inspect the curated evidence snapshot under `docs/results/`
+- run the full study pipeline and compare the regenerated `runs/full_study/reports/final_report.md`
+- inspect `docs/results/evidence/run_manifest.json` and the audit output for artifact provenance
 - compare the benchmark, tuned benchmark, and temporal robustness sections without merging their claims
 
 ## Repository Map
@@ -109,6 +111,7 @@ For a deeper technical review:
 | `tests/` | Regression tests for parsing, metrics, selectors, workflows, audit rules, and report output |
 | `docs/spec/` | Canonical study contract, artifact schemas, report structure, and claim semantics |
 | `docs/plans/` | Historical implementation plans for the report design |
+| `docs/results/` | Curated public evidence snapshot: final report, figures, manifest, and summary CSVs |
 | `runs/` | Generated active study outputs; intentionally gitignored so results can be regenerated cleanly |
 
 ## Run Locally
@@ -148,6 +151,12 @@ When the full-study audit passes, the canonical generated report is written to:
 runs/full_study/reports/final_report.md
 ```
 
+The checked-in public evidence snapshot lives at:
+
+```text
+docs/results/final_report.md
+```
+
 ## Useful Commands
 
 The commands below assume the virtual environment is active.
@@ -180,6 +189,8 @@ Key generated files include:
 - audit entries classified as `ERROR`, `WARNING`, or `CLAIM_RESTRICTION`
 
 `final_report_skeleton.md` may also be generated as a scaffold/debugging aid, but `final_report.md` is the report artifact to review.
+
+The repository also keeps a curated public snapshot under `docs/results/` so readers can review the latest committed evidence without regenerating the full study.
 
 ## Limitations And Next Data Needed
 

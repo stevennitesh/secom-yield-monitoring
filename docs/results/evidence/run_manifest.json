@@ -1,0 +1,25 @@
+{
+  "benchmark_original_status": "passed",
+  "benchmark_tuned_status": "passed",
+  "git_commit": "094315c4ea9f0f57ae5915009aa2f61e9a55ad3a",
+  "git_dirty": false,
+  "industrialization_notes": [],
+  "library_versions": {
+    "matplotlib": "3.10.9",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "python": "3.12.3",
+    "scipy": "1.17.1",
+    "sklearn": "1.9.0",
+    "skrebate": "0.62"
+  },
+  "manifest_version": "2.0",
+  "primary_study_status": "passed",
+  "python_executable": "/home/steve/code/secom-yield-monitoring/.venv/bin/python",
+  "study_spec_path": "docs/spec",
+  "study_spec_sha256": "96dee0e0de2ca45a0c2f8a32e506bdde5363e4eb08cb6d0885e913bf3b453d47",
+  "temporal_claim_restrictions": [
+    "primary_high_shift_blocks_lockbox_superiority_claim"
+  ],
+  "temporal_robustness_status": "warning"
+}
