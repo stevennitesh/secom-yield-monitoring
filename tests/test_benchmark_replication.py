@@ -158,6 +158,30 @@ def test_original_failure_overwrites_stale_pass_manifest(workspace_tmp_dir: Path
     assert manifest["primary_study_status"] == StudyStatus.FAILED
 
 
+def test_original_failure_manifest_write_does_not_mask_original_exception(
+    workspace_tmp_dir: Path,
+    monkeypatch,
+) -> None:
+    """Failure-manifest errors should not replace the original benchmark exception."""
+
+    def fail_run(**_kwargs):
+        """Simulate the real benchmark failure."""
+        raise RuntimeError("original root cause")
+
+    def fail_manifest_write(**_kwargs):
+        """Simulate a secondary failure while writing the manifest."""
+        raise RuntimeError("manifest write failed")
+
+    monkeypatch.setattr(benchmark_replication, "_run_original_benchmark_replication", fail_run)
+    monkeypatch.setattr(benchmark_replication, "write_benchmark_failure", fail_manifest_write)
+
+    with pytest.raises(RuntimeError, match="original root cause"):
+        run_original_benchmark_replication(
+            input_dir=workspace_tmp_dir / "raw",
+            output_dir=workspace_tmp_dir / "out",
+        )
+
+
 def test_tuned_failure_overwrites_stale_pass_manifest(workspace_tmp_dir: Path, monkeypatch) -> None:
     """Failed tuned reruns should not leave stale passed benchmark status."""
     out_dir = workspace_tmp_dir / "out"
@@ -186,6 +210,30 @@ def test_tuned_failure_overwrites_stale_pass_manifest(workspace_tmp_dir: Path, m
     assert manifest["benchmark_original_status"] == StudyStatus.PASSED
     assert manifest["benchmark_tuned_status"] == StudyStatus.FAILED
     assert manifest["primary_study_status"] == StudyStatus.FAILED
+
+
+def test_tuned_failure_manifest_write_does_not_mask_original_exception(
+    workspace_tmp_dir: Path,
+    monkeypatch,
+) -> None:
+    """Failure-manifest errors should not replace the original tuned exception."""
+
+    def fail_run(**_kwargs):
+        """Simulate the real tuned benchmark failure."""
+        raise RuntimeError("tuned root cause")
+
+    def fail_manifest_write(**_kwargs):
+        """Simulate a secondary failure while writing the manifest."""
+        raise RuntimeError("manifest write failed")
+
+    monkeypatch.setattr(benchmark_tuned, "_run_tuned_benchmark_replication", fail_run)
+    monkeypatch.setattr(benchmark_tuned, "write_benchmark_failure", fail_manifest_write)
+
+    with pytest.raises(RuntimeError, match="tuned root cause"):
+        benchmark_tuned.run_tuned_benchmark_replication(
+            input_dir=workspace_tmp_dir / "raw",
+            output_dir=workspace_tmp_dir / "out",
+        )
 
 
 def test_benchmark_replication_feature_report_aligns_with_requested_classifier(

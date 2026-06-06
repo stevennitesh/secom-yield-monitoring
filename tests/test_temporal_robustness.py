@@ -112,6 +112,30 @@ def test_temporal_failure_overwrites_stale_pass_manifest(workspace_tmp_dir: Path
     assert manifest["temporal_robustness_status"] == StudyStatus.FAILED
 
 
+def test_temporal_failure_manifest_write_does_not_mask_original_exception(
+    workspace_tmp_dir: Path,
+    monkeypatch,
+) -> None:
+    """Failure-manifest errors should not replace the original temporal exception."""
+
+    def fail_run(**_kwargs):
+        """Simulate the real temporal workflow failure."""
+        raise RuntimeError("temporal root cause")
+
+    def fail_manifest_write(**_kwargs):
+        """Simulate a secondary failure while writing the manifest."""
+        raise RuntimeError("manifest write failed")
+
+    monkeypatch.setattr(temporal_robustness, "_run_temporal_robustness", fail_run)
+    monkeypatch.setattr(temporal_robustness, "write_temporal_failure", fail_manifest_write)
+
+    with pytest.raises(RuntimeError, match="temporal root cause"):
+        temporal_robustness.run_temporal_robustness(
+            input_dir=workspace_tmp_dir / "raw",
+            output_dir=workspace_tmp_dir / "out",
+        )
+
+
 def test_temporal_selector_grids_match_stage_scope_and_reject_unknowns() -> None:
     """Temporal selector grids should keep screening and Stage-B scopes explicit."""
     stage_a = temporal_robustness._stage_a_configs([SelectorName.F_TEST, SelectorName.RELIEFF])

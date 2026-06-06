@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -453,11 +454,13 @@ def run_tuned_benchmark_replication(
             _cluster_id_map=_cluster_id_map,
         )
     except Exception:
-        write_benchmark_failure(
-            manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
-            project_root=project_root_from_repo_structure(),
-            tuned_failed=True,
-        )
+        with suppress(Exception):
+            ensure_reports_dir(output_dir)
+            write_benchmark_failure(
+                manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
+                project_root=project_root_from_repo_structure(),
+                tuned_failed=True,
+            )
         raise
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 import math
 from itertools import product
 from pathlib import Path
@@ -1030,11 +1031,13 @@ def run_temporal_robustness(
             selectors_run=selectors_run,
         )
     except Exception as exc:
-        write_temporal_failure(
-            manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
-            project_root=project_root_from_repo_structure(),
-            reason=str(exc),
-        )
+        with suppress(Exception):
+            ensure_reports_dir(output_dir)
+            write_temporal_failure(
+                manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
+                project_root=project_root_from_repo_structure(),
+                reason=str(exc),
+            )
         raise
 
 
