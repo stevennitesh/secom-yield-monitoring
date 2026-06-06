@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import subprocess
 import sys
 from pathlib import Path
@@ -12,17 +13,27 @@ from secom.workflows.full_study import run_full_study
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 
 
 def _run_script_help(script_name: str) -> subprocess.CompletedProcess[str]:
     """Run one repository script's help path."""
     return subprocess.run(
-        [sys.executable, str(PROJECT_ROOT / "scripts" / script_name), "--help"],
+        [sys.executable, str(SCRIPTS_DIR / script_name), "--help"],
         cwd=PROJECT_ROOT,
         text=True,
         capture_output=True,
         check=False,
     )
+
+
+def _script_module(module_name: str):
+    """Import a script module through the same path users execute."""
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    try:
+        return importlib.import_module(module_name)
+    finally:
+        sys.path.remove(str(SCRIPTS_DIR))
 
 
 def test_benchmark_bundle_help_matches_active_classifier_defaults() -> None:
@@ -47,6 +58,15 @@ def test_script_help_paths_are_quiet() -> None:
 
         assert result.returncode == 0, script_name
         assert result.stderr == "", script_name
+
+
+def test_report_and_audit_cli_defaults_target_full_study_run(monkeypatch) -> None:
+    """Audit and report commands should default to the canonical full-study output directory."""
+    for module_name in ("run_audit", "run_final_report", "run_report_skeleton"):
+        module = _script_module(module_name)
+        monkeypatch.setattr(sys, "argv", [f"{module_name}.py"])
+
+        assert module.parse_args().output_dir == "runs/full_study"
 
 
 def test_full_study_writes_canonical_report_after_passing_audit(

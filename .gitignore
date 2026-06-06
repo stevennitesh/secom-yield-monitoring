@@ -30,6 +30,7 @@ htmlcov/
 tmp/
 temp/
 *.tmp
+.tmp/
 .test_tmp/
 .run_check/
 pytest_tmp/
