@@ -8,6 +8,12 @@ from secom.config import EPS_SELECTOR
 from secom.feature_select._ranking import rank_desc_with_index_tiebreak
 
 
+def _constant_feature_mask(x: np.ndarray, eps: float) -> np.ndarray:
+    """Identify pre-orthogonalization columns that cannot carry selector signal."""
+    x = np.asarray(x, dtype=float)
+    return np.std(x, axis=0, ddof=0) <= eps
+
+
 def gram_schmidt_rank_features(
     x: np.ndarray,
     y_bin: np.ndarray,
@@ -15,6 +21,9 @@ def gram_schmidt_rank_features(
     eps: float = EPS_SELECTOR,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Rank up to ``k`` features by iterative correlation with label residuals."""
+    k = int(k)
+    if k <= 0:
+        raise ValueError("Gram-Schmidt k must be positive")
     x_raw = np.asarray(x, dtype=float)
     x_work = x_raw.copy()
     y = np.asarray(y_bin, dtype=float)
@@ -25,10 +34,7 @@ def gram_schmidt_rank_features(
     selected: list[int] = []
     final_scores = np.full(n_features, -np.inf, dtype=float)
 
-    # The selector receives scaled data in normal workflows, making near-zero norm
-    # columns the constant-feature equivalent before orthogonalization starts.
-    raw_norms = np.linalg.norm(x_raw, axis=0)
-    constant_mask = raw_norms <= eps
+    constant_mask = _constant_feature_mask(x_raw, eps=eps)
 
     while remaining and len(selected) < k:
         residual_norm = np.linalg.norm(residual)
@@ -69,6 +75,4 @@ def gram_schmidt_rank_features(
         remaining.remove(best_feat)
 
     selected_arr = np.asarray(selected, dtype=int)
-    if selected_arr.size == 0:
-        return rank_desc_with_index_tiebreak(final_scores), final_scores
     return selected_arr, final_scores

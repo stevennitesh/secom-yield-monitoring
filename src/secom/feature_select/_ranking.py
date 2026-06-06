@@ -6,9 +6,9 @@ import numpy as np
 
 
 def sanitize_scores(scores: np.ndarray) -> np.ndarray:
-    """Coerce unusable scores to the shared bottom-rank sentinel."""
+    """Coerce undefined scores to the shared bottom-rank sentinel."""
     sanitized = np.asarray(scores, dtype=float).copy()
-    sanitized[~np.isfinite(sanitized)] = -np.inf
+    sanitized[np.isnan(sanitized)] = -np.inf
     return sanitized
 
 

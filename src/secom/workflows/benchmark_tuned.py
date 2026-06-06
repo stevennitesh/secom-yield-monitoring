@@ -19,12 +19,13 @@ from secom.config import (
     ScalerName,
     SelectorName,
     StudyStatus,
+    validate_selector_name,
 )
 from secom.metrics import (
     binary_metrics_at_threshold,
     find_ber_optimal_threshold,
 )
-from secom.preprocess import local_to_global_feature_indices, transformed_feature_metadata_from_imputer
+from secom.preprocess import local_to_global_feature_indices
 from secom.qa import validate_tuned_benchmark_artifacts
 from secom.selection.engine import fit_selector_pipeline
 from secom.selection.tuning import select_near_best_auc_config
@@ -37,6 +38,7 @@ from secom.workflows.benchmark_common import (
     build_benchmark_ablation_df,
     build_cluster_id_map,
     build_feature_report,
+    build_primary_feature_universe,
     build_benchmark_summary_df,
     classifier_param_grid,
     classifier_config_from_row,
@@ -44,6 +46,7 @@ from secom.workflows.benchmark_common import (
     config_tie_break_key,
     fit_classifier_scores,
     fit_full_dataset,
+    gamma_sort_key,
     normalize_benchmark_run_filters,
     prepare_benchmark_dataset,
     prepare_full_selector_view,
@@ -90,6 +93,7 @@ def _selector_config_cache_key(selector_config: dict[str, Any]) -> tuple[int, in
 
 def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
     """Return the tuned benchmark selector grid for one selector."""
+    selector = validate_selector_name(selector)
     ks = [10, 20, 40]
     if selector == SelectorName.RELIEFF:
         return [{"k": int(k), "n_neighbors": int(nn)} for k in ks for nn in [5, 10, 20]]
@@ -200,16 +204,22 @@ def _prepare_inner_selector_view(
     n_neighbors: int | None,
 ) -> _InnerSelectorView:
     """Prepare one tuned inner-CV selected train/eval view."""
-    x_train_sel, x_eval_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
-        x_train_raw=x_train_raw,
-        y_train=y_train,
-        x_eval_raw=x_eval_raw,
-        method=selector,
-        k=int(k),
-        scaler_name=ScalerName.STANDARD,
-        add_indicator=add_indicator,
-        n_neighbors=n_neighbors,
-    )
+    try:
+        x_train_sel, x_eval_sel, _meta, _sel, _imp, _scaler = fit_selector_pipeline(
+            x_train_raw=x_train_raw,
+            y_train=y_train,
+            x_eval_raw=x_eval_raw,
+            method=selector,
+            k=int(k),
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=add_indicator,
+            n_neighbors=n_neighbors,
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "tuned inner selector failure "
+            f"selector={selector} k={int(k)} add_indicator={add_indicator} n_neighbors={n_neighbors}"
+        ) from exc
     return _InnerSelectorView(
         x_train_sel=x_train_sel,
         y_train=y_train,
@@ -252,16 +262,23 @@ def _prepare_outer_selector_view(
 ) -> _OuterSelectorView:
     """Prepare one selected outer-fold view for reuse across classifiers."""
     add_indicator = add_indicator_for_replication_mode(replication_mode)
-    x_train_sel, x_test_sel, feature_meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
-        x_train_raw=x_train_raw,
-        y_train=y_train,
-        x_eval_raw=x_test_raw,
-        method=selector,
-        k=int(selector_config["k"]),
-        scaler_name=ScalerName.STANDARD,
-        add_indicator=add_indicator,
-        n_neighbors=selector_config.get("n_neighbors"),
-    )
+    try:
+        x_train_sel, x_test_sel, feature_meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
+            x_train_raw=x_train_raw,
+            y_train=y_train,
+            x_eval_raw=x_test_raw,
+            method=selector,
+            k=int(selector_config["k"]),
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=add_indicator,
+            n_neighbors=selector_config.get("n_neighbors"),
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "tuned outer selector failure "
+            f"selector={selector} mode={replication_mode} k={int(selector_config['k'])} "
+            f"n_neighbors={selector_config.get('n_neighbors')}"
+        ) from exc
     return _OuterSelectorView(
         x_train_sel=x_train_sel,
         y_train=y_train,
@@ -326,9 +343,9 @@ def _evaluate_outer_prepared_view(
         classifier=classifier,
         replication_mode=replication_mode,
         resample_id=f"fold_{fold}",
-        feature_universe=transformed_feature_metadata_from_imputer(
-            imputer=prepared.imputer,
+        feature_universe=build_primary_feature_universe(
             raw_feature_count=raw_feature_count,
+            add_indicator=add_indicator_for_replication_mode(replication_mode),
         ),
         selected_global=selected_global,
     )
@@ -371,6 +388,7 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
             )
             .reset_index()
         )
+        grouped["_gamma_sort"] = grouped["gamma"].map(gamma_sort_key)
         grouped = grouped.sort_values(
             [
                 "selection_count",
@@ -380,7 +398,7 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
                 "k",
                 "C",
                 "alpha",
-                "gamma",
+                "_gamma_sort",
                 "n_neighbors",
             ],
             ascending=[False, False, True, True, True, True, True, True, True],

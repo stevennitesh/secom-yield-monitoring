@@ -26,16 +26,25 @@ class SelectorName:
     """Feature selector names used in artifacts and workflow dispatch."""
 
     S2N = "S2N"
+    TTEST = "Ttest"
     WELCH_T = "Welch-t"
     F_TEST = "F-test"
     PEARSON = "Pearson"
     RELIEFF = "ReliefF"
     GRAM_SCHMIDT = "Gram-Schmidt"
-    CORE = [S2N, WELCH_T, F_TEST, RELIEFF, GRAM_SCHMIDT]
+    CORE = [S2N, TTEST, F_TEST, RELIEFF, GRAM_SCHMIDT]
     EXPERIMENTAL: list[str] = [PEARSON]
-    ALL = CORE + EXPERIMENTAL
+    ALL = CORE + [WELCH_T] + EXPERIMENTAL
     ACTIVE = CORE
     ORIGINAL_BENCHMARK = CORE + EXPERIMENTAL
+
+
+def validate_selector_name(selector: str) -> str:
+    """Return a selector name after checking it against the supported vocabulary."""
+    selector_name = str(selector)
+    if selector_name not in SelectorName.ALL:
+        raise ValueError(f"Unknown selector: {selector_name}")
+    return selector_name
 
 
 class ScalerName:

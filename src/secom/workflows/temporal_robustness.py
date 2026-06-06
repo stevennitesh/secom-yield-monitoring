@@ -29,6 +29,7 @@ from secom.config import (
     SelectorName,
     StudyStatus,
     ThresholdPolicy,
+    validate_selector_name,
 )
 from secom.cv import (
     add_dev_week_bins,
@@ -66,6 +67,7 @@ SCORE_KS_PVALUE_CAUTION = 0.01
 MAX_PSI_CAUTION = 0.30
 MSPC_QUANTILE = 0.99
 THRESHOLD_POLICIES = (ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPERATIONAL)
+TEMPORAL_CHALLENGER_MAX_BER = 0.40
 
 
 def _build_bundle(input_dir: Path) -> DataBundle:
@@ -131,16 +133,23 @@ def _prepare_selector_eval_view(
     n_neighbors: int | None,
 ) -> dict[str, Any]:
     """Prepare selected train/eval matrices while retaining transform metadata."""
-    x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler = fit_selector_pipeline(
-        x_train_raw=x_train_raw,
-        y_train=y_train,
-        x_eval_raw=x_eval_raw,
-        method=method,
-        k=k,
-        scaler_name=scaler_name,
-        add_indicator=add_indicator,
-        n_neighbors=n_neighbors,
-    )
+    try:
+        x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler = fit_selector_pipeline(
+            x_train_raw=x_train_raw,
+            y_train=y_train,
+            x_eval_raw=x_eval_raw,
+            method=method,
+            k=k,
+            scaler_name=scaler_name,
+            add_indicator=add_indicator,
+            n_neighbors=n_neighbors,
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "temporal selector failure "
+            f"selector={method} k={int(k)} scaler={scaler_name} "
+            f"add_indicator={add_indicator} n_neighbors={n_neighbors}"
+        ) from exc
     return {
         "x_train_sel": x_train_sel,
         "y_train": np.asarray(y_train, dtype=int),
@@ -202,6 +211,7 @@ def _prepare_resampled_selector_views(
 
 def _stage_a_configs(selectors_run: list[str]) -> list[dict[str, Any]]:
     """Build the fixed selector-screening configs used before temporal model selection."""
+    selectors = [validate_selector_name(s) for s in selectors_run]
     return [
         {
             "selector": s,
@@ -210,12 +220,13 @@ def _stage_a_configs(selectors_run: list[str]) -> list[dict[str, Any]]:
             "scaler": ScalerName.ROBUST,
             "n_neighbors": 10 if s == SelectorName.RELIEFF else None,
         }
-        for s in selectors_run
+        for s in selectors
     ]
 
 
 def build_stage_b_config_grid(selector: str) -> list[dict[str, Any]]:
     """Return the temporal Stage-B grid for one selector."""
+    selector = validate_selector_name(selector)
     if selector == SelectorName.RELIEFF:
         return [
             {
@@ -439,6 +450,12 @@ def _fit_phase3_role_model(
         n_neighbors=role_cfg.n_neighbors,
     )
     meta = transformed_feature_metadata_from_imputer(imputer, raw_feature_count=raw_feature_count)
+    if selected_local.size <= 0:
+        raise RuntimeError(
+            "temporal role selector failure "
+            f"role={role_cfg.role} selector={role_cfg.selector} k={role_cfg.k} "
+            f"scaler={role_cfg.scaler} n_neighbors={role_cfg.n_neighbors}"
+        )
     selected_global = [meta[int(i)].feature_index for i in selected_local.tolist()]
     x_dev_sel = x_dev_scaled[:, selected_local]
 
@@ -797,21 +814,94 @@ def _outer_eval_artifact_row(
     }
 
 
-def _selector_rank_key(row: dict[str, Any]) -> tuple[float, float, int, float, int, float, float, str]:
+def _neighbor_sort_key(value: Any) -> float:
+    """Return a deterministic sort key for optional ReliefF neighbors."""
+    return math.inf if value is None or pd.isna(value) else float(value)
+
+
+def _selector_config_simplicity_key(row: dict[str, Any]) -> tuple[int, float, int, float]:
+    """Rank selected temporal configs by deterministic simplicity."""
+    scaler_pref = 0 if row["scaler"] == ScalerName.STANDARD else 1
+    return (int(row["k"]), float(row["C"]), scaler_pref, _neighbor_sort_key(row.get("n_neighbors")))
+
+
+def _modal_selected_config(group: pd.DataFrame) -> dict[str, Any]:
+    """Return the modal selected config tuple for one selector's outer evaluations."""
+    config_counts = (
+        group.groupby(["k", "C", "scaler", "n_neighbors"], dropna=False, sort=False)
+        .size()
+        .reset_index(name="selection_count")
+    )
+    best = min(
+        config_counts.to_dict("records"),
+        key=lambda row: (-int(row["selection_count"]), *_selector_config_simplicity_key(row)),
+    )
+    nn = best["n_neighbors"]
+    return {
+        "modal_k": int(best["k"]),
+        "modal_C": float(best["C"]),
+        "modal_scaler": str(best["scaler"]),
+        "modal_n_neighbors": np.nan if nn is None or pd.isna(nn) else float(nn),
+    }
+
+
+def _summarize_temporal_selector_results(
+    *,
+    outer_eval_df: pd.DataFrame,
+    deciding_outer_fold: int,
+) -> list[dict[str, Any]]:
+    """Summarize outer-evaluation selector results for temporal role assignment."""
+    selector_stats: list[dict[str, Any]] = []
+    for selector, grp in outer_eval_df.groupby("selector", sort=False):
+        deciding_vote = grp[(grp["seed"] == SEEDS_STAGE_B[0]) & (grp["outer_fold"] == deciding_outer_fold)]
+        vote_ber = float(deciding_vote["BER"].iloc[0]) if not deciding_vote.empty else np.inf
+        vote_true_pos = float(deciding_vote["True+"].iloc[0]) if not deciding_vote.empty else -np.inf
+        selector_stats.append(
+            {
+                "selector": selector,
+                "mean_BER": float(grp["BER"].mean()),
+                "std_BER": safe_std(grp["BER"].to_numpy(dtype=float)),
+                "mean_True+": float(grp["True+"].mean()),
+                "mean_True-": float(grp["True-"].mean()),
+                **_modal_selected_config(grp),
+                "vote_outer_BER": vote_ber,
+                "vote_outer_True+": vote_true_pos,
+            }
+        )
+    return selector_stats
+
+
+def _selector_rank_key(row: dict[str, Any]) -> tuple[float, float, float, float, int, float, int, float, str]:
     """Rank temporal selectors by study priority and deterministic simplicity."""
-    scaler_pref = 0 if row["modal_scaler"] == ScalerName.STANDARD else 1
-    nn = row["modal_n_neighbors"]
-    nn_key = math.inf if pd.isna(nn) else float(nn)
+    modal_config = {
+        "k": row["modal_k"],
+        "C": row["modal_C"],
+        "scaler": row["modal_scaler"],
+        "n_neighbors": row["modal_n_neighbors"],
+    }
+    modal_k, modal_c, scaler_pref, nn_key = _selector_config_simplicity_key(modal_config)
     return (
-        row["mean_BER"],
-        -row["mean_True+"],
-        row["modal_k"],
-        row["modal_C"],
+        float(row["mean_BER"]),
+        -float(row["mean_True+"]),
+        float(row["vote_outer_BER"]),
+        -float(row["vote_outer_True+"]),
+        modal_k,
+        modal_c,
         scaler_pref,
         nn_key,
-        row["vote_outer_BER"],
-        row["selector"],
+        str(row["selector"]),
     )
+
+
+def _choose_temporal_roles(selector_stats: list[dict[str, Any]]) -> tuple[str, str | None]:
+    """Choose primary and optional challenger selectors from temporal summaries."""
+    if not selector_stats:
+        raise ValueError("No temporal selector statistics available for role assignment")
+    ranked = sorted(selector_stats, key=_selector_rank_key)
+    primary = ranked[0]["selector"]
+    eligible = [row for row in ranked[1:] if float(row["mean_BER"]) <= TEMPORAL_CHALLENGER_MAX_BER]
+    challenger = eligible[0]["selector"] if eligible else None
+    return str(primary), None if challenger is None else str(challenger)
 
 
 def _model_selection_artifact_row(
@@ -1004,45 +1094,12 @@ def run_temporal_robustness(
     )
     write_csv(inner_df, reports / ArtifactName.TEMPORAL_INNER_CV)
 
-    selector_stats = []
     deciding_outer_fold = max(f.outer_fold for f in bundle.fold_plan.folds)
-    for selector, grp in outer_eval_df.groupby("selector"):
-        deciding_vote = grp[(grp["seed"] == SEEDS_STAGE_B[0]) & (grp["outer_fold"] == deciding_outer_fold)]
-        vote_ber = float(deciding_vote["BER"].iloc[0]) if not deciding_vote.empty else np.inf
-        vote_true_pos = float(deciding_vote["True+"].iloc[0]) if not deciding_vote.empty else -np.inf
-        selector_stats.append(
-            {
-                "selector": selector,
-                "mean_BER": float(grp["BER"].mean()),
-                "std_BER": safe_std(grp["BER"].to_numpy(dtype=float)),
-                "mean_True+": float(grp["True+"].mean()),
-                "mean_True-": float(grp["True-"].mean()),
-                "modal_k": int(grp["k"].mode().min()),
-                "modal_C": float(grp["C"].mode().min()),
-                "modal_scaler": (
-                    ScalerName.STANDARD
-                    if (grp["scaler"] == ScalerName.STANDARD).sum() >= (grp["scaler"] == ScalerName.ROBUST).sum()
-                    else ScalerName.ROBUST
-                ),
-                "modal_n_neighbors": (
-                    float(grp["n_neighbors"].dropna().mode().min())
-                    if selector == SelectorName.RELIEFF and grp["n_neighbors"].notna().any()
-                    else np.nan
-                ),
-                "vote_outer_BER": vote_ber,
-                "vote_outer_True+": vote_true_pos,
-            }
-        )
-
-    ranked = sorted(selector_stats, key=_selector_rank_key)
-    primary = ranked[0]["selector"]
-    eligible = [r for r in ranked[1:] if r["mean_BER"] <= 0.40]
-    challenger = None
-    if eligible:
-        challenger = sorted(
-            eligible,
-            key=lambda r: (-r["mean_True-"], r["mean_BER"], r["selector"]),
-        )[0]["selector"]
+    selector_stats = _summarize_temporal_selector_results(
+        outer_eval_df=outer_eval_df,
+        deciding_outer_fold=deciding_outer_fold,
+    )
+    primary, challenger = _choose_temporal_roles(selector_stats)
 
     model_selection_rows = [
         _model_selection_artifact_row(row=row, primary=primary, challenger=challenger) for row in selector_stats

@@ -85,7 +85,7 @@ _UCI_ORIGINAL_BASELINE_ROWS = [
     },
     {
         "uci_method": "Ttest",
-        "selector": "Welch-t",
+        "selector": "Ttest",
         "uci_BER": "33.7 +/- 2.1",
         "uci_True+": "59.6 +/- 4.7",
         "uci_True-": "73.0 +/- 1.8",
@@ -177,11 +177,21 @@ def _uci_original_baseline_table(benchmark_summary: pd.DataFrame | None) -> list
 def _uci_selector_definition_note() -> str:
     """Explain selector-definition differences that affect UCI/local interpretation."""
     return (
-        "Interpretation note: in this local implementation, binary-label ANOVA F-test ranking and absolute Pearson "
-        "correlation ranking are mathematically monotonic for non-constant features, so they can select the same "
-        "40-feature set and produce identical local rows. The UCI reference table reports separate Ftest and Pearson "
-        "rows, which should be read as that benchmark's implementation/protocol definitions rather than a guarantee "
-        "that the two selectors are distinct under this replication."
+        "Interpretation note: the local Ttest row uses a pooled two-sample t statistic to align with the UCI "
+        "selector label; Welch-t remains available only as an explicit local selector. Binary-label ANOVA F-test "
+        "ranking and absolute Pearson correlation ranking are mathematically monotonic for non-constant features, "
+        "so they can select the same 40-feature set and produce identical local rows. The UCI reference table reports "
+        "separate Ftest and Pearson rows, which should be read as that benchmark's implementation/protocol "
+        "definitions rather than a guarantee that the two selectors are distinct under this replication."
+    )
+
+
+def _feature_interpretation_claim_note() -> str:
+    """Return the feature-report claim boundary used by final and scaffold reports."""
+    return (
+        "Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof "
+        "or validated process-driver identification. Stability across resamples matters more than a single "
+        "full-fit ranking, and missing-indicator features are kept distinct from raw value features."
     )
 
 
@@ -376,8 +386,10 @@ def _best_row_feature_table(
         ["expected_contribution", "selection_frequency", "feature_name_or_source_col"],
         ascending=[False, False, True],
     ).head(10)
+    claim_note = f"- {_feature_interpretation_claim_note()}"
     if rows["conditional_effect_magnitude"].isna().all():
         lines = [
+            claim_note,
             "- Effect magnitudes are unavailable for the leading classifier, so this table is shown as a stability-first view.",
             "",
             "| feature | type | selection_frequency | cluster_id |",
@@ -391,6 +403,8 @@ def _best_row_feature_table(
         return lines
 
     lines = [
+        claim_note,
+        "",
         "| feature | type | selection_frequency | effect_magnitude | expected_contribution | cluster_id |",
         "|---|---|---:|---:|---:|---:|",
     ]
@@ -1395,10 +1409,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     )
     lines.append("## Feature Stability and Interpretation")
     lines.append("")
-    lines.append(
-        "Feature outputs in this project are prioritization aids, not causal proof. Stability across resamples matters more "
-        "than a single full-fit ranking, and missing-indicator features are kept distinct from raw value features."
-    )
+    lines.append(_feature_interpretation_claim_note())
     lines.append("")
     lines.append("### Original Replication")
     lines.append("")
@@ -1436,7 +1447,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         lines,
         "Feature stability",
         "figures/feature_stability.png",
-        "Figure 3 summarizes the most stable and influential features across the benchmark studies, while preserving the distinction between raw value features and missing indicators.",
+        "Figure 3 summarizes benchmark feature-prioritization evidence across the benchmark studies, while preserving the distinction between raw value features and missing indicators.",
     )
     lines.append("## Temporal Robustness Stress Test")
     lines.append("")

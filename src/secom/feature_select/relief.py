@@ -7,6 +7,18 @@ import numpy as np
 from secom.feature_select._ranking import rank_desc_with_index_tiebreak, sanitize_scores
 
 
+def _constant_feature_mask(x: np.ndarray) -> np.ndarray:
+    """Identify columns that cannot carry ReliefF signal."""
+    return np.std(np.asarray(x, dtype=float), axis=0, ddof=0) <= 0
+
+
+def _sanitize_relief_scores(scores: np.ndarray, x: np.ndarray) -> np.ndarray:
+    """Normalize invalid ReliefF scores and force constants to bottom rank."""
+    sanitized = sanitize_scores(scores)
+    sanitized[_constant_feature_mask(x)] = -np.inf
+    return sanitized
+
+
 def _class_neighbor_candidates(y: np.ndarray, row_idx: int) -> tuple[np.ndarray, np.ndarray]:
     """Return same-class and opposite-class candidate indices for one row."""
     hit_candidates = np.flatnonzero(y == y[row_idx])
@@ -42,7 +54,7 @@ def _fallback_relief_scores(x: np.ndarray, y: np.ndarray, n_neighbors: int) -> n
         weights -= np.mean(np.abs(row - x[nearest_hits]), axis=0)
 
     weights = weights / max(n_rows, 1)
-    return sanitize_scores(weights)
+    return _sanitize_relief_scores(weights, x)
 
 
 def relief_rank_features(
@@ -53,20 +65,23 @@ def relief_rank_features(
     """Return ReliefF feature order and scores, falling back when skrebate is absent."""
     x = np.asarray(x, dtype=float)
     y = np.asarray(y_bin, dtype=int)
+    n_neighbors = int(n_neighbors)
+    if n_neighbors <= 0:
+        raise ValueError("ReliefF n_neighbors must be positive")
     try:
         from skrebate import ReliefF
 
         estimator = ReliefF(
             n_features_to_select=x.shape[1],
-            n_neighbors=int(n_neighbors),
+            n_neighbors=n_neighbors,
             n_jobs=-1,
         )
         estimator.fit(x, y)
         scores = np.asarray(estimator.feature_importances_, dtype=float)
     except Exception:
         # Keep the study runnable in minimal environments while preserving deterministic order.
-        scores = _fallback_relief_scores(x, y, n_neighbors=int(n_neighbors))
+        scores = _fallback_relief_scores(x, y, n_neighbors=n_neighbors)
 
-    scores = sanitize_scores(scores)
+    scores = _sanitize_relief_scores(scores, x)
     order = rank_desc_with_index_tiebreak(scores)
     return order, scores
