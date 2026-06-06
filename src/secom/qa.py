@@ -121,7 +121,11 @@ def validate_benchmark_replication_artifacts(
             ablation_df,
             {"selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"},
         ),
-        ("benchmark_full_fit_summary", full_fit_df, {"selector", "classifier", "replication_mode", "BER_full_dataset"}),
+        (
+            "benchmark_full_fit_summary",
+            full_fit_df,
+            {"selector", "classifier", "replication_mode", "threshold_full_dataset", "BER_full_dataset"},
+        ),
     ):
         _validate_required_columns(name, df, required)
 
@@ -214,6 +218,7 @@ def validate_tuned_benchmark_artifacts(
                 "selector",
                 "classifier",
                 "replication_mode",
+                "threshold_full_dataset",
                 "BER_full_dataset",
                 "ROC_AUC_full_dataset",
                 "PR_AUC_full_dataset",

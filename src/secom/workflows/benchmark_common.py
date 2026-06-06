@@ -238,6 +238,7 @@ def benchmark_metric_fields(
 def benchmark_full_dataset_fields(full_fit_payload: dict[str, Any]) -> dict[str, float | int]:
     """Return full-dataset summary fields used by benchmark full-fit artifacts."""
     return {
+        "threshold_full_dataset": float(full_fit_payload["threshold_full_dataset"]),
         **{f"{metric}_full_dataset": float(full_fit_payload[f"{metric}_full_dataset"]) for metric in BENCHMARK_METRICS},
         **{field: int(full_fit_payload[field]) for field in FULL_DATASET_COUNT_FIELDS},
     }
@@ -470,7 +471,7 @@ def fit_full_dataset(
     threshold_full, _ = find_ber_optimal_threshold(y, scores)
     metrics_full = binary_metrics_at_threshold(y_true=y, scores=scores, threshold=float(threshold_full))
     return {
-        "threshold_oof_global": float(threshold_full),
+        "threshold_full_dataset": float(threshold_full),
         **benchmark_metric_fields(metrics_full, suffix="_full_dataset"),
         "n_samples_full_dataset": int(prepared_full["n_samples_full_dataset"]),
         "n_fails_full_dataset": int(prepared_full["n_fails_full_dataset"]),

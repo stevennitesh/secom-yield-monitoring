@@ -60,6 +60,21 @@ def test_final_report_includes_uci_original_benchmark_reference(
     )
 
 
+def test_final_report_distinguishes_original_and_tuned_classifier_selection(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Final report should keep non-nested original and nested tuned selection distinct."""
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "Original classifier configurations are selected from the same non-nested replication sweep used for reporting",
+            "tuned benchmark results remain the stricter estimate",
+        ],
+    )
+
+
 def test_final_report_surfaces_required_industrialization_gaps(
     active_artifacts_output_dir: Path,
 ) -> None:
