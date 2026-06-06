@@ -664,6 +664,27 @@ def _selected_tuned_search_configs(search_df: pd.DataFrame | None) -> pd.DataFra
     return selected
 
 
+def _validate_tuned_selected_config_cardinality(
+    *,
+    search_df: pd.DataFrame | None,
+    errors: list[str],
+) -> pd.DataFrame | None:
+    """Require one selected tuned-search row per selector/classifier/mode/fold."""
+    selected = _selected_tuned_search_configs(search_df)
+    if selected is None or selected.empty:
+        return selected
+    group_cols = ["selector", "classifier", "replication_mode", "fold"]
+    if not set(group_cols).issubset(selected.columns):
+        return selected
+    counts = selected.groupby(group_cols, dropna=False).size()
+    duplicate_groups = counts[counts > 1]
+    if not duplicate_groups.empty:
+        errors.append(
+            "benchmark_tuned_search.csv: each selector/classifier/mode/fold must mark exactly one selected config"
+        )
+    return selected
+
+
 def _validate_selector_config_lineage(
     *,
     artifact_frames: dict[str, pd.DataFrame] | None,
@@ -743,9 +764,13 @@ def _validate_selector_config_lineage(
             reports=reports,
             artifact_frames=artifact_frames,
         )
+        selected_search_df = _validate_tuned_selected_config_cardinality(
+            search_df=search_df,
+            errors=errors,
+        )
         _validate_config_set_equal(
             left_name=ArtifactName.BENCHMARK_TUNED_SEARCH,
-            left_df=_selected_tuned_search_configs(search_df),
+            left_df=selected_search_df,
             right_name=ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
             right_df=fold_df,
             columns=fold_config_cols,
