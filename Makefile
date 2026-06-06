@@ -17,9 +17,8 @@ help:
 		'  check         Run lint, format-check, and test'
 
 install:
-	$(PIP) install --upgrade pip setuptools wheel
 	$(PIP) install -r requirements.txt
-	$(PIP) install -e .
+	$(PIP) install -e . --no-build-isolation
 
 lint:
 	$(RUFF) check .

@@ -48,10 +48,12 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "### Illustrative Operational Framing",
             "#### Cost Curves",
             "| F-test | krr | strict |",
+            "Select original classifier configurations from the non-nested replication sweep",
             "mean_ROC_AUC",
             "mean_PR_AUC",
             "mean_MCC",
             "mean_F2",
+            "95% fold-bootstrap CI",
             "Leading original replication configuration",
             "Leading tuned benchmark configuration",
             "#### Original Feature Stability and Interpretation",
@@ -62,6 +64,9 @@ def test_report_skeleton_is_generated_from_active_artifacts(
             "UCI reference table reports separate Ftest and Pearson rows",
             "Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof",
             "validated process-driver identification",
+            "No downstream decision or action outcome data",
+            "Single-dataset evidence only",
+            "deployment decision objectives and cost accounting",
         ],
     )
     assert_text_excludes_all(text, ["PRIMARY_STUDY_STATUS", "| n/a | n/a |", "most stable and influential features"])

@@ -9,9 +9,7 @@ from _script_path import ensure_src_on_path
 
 ensure_src_on_path()
 
-from secom.reporting import write_final_report
-
-DEFAULT_OUTPUT_DIR = "runs"
+DEFAULT_OUTPUT_DIR = "runs/full_study"
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,7 +23,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Generate the final report from existing study artifacts."""
     args = parse_args()
-    out = write_final_report(Path(args.output_dir), export_pdf=args.export_pdf)
+
+    from secom.reporting import write_final_report
+
+    try:
+        out = write_final_report(Path(args.output_dir), export_pdf=args.export_pdf)
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}")
+        raise SystemExit(1) from None
     print(out)
 
 

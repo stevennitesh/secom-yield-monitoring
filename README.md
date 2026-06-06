@@ -177,13 +177,16 @@ Full study bundle:
 python scripts/run_full_study.py --input-dir data/raw --output-dir runs/full_study --strict
 ```
 
-Audit generated artifacts:
+When the full-study audit passes, this command also writes the canonical
+`runs/full_study/reports/final_report.md`.
+
+Audit-generated artifacts:
 
 ```bash
 python scripts/run_audit.py --output-dir runs/full_study --strict
 ```
 
-Generate the canonical markdown report:
+Regenerate the canonical markdown report from an existing audited run:
 
 ```bash
 python scripts/run_final_report.py --output-dir runs/full_study

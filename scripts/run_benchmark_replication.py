@@ -12,6 +12,8 @@ ensure_src_on_path()
 
 from secom.workflows import run_benchmark_replication
 
+from _script_status import benchmark_bundle_statuses_from_manifest, workflow_error_line
+
 DEFAULT_INPUT_DIR = "data/raw"
 DEFAULT_OUTPUT_DIR = "runs/benchmark_replication"
 PASSED_STATUS = "passed"
@@ -39,7 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--classifiers",
-        help="Comma-separated classifier override. Defaults: original runs all benchmark classifiers; tuned runs krr.",
+        help="Comma-separated classifier override. Defaults to krr for both original and tuned benchmark layers.",
     )
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()
@@ -48,16 +50,25 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Run the primary benchmark bundle and fail strict mode on benchmark errors."""
     args = parse_args()
-    result = run_benchmark_replication(
-        Path(args.input_dir),
-        Path(args.output_dir),
-        classifiers_run=_parse_csv_arg(args.classifiers),
-        progress=_print_progress,
-    )
+    output_dir = Path(args.output_dir)
+    workflow_error: str | None = None
+    try:
+        result = run_benchmark_replication(
+            Path(args.input_dir),
+            output_dir,
+            classifiers_run=_parse_csv_arg(args.classifiers),
+            progress=_print_progress,
+        )
+    except Exception as exc:
+        result = benchmark_bundle_statuses_from_manifest(output_dir)
+        workflow_error = workflow_error_line("benchmark", exc)
 
     print(f"PRIMARY_STUDY_STATUS: {result['primary_study_status']}")
     print(f"BENCHMARK_ORIGINAL_STATUS: {result['benchmark_original_status']}")
     print(f"BENCHMARK_TUNED_STATUS: {result['benchmark_tuned_status']}")
+    if workflow_error is not None:
+        print(workflow_error)
+        raise SystemExit(1)
 
     if args.strict and result["primary_study_status"] != PASSED_STATUS:
         raise SystemExit(1)

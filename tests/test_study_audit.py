@@ -10,7 +10,16 @@ import pytest
 from secom.artifacts import ensure_reports_dir, write_manifest
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.audit import run_study_audit
-from tests.artifact_writers import write_artifact_row
+from tests.artifact_writers import write_artifact_row, write_artifact_rows
+
+
+def _ci_fields(values_by_metric: dict[str, float]) -> dict[str, float]:
+    """Return symmetric lower/upper CI fields for compact artifact fixtures."""
+    return {
+        f"CI_{bound}_{metric}": float(value)
+        for metric, value in values_by_metric.items()
+        for bound in ("lower", "upper")
+    }
 
 
 def _base_manifest(
@@ -114,6 +123,16 @@ def _write_primary_artifacts(reports: Path) -> None:
             "mean_PR_AUC": 0.41,
             "mean_MCC": 0.33,
             "mean_F2": 0.57,
+            **_ci_fields(
+                {
+                    "True+": 0.60,
+                    "True-": 0.80,
+                    "ROC_AUC": 0.72,
+                    "PR_AUC": 0.41,
+                    "MCC": 0.33,
+                    "F2": 0.57,
+                }
+            ),
         },
     )
     write_artifact_row(
@@ -139,6 +158,7 @@ def _write_primary_artifacts(reports: Path) -> None:
             "gamma": 0.1,
             "C": pd.NA,
             "n_neighbors": pd.NA,
+            "threshold_full_dataset": 0.42,
             "BER_full_dataset": 0.28,
             "True+_full_dataset": 0.65,
             "True-_full_dataset": 0.82,
@@ -384,6 +404,7 @@ def _write_tuned_artifacts(reports: Path) -> None:
             "gamma": 0.1,
             "C": pd.NA,
             "n_neighbors": pd.NA,
+            "threshold_full_dataset": 0.43,
             "BER_full_dataset": 0.25,
             "True+_full_dataset": 0.64,
             "True-_full_dataset": 0.83,
@@ -436,6 +457,50 @@ def test_study_audit_primary_status_requires_tuned_artifacts(workspace_tmp_dir: 
     assert any(ArtifactName.BENCHMARK_TUNED_SUMMARY in error for error in result.errors)
 
 
+def test_study_audit_rejects_primary_pass_without_tuned_status(workspace_tmp_dir: Path) -> None:
+    """Primary pass status should be consistent with both benchmark layer statuses."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(_base_manifest(), reports / ArtifactName.MANIFEST)
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "run_manifest.json: primary_study_status passed conflicts with benchmark layer statuses" in error
+        for error in result.errors
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_error"),
+    [
+        ("manifest_version", "1.0", "run_manifest.json: manifest_version must be 2.0"),
+        ("study_spec_path", "legacy/spec", "run_manifest.json: study_spec_path must be docs/spec"),
+        ("study_spec_sha256", "MISSING", "run_manifest.json: study_spec_sha256 must identify the active spec set"),
+    ],
+)
+def test_study_audit_rejects_invalid_manifest_provenance(
+    workspace_tmp_dir: Path,
+    field: str,
+    value: object,
+    expected_error: str,
+) -> None:
+    """Manifest provenance fields should not accept stale paths or missing spec hashes."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    manifest = _base_manifest(tuned_status=StudyStatus.PASSED)
+    manifest[field] = value
+    write_manifest(manifest, reports / ArtifactName.MANIFEST)
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(expected_error in error for error in result.errors)
+
+
 def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_dir: Path) -> None:
     """Temporal claim restrictions should warn without blocking the audit."""
     reports = ensure_reports_dir(workspace_tmp_dir)
@@ -443,7 +508,7 @@ def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_
         _base_manifest(
             tuned_status=StudyStatus.PASSED,
             temporal_status=StudyStatus.WARNING,
-            temporal_claim_restrictions=["high_shift_blocks_lockbox_superiority_claim"],
+            temporal_claim_restrictions=["primary_high_shift_blocks_lockbox_superiority_claim"],
         ),
         reports / ArtifactName.MANIFEST,
     )
@@ -454,8 +519,180 @@ def test_study_audit_temporal_claim_restrictions_are_non_blocking(workspace_tmp_
     result = run_study_audit(workspace_tmp_dir)
 
     assert result.ok, result.errors
-    assert "high_shift_blocks_lockbox_superiority_claim" in result.claim_restrictions
+    assert "primary_high_shift_blocks_lockbox_superiority_claim" in result.claim_restrictions
     assert any("temporal robustness status indicates warnings" in w for w in result.warnings)
+
+
+def test_study_audit_rejects_temporal_claim_restriction_mismatch(workspace_tmp_dir: Path) -> None:
+    """Temporal claim restrictions should match drift, lockbox, and MSPC artifact evidence."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(
+            tuned_status=StudyStatus.PASSED,
+            temporal_status=StudyStatus.PASSED,
+            temporal_claim_restrictions=[],
+        ),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert "primary_high_shift_blocks_lockbox_superiority_claim" in result.claim_restrictions
+    assert any("temporal_claim_restrictions mismatch artifact evidence" in error for error in result.errors)
+
+
+def test_study_audit_rejects_temporal_primary_cardinality_mismatch(workspace_tmp_dir: Path) -> None:
+    """Temporal model selection must mark exactly one primary selector."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED, temporal_status=StudyStatus.WARNING),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+    selected_row = pd.read_csv(reports / ArtifactName.TEMPORAL_MODEL_SELECTION).iloc[0].to_dict()
+    write_artifact_rows(reports, ArtifactName.TEMPORAL_MODEL_SELECTION, [selected_row, dict(selected_row)])
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "temporal_model_selection.csv: exactly one row must be marked primary" in error for error in result.errors
+    )
+
+
+def test_study_audit_rejects_invalid_temporal_enum_values(workspace_tmp_dir: Path) -> None:
+    """Temporal role, threshold, and drift-status labels should stay in controlled vocabularies."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED, temporal_status=StudyStatus.WARNING),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_LOCKBOX,
+        {
+            "role": "secondary",
+            "threshold_policy": "manager",
+            "BER": 0.42,
+            "True+": 0.50,
+            "True-": 0.75,
+            "TPR_at_TNR90": 0.40,
+        },
+    )
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_DRIFT,
+        {"model_scope": "primary", "drift_gate_status": "OK", "lockbox_claims_allowed": False},
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any("temporal_lockbox.csv: role contains invalid values" in error for error in result.errors)
+    assert any("temporal_lockbox.csv: threshold_policy contains invalid values" in error for error in result.errors)
+    assert any(
+        "temporal_drift_summary.csv: drift_gate_status contains invalid values" in error for error in result.errors
+    )
+
+
+def test_study_audit_rejects_invalid_temporal_numeric_ranges(workspace_tmp_dir: Path) -> None:
+    """Temporal probabilities and operations-facing counts should stay within valid ranges."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED, temporal_status=StudyStatus.WARNING),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+        {
+            "role": "primary",
+            "threshold_policy": "scientific",
+            "predicted_flag_fraction": 1.5,
+            "mean_weekly_flagged_wafers": -1.0,
+        },
+    )
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_COST_CURVES,
+        {"cost_ratio": -5, "all_pass_baseline": -0.2, "all_flag_baseline": -0.1},
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "temporal_manager_outputs.csv: predicted_flag_fraction must be between 0 and 1" in error
+        for error in result.errors
+    )
+    assert any(
+        "temporal_manager_outputs.csv: mean_weekly_flagged_wafers must be nonnegative" in error
+        for error in result.errors
+    )
+    assert any("temporal_cost_curves.csv: cost_ratio must be positive" in error for error in result.errors)
+    assert any("temporal_cost_curves.csv: all_pass_baseline must be nonnegative" in error for error in result.errors)
+
+
+def test_study_audit_rejects_temporal_role_policy_lineage_mismatch(workspace_tmp_dir: Path) -> None:
+    """Temporal manager-facing rows should match persisted lockbox role/policy rows."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(
+            tuned_status=StudyStatus.PASSED,
+            temporal_status=StudyStatus.WARNING,
+            temporal_claim_restrictions=["primary_high_shift_blocks_lockbox_superiority_claim"],
+        ),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    _write_temporal_artifacts(reports)
+    write_artifact_row(
+        reports,
+        ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+        {
+            "role": "challenger",
+            "threshold_policy": "scientific",
+            "predicted_flag_fraction": 0.15,
+            "mean_weekly_flagged_wafers": 4.0,
+        },
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any("temporal_manager_outputs.csv: role/policy coverage mismatch" in error for error in result.errors)
+
+
+def test_study_audit_temporal_failure_without_temporal_artifacts_is_non_blocking(workspace_tmp_dir: Path) -> None:
+    """Temporal failure should be visible without invalidating primary benchmark artifacts."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(
+            tuned_status=StudyStatus.PASSED,
+            temporal_status=StudyStatus.FAILED,
+        ),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert result.ok, result.errors
+    assert any("temporal robustness status indicates failure" in w for w in result.warnings)
 
 
 def test_study_audit_missing_primary_artifact_is_blocking(workspace_tmp_dir: Path) -> None:
@@ -486,6 +723,35 @@ def test_study_audit_missing_tuned_artifact_is_blocking(workspace_tmp_dir: Path)
 
     assert not result.ok
     assert any(ArtifactName.BENCHMARK_TUNED_SUMMARY in error for error in result.errors)
+
+
+@pytest.mark.parametrize(
+    ("artifact_name", "missing_column"),
+    [
+        (ArtifactName.BENCHMARK_SUMMARY, "CI_lower_True+"),
+        (ArtifactName.BENCHMARK_TUNED_SUMMARY, "CI_upper_MCC"),
+    ],
+)
+def test_study_audit_requires_all_benchmark_metric_ci_columns(
+    workspace_tmp_dir: Path,
+    artifact_name: str,
+    missing_column: str,
+) -> None:
+    """Benchmark summaries must keep CI columns for every emitted benchmark metric."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+    summary_df = pd.read_csv(reports / artifact_name).drop(columns=[missing_column])
+    summary_df.to_csv(reports / artifact_name, index=False)
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(f"{artifact_name}: missing columns ['{missing_column}']" in error for error in result.errors)
 
 
 def test_study_audit_rejects_feature_report_without_benchmark_lineage(workspace_tmp_dir: Path) -> None:
@@ -692,5 +958,31 @@ def test_study_audit_does_not_treat_falsey_selected_config_markers_as_selected(
     assert not result.ok
     assert any(
         "benchmark_tuned_search.csv vs benchmark_tuned_fold_metrics.csv: config coverage mismatch" in error
+        for error in result.errors
+    )
+
+
+def test_study_audit_rejects_duplicate_tuned_selected_configs(workspace_tmp_dir: Path) -> None:
+    """Persisted tuned search artifacts must mark exactly one selected config per outer fold."""
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    write_manifest(
+        _base_manifest(tuned_status=StudyStatus.PASSED),
+        reports / ArtifactName.MANIFEST,
+    )
+    _write_primary_artifacts(reports)
+    _write_tuned_artifacts(reports)
+
+    selected_row = pd.read_csv(reports / ArtifactName.BENCHMARK_TUNED_SEARCH).iloc[0].to_dict()
+    write_artifact_rows(
+        reports,
+        ArtifactName.BENCHMARK_TUNED_SEARCH,
+        [selected_row, dict(selected_row)],
+    )
+
+    result = run_study_audit(workspace_tmp_dir)
+
+    assert not result.ok
+    assert any(
+        "benchmark_tuned_search.csv: each selector/classifier/mode/fold must mark exactly one selected config" in error
         for error in result.errors
     )

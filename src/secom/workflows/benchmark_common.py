@@ -13,6 +13,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 from sklearn.model_selection import StratifiedKFold
 
+from secom.common.paths import project_root_from_repo_structure
 from secom.config import (
     BENCHMARK_KRR_ALPHA_GRID,
     BENCHMARK_KRR_GAMMA_GRID,
@@ -191,7 +192,7 @@ def prepare_cv(
 
 def prepare_benchmark_dataset(input_dir: Path) -> dict[str, Any]:
     """Load raw SECOM data and prepare arrays shared by original and tuned benchmarks."""
-    project_root = Path(__file__).resolve().parents[3]
+    project_root = project_root_from_repo_structure()
     loaded = load_raw_secom(input_dir)
     df = parse_sort_and_label(loaded.frame)
     x, y, folds = prepare_cv(df=df, feature_cols=loaded.feature_columns)
@@ -238,6 +239,7 @@ def benchmark_metric_fields(
 def benchmark_full_dataset_fields(full_fit_payload: dict[str, Any]) -> dict[str, float | int]:
     """Return full-dataset summary fields used by benchmark full-fit artifacts."""
     return {
+        "threshold_full_dataset": float(full_fit_payload["threshold_full_dataset"]),
         **{f"{metric}_full_dataset": float(full_fit_payload[f"{metric}_full_dataset"]) for metric in BENCHMARK_METRICS},
         **{field: int(full_fit_payload[field]) for field in FULL_DATASET_COUNT_FIELDS},
     }
@@ -470,7 +472,7 @@ def fit_full_dataset(
     threshold_full, _ = find_ber_optimal_threshold(y, scores)
     metrics_full = binary_metrics_at_threshold(y_true=y, scores=scores, threshold=float(threshold_full))
     return {
-        "threshold_oof_global": float(threshold_full),
+        "threshold_full_dataset": float(threshold_full),
         **benchmark_metric_fields(metrics_full, suffix="_full_dataset"),
         "n_samples_full_dataset": int(prepared_full["n_samples_full_dataset"]),
         "n_fails_full_dataset": int(prepared_full["n_fails_full_dataset"]),

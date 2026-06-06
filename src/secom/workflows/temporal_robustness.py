@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 import math
 from itertools import product
 from pathlib import Path
@@ -17,6 +18,7 @@ from sklearn.preprocessing import StandardScaler
 
 from secom.artifacts import ensure_reports_dir, write_csv
 from secom.common.drift import psi_for_feature
+from secom.common.paths import project_root_from_repo_structure
 from secom.common.thresholds import operational_threshold
 from secom.config import (
     ArtifactName,
@@ -54,7 +56,7 @@ from secom.preprocess import make_imputer, make_scaler, transformed_feature_meta
 from secom.selection.engine import fit_selector_pipeline, select_features
 from secom.selection.tuning import select_best_inner_config
 from secom.types import DataBundle, FittedRoleModel, RoleConfig
-from secom.workflows.manifest import write_temporal_status
+from secom.workflows.manifest import write_temporal_failure, write_temporal_status
 
 STAGE_A_FEATURE_BUDGET = 40
 STAGE_B_K_VALUES = [10, 20, 40]
@@ -1021,6 +1023,30 @@ def run_temporal_robustness(
     *,
     selectors_run: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Run temporal robustness and persist failed status before re-raising errors."""
+    try:
+        return _run_temporal_robustness(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            selectors_run=selectors_run,
+        )
+    except Exception as exc:
+        with suppress(Exception):
+            ensure_reports_dir(output_dir)
+            write_temporal_failure(
+                manifest_path=output_dir / "reports" / ArtifactName.MANIFEST,
+                project_root=project_root_from_repo_structure(),
+                reason=str(exc),
+            )
+        raise
+
+
+def _run_temporal_robustness(
+    input_dir: Path,
+    output_dir: Path,
+    *,
+    selectors_run: list[str] | None = None,
+) -> dict[str, Any]:
     """Run the temporal robustness study and write all temporal artifacts."""
     reports = ensure_reports_dir(output_dir)
     selectors_run = list(SelectorName.ACTIVE) if selectors_run is None else [str(s) for s in selectors_run]
@@ -1039,7 +1065,7 @@ def run_temporal_robustness(
     write_csv(split_meta, reports / ArtifactName.TEMPORAL_SPLIT_METADATA)
 
     manifest_path = reports / ArtifactName.MANIFEST
-    project_root = Path(__file__).resolve().parents[3]
+    project_root = project_root_from_repo_structure()
     if not bundle.temporal_feasible or bundle.fold_plan is None:
         # Still write split metadata so the audit explains why temporal artifacts are absent.
         infeasible_reason = bundle.temporal_infeasible_reason or "no_feasible_plan"
