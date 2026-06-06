@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -18,9 +19,12 @@ SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 
 def _run_script_help(script_name: str) -> subprocess.CompletedProcess[str]:
     """Run one repository script's help path."""
+    env = os.environ.copy()
+    env.pop("MPLCONFIGDIR", None)
     return subprocess.run(
         [sys.executable, str(SCRIPTS_DIR / script_name), "--help"],
         cwd=PROJECT_ROOT,
+        env=env,
         text=True,
         capture_output=True,
         check=False,
@@ -53,6 +57,7 @@ def test_script_help_paths_are_quiet() -> None:
         "run_benchmark_replication.py",
         "run_benchmark_tuned.py",
         "run_final_report.py",
+        "run_report_skeleton.py",
     ):
         result = _run_script_help(script_name)
 

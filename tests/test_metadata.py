@@ -82,3 +82,12 @@ def test_build_system_dependencies_are_exact_pinned() -> None:
 
     for dependency in pyproject["build-system"]["requires"]:
         assert "==" in dependency, f"build dependency is not exact-pinned: {dependency}"
+
+
+def test_install_target_uses_pinned_requirements_before_editable_install() -> None:
+    """Local install should avoid unbounded build-tool upgrades."""
+    makefile = (_PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
+
+    assert "install --upgrade pip setuptools wheel" not in makefile
+    assert "$(PIP) install -r requirements.txt" in makefile
+    assert "$(PIP) install -e . --no-build-isolation" in makefile

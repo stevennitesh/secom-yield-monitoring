@@ -22,9 +22,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Generate the final report from existing study artifacts."""
+    args = parse_args()
+
     from secom.reporting import write_final_report
 
-    args = parse_args()
     out = write_final_report(Path(args.output_dir), export_pdf=args.export_pdf)
     print(out)
 
