@@ -467,6 +467,15 @@ _REPORT_CONTEXT_ARTIFACTS: dict[str, str] = {
     "temporal_cost": ArtifactName.TEMPORAL_COST_CURVES,
 }
 
+_TEMPORAL_REPORT_FIELDS = (
+    "temporal_selection",
+    "temporal_lockbox",
+    "temporal_drift",
+    "temporal_mspc",
+    "temporal_manager",
+    "temporal_cost",
+)
+
 
 def _first_row(frame: pd.DataFrame | None, mask: pd.Series | None = None) -> pd.Series | None:
     """Return the first row from an optional artifact frame."""
@@ -489,6 +498,11 @@ def _load_report_context(output_dir: Path) -> ReportContext:
     frames = {
         field: read_csv_if_exists(reports / artifact_name) for field, artifact_name in _REPORT_CONTEXT_ARTIFACTS.items()
     }
+    temporal_status = str(manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN))
+    if temporal_status not in {StudyStatus.PASSED, StudyStatus.WARNING}:
+        for field in _TEMPORAL_REPORT_FIELDS:
+            frames[field] = None
+
     benchmark_summary = frames["benchmark_summary"]
     benchmark_tuned_summary = frames["benchmark_tuned_summary"]
     benchmark_tuned_best = frames["benchmark_tuned_best"]
@@ -1541,16 +1555,46 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     else:
         lines.append("- Temporal model selection artifact missing or empty.")
         lines.append("")
-    if ctx.drift_row is not None:
+    if str(ctx.manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN)) not in {
+        StudyStatus.PASSED,
+        StudyStatus.WARNING,
+    }:
         lines.append(
-            f"- The current temporal run is drift-gated as `{ctx.drift_row['drift_gate_status']}` with max PSI `{_format_float(ctx.drift_row['max_PSI'])}`."
+            f"- Temporal robustness status is `{ctx.manifest.get('temporal_robustness_status', StudyStatus.NOT_RUN)}`, so temporal result tables are treated as unavailable for canonical report claims."
         )
-    if restrictions:
-        lines.append("- Active temporal claim restrictions:")
-        lines.extend(f"  - `{restriction}`" for restriction in restrictions)
-    else:
-        lines.append("- No temporal claim restrictions are active in this run.")
-    lines.append("")
+        lines.append("")
+    if ctx.drift_row is not None or restrictions:
+        lines.append("### Drift and Claim Restrictions")
+        lines.append("")
+        if ctx.drift_row is not None and ctx.temporal_drift is not None and not ctx.temporal_drift.empty:
+            lines.append(
+                f"- The current temporal run is drift-gated as `{ctx.drift_row['drift_gate_status']}` with max PSI `{_format_float(ctx.drift_row['max_PSI'])}`."
+            )
+            lines.append("")
+            drift_columns = [
+                col
+                for col in [
+                    "model_scope",
+                    "drift_gate_status",
+                    "lockbox_claims_allowed",
+                    "abs_prevalence_shift",
+                    "ks_pvalue_scores",
+                    "max_PSI",
+                    "median_PSI",
+                ]
+                if col in ctx.temporal_drift.columns
+            ]
+            lines.extend(_markdown_table(ctx.temporal_drift.sort_values("model_scope"), drift_columns))
+            lines.append("")
+        if restrictions:
+            lines.append("- Active temporal claim restrictions:")
+            lines.extend(f"  - `{restriction}`" for restriction in restrictions)
+            lines.append(
+                "- Lockbox evidence remains reportable, but restricted claims should be treated as descriptive rather than confirmatory."
+            )
+        else:
+            lines.append("- No temporal claim restrictions are active in this run.")
+        lines.append("")
     if ctx.temporal_lockbox is not None and not ctx.temporal_lockbox.empty:
         lines.append("### Lockbox Metrics")
         lines.append("")
