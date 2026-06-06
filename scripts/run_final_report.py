@@ -9,8 +9,6 @@ from _script_path import ensure_src_on_path
 
 ensure_src_on_path()
 
-from secom.reporting import write_final_report
-
 DEFAULT_OUTPUT_DIR = "runs"
 
 
@@ -24,6 +22,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Generate the final report from existing study artifacts."""
+    from secom.reporting import write_final_report
+
     args = parse_args()
     out = write_final_report(Path(args.output_dir), export_pdf=args.export_pdf)
     print(out)

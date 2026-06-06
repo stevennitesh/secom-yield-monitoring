@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--classifiers",
-        help="Comma-separated classifier override. Defaults: original runs all benchmark classifiers; tuned runs krr.",
+        help="Comma-separated classifier override. Defaults to krr for both original and tuned benchmark layers.",
     )
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()

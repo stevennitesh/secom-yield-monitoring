@@ -33,7 +33,7 @@ def main() -> None:
     print(f"BENCHMARK_ORIGINAL_STATUS: {result['benchmark_original_status']}")
     print(f"BENCHMARK_TUNED_STATUS: {result['benchmark_tuned_status']}")
     print(f"TEMPORAL_ROBUSTNESS_STATUS: {result['temporal']['temporal_robustness_status']}")
-    print(f"REPORT_SKELETON: {result['report_path']}")
+    print(f"FINAL_REPORT: {result['report_path'] or 'not_generated'}")
 
     for error in result["audit"].errors:
         print(f"ERROR: {error}")
