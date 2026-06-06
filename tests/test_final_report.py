@@ -53,7 +53,8 @@ def test_final_report_includes_uci_original_benchmark_reference(
             "Ftest",
             "Gram Schmidt",
             "33.5 +/- 2.2",
-            "binary-label ANOVA F-test ranking and absolute Pearson correlation ranking are mathematically monotonic",
+            "local Ttest row uses a pooled two-sample t statistic",
+            "Binary-label ANOVA F-test ranking and absolute Pearson correlation ranking are mathematically monotonic",
             "UCI reference table reports separate Ftest and Pearson rows",
         ],
     )
@@ -73,6 +74,23 @@ def test_final_report_surfaces_required_industrialization_gaps(
             "deployment decision objectives and cost accounting",
         ],
     )
+
+
+def test_final_report_scopes_feature_selection_claims(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Feature reporting should avoid causal or production-strength selector claims."""
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof",
+            "validated process-driver identification",
+            "Figure 3 summarizes benchmark feature-prioritization evidence",
+        ],
+    )
+    assert_text_excludes_all(text, ["most stable and influential features"])
 
 
 def test_final_report_writes_expected_figure_files(

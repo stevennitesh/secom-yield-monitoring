@@ -22,6 +22,7 @@ from secom.config import (
     ScalerName,
     SEED_BENCHMARK,
     SelectorName,
+    validate_selector_name,
 )
 from secom.io import load_raw_secom, parse_sort_and_label
 from secom.metrics import (
@@ -58,11 +59,12 @@ BENCHMARK_REPLICATION_MODES = (
 
 def gamma_sort_key(gamma: float | None) -> float:
     """Sort ``None`` before numeric RBF gamma values."""
-    return -1.0 if gamma is None else float(gamma)
+    return -1.0 if gamma is None or pd.isna(gamma) else float(gamma)
 
 
 def selector_param_grid(selector: str) -> list[dict[str, Any]]:
     """Return the fixed original-benchmark selector grid for one selector."""
+    selector = validate_selector_name(selector)
     if selector == SelectorName.RELIEFF:
         return [{"k": BENCHMARK_FEATURE_BUDGET, "n_neighbors": 10}]
     return [{"k": BENCHMARK_FEATURE_BUDGET, "n_neighbors": None}]
@@ -293,16 +295,24 @@ def prepare_full_selector_view(
     """Fit selector preprocessing on the full benchmark dataset for final summaries."""
     validate_raw_feature_count(x=x, raw_feature_count=raw_feature_count)
     kwargs = selector_kwargs(selector=selector, selector_config=selector_config)
-    x_sel, _x_eval_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
-        x_train_raw=x,
-        y_train=y,
-        x_eval_raw=x,
-        method=selector,
-        k=int(k),
-        scaler_name=ScalerName.STANDARD,
-        add_indicator=add_indicator,
-        n_neighbors=kwargs.get("n_neighbors"),
-    )
+    try:
+        x_sel, _x_eval_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
+            x_train_raw=x,
+            y_train=y,
+            x_eval_raw=x,
+            method=selector,
+            k=int(k),
+            scaler_name=ScalerName.STANDARD,
+            add_indicator=add_indicator,
+            n_neighbors=kwargs.get("n_neighbors"),
+        )
+    except RuntimeError as exc:
+        replication_mode = ReplicationMode.WITH_MISSING_INDICATORS if add_indicator else ReplicationMode.STRICT
+        raise RuntimeError(
+            "benchmark selector failure "
+            f"selector={selector} mode={replication_mode} resample=full_dataset "
+            f"k={int(k)} n_neighbors={kwargs.get('n_neighbors')}"
+        ) from exc
     selected_global = local_to_global_feature_indices(selected_local, meta)
     return {
         "x_sel": x_sel,
@@ -339,16 +349,23 @@ def prepare_selector_views(
         x_test_raw = x[test_idx]
         y_test = y[test_idx]
 
-        x_train_sel, x_test_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
-            x_train_raw=x_train_raw,
-            y_train=y_train,
-            x_eval_raw=x_test_raw,
-            method=selector,
-            k=int(k),
-            scaler_name=ScalerName.STANDARD,
-            add_indicator=add_indicator,
-            n_neighbors=kwargs.get("n_neighbors"),
-        )
+        try:
+            x_train_sel, x_test_sel, meta, selected_local, _imputer, _scaler = fit_selector_pipeline(
+                x_train_raw=x_train_raw,
+                y_train=y_train,
+                x_eval_raw=x_test_raw,
+                method=selector,
+                k=int(k),
+                scaler_name=ScalerName.STANDARD,
+                add_indicator=add_indicator,
+                n_neighbors=kwargs.get("n_neighbors"),
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "benchmark selector failure "
+                f"selector={selector} mode={replication_mode} resample=fold_{fold_i} "
+                f"k={int(k)} n_neighbors={kwargs.get('n_neighbors')}"
+            ) from exc
         selected_global = set(local_to_global_feature_indices(selected_local, meta))
         fold_views.append(
             {
@@ -501,6 +518,7 @@ def build_feature_report(
     cluster_id_map: dict[int, int],
 ) -> pd.DataFrame:
     """Build the benchmark feature report from selection stability and coefficients."""
+    classifier_scoped = "classifier" in feature_stability_df.columns
     group_cols = [
         "selector",
         "replication_mode",
@@ -508,6 +526,8 @@ def build_feature_report(
         "feature_type",
         "feature_name_or_source_col",
     ]
+    if classifier_scoped:
+        group_cols.insert(1, "classifier")
     grouped = (
         feature_stability_df.groupby(group_cols, sort=False)["selected"]
         .mean()
@@ -515,7 +535,10 @@ def build_feature_report(
         .rename(columns={"selected": "selection_frequency"})
     )
     config_pairs = benchmark_configs_df[["selector", "classifier", "replication_mode"]].drop_duplicates()
-    report_df = grouped.merge(config_pairs, on=["selector", "replication_mode"], how="inner", sort=False)
+    merge_cols = (
+        ["selector", "classifier", "replication_mode"] if classifier_scoped else ["selector", "replication_mode"]
+    )
+    report_df = grouped.merge(config_pairs, on=merge_cols, how="inner", sort=False)
 
     coefficient_rows = [
         {

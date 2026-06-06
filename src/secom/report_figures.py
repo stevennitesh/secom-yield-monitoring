@@ -118,7 +118,7 @@ def write_feature_stability_figure(
     tuned_feature_report: pd.DataFrame | None,
     output_path: Path,
 ) -> None:
-    """Plot the highest-contribution stable features across benchmark studies."""
+    """Plot benchmark feature-prioritization evidence without implying causality."""
     if feature_report is None or feature_report.empty or tuned_feature_report is None or tuned_feature_report.empty:
         _save_placeholder_figure(
             output_path,
@@ -139,8 +139,8 @@ def write_feature_stability_figure(
 
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.barh(frame["label"], frame["plot_score"], color=colors)
-    ax.set_title("Top Stable Features Across Benchmark Studies")
-    ax.set_xlabel("expected contribution or selection frequency")
+    ax.set_title("Feature Prioritization Across Benchmark Studies")
+    ax.set_xlabel("model-prioritization score")
     ax.invert_yaxis()
     fig.tight_layout()
     fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")

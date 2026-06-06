@@ -14,6 +14,7 @@ from secom.config import ArtifactName, BenchmarkClassifier, SelectorName, StudyS
 from secom.metrics import binary_metrics_at_threshold, find_ber_optimal_threshold, safe_std
 from secom.qa import validate_benchmark_replication_artifacts
 from secom.workflows.benchmark_common import (
+    BENCHMARK_METRICS,
     BENCHMARK_REPLICATION_MODES,
     add_indicator_for_replication_mode,
     benchmark_full_dataset_fields,
@@ -55,13 +56,19 @@ def _evaluate_config_over_folds(
         x_test_sel = fold_view["x_test_sel"]
         y_test = fold_view["y_test"]
 
-        _, scores = fit_classifier_scores(
+        train_scores, scores = fit_classifier_scores(
             classifier=classifier,
             x_train_sel=x_train_sel,
             y_train=y_train,
             x_eval_sel=x_test_sel,
             classifier_config=classifier_config,
-            include_train_scores=False,
+            include_train_scores=True,
+        )
+        threshold_outer_train, _ = find_ber_optimal_threshold(y_train, train_scores)
+        fold_metrics = binary_metrics_at_threshold(
+            y_true=y_test,
+            scores=scores,
+            threshold=float(threshold_outer_train),
         )
         fold_scores.append(scores)
         fold_labels.append(np.asarray(y_test, dtype=int))
@@ -76,29 +83,27 @@ def _evaluate_config_over_folds(
                 "n_test": int(fold_view["n_test"]),
                 "n_test_fails": int(fold_view["n_test_fails"]),
                 "n_selected_features": int(fold_view["n_selected_features"]),
+                "threshold_outer_train": float(threshold_outer_train),
+                **benchmark_metric_fields(fold_metrics),
             }
         )
 
     oof_scores = np.concatenate(fold_scores)
     oof_labels = np.concatenate(fold_labels)
     threshold_oof, _ = find_ber_optimal_threshold(oof_labels, oof_scores)
-    oof_metrics = binary_metrics_at_threshold(y_true=oof_labels, scores=oof_scores, threshold=float(threshold_oof))
 
     fold_ber_values: list[float] = []
-    for row, y_fold, scores_fold in zip(fold_rows, fold_labels, fold_scores):
-        fold_metrics = binary_metrics_at_threshold(
-            y_true=y_fold,
-            scores=scores_fold,
-            threshold=float(threshold_oof),
-        )
-        row.update(benchmark_metric_fields(fold_metrics))
+    for row in fold_rows:
         row["threshold_oof_global"] = float(threshold_oof)
-        fold_ber_values.append(float(fold_metrics["BER"]))
+        fold_ber_values.append(float(row["BER"]))
 
     n_selected = np.asarray(n_selected_per_fold, dtype=int)
+    metric_means = {
+        f"mean_{metric}": float(np.mean([row[metric] for row in fold_rows])) for metric in BENCHMARK_METRICS
+    }
     return {
         "threshold_oof_global": float(threshold_oof),
-        **benchmark_metric_fields(oof_metrics, prefix="mean_"),
+        **metric_means,
         "std_BER_fold": safe_std(fold_ber_values),
         "mean_n_selected_features": float(np.mean(n_selected)),
         "min_n_selected_features": int(np.min(n_selected)),
@@ -129,6 +134,7 @@ def run_original_benchmark_replication(
     classifiers_run, selectors_run = normalize_benchmark_run_filters(
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
+        default_classifiers=BenchmarkClassifier.TUNED_DEFAULT,
         default_selectors=SelectorName.ORIGINAL_BENCHMARK,
     )
 
@@ -310,6 +316,7 @@ def run_benchmark_replication(
     original_classifiers_run, original_selectors_run = normalize_benchmark_run_filters(
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
+        default_classifiers=BenchmarkClassifier.TUNED_DEFAULT,
         default_selectors=SelectorName.ORIGINAL_BENCHMARK,
     )
     tuned_classifiers_run, tuned_selectors_run = normalize_benchmark_run_filters(

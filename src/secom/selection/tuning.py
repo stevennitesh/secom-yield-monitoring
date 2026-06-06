@@ -15,12 +15,22 @@ _NEAR_BEST_AUC_BAND = 0.01
 _ConfigKey = Callable[[dict[str, Any]], tuple[Any, ...]]
 
 
+def _is_optional_missing(value: Any) -> bool:
+    """Return whether an optional config value is null-like."""
+    if value is None:
+        return True
+    try:
+        return bool(np.isnan(value))
+    except (TypeError, ValueError):
+        return False
+
+
 def _inner_config_simplicity_key(row: dict[str, Any]) -> tuple[float, float, int, float]:
-    """Prefer smaller temporal configs after near-best AUC and BER ties."""
+    """Prefer smaller inner configs after near-best AUC and BER ties."""
     nn = row.get("n_neighbors")
-    nn_key = math.inf if nn is None else nn
+    nn_key = math.inf if _is_optional_missing(nn) else float(nn)
     scaler_pref = 0 if row["scaler"] == ScalerName.STANDARD else 1
-    return (row["k"], row["C"], scaler_pref, nn_key)
+    return (float(row["k"]), float(row["C"]), scaler_pref, nn_key)
 
 
 def select_near_best_auc_config(

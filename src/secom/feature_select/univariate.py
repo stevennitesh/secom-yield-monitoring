@@ -72,6 +72,21 @@ def score_welch_t(x: np.ndarray, y_bin: np.ndarray, eps: float = EPS_SELECTOR) -
     return _sanitize_univariate_scores(score, x)
 
 
+def score_pooled_ttest(x: np.ndarray, y_bin: np.ndarray, eps: float = EPS_SELECTOR) -> np.ndarray:
+    """Score features by absolute two-sample t statistic with pooled class variance."""
+    x = np.asarray(x, dtype=float)
+    stats = _class_stats(x, y_bin)
+    fail_df = max(stats.n_fail - 1, 0)
+    pass_df = max(stats.n_pass - 1, 0)
+    pooled_df = max(fail_df + pass_df, 1)
+    fail_var = np.nan_to_num(stats.sd_fail**2, nan=0.0, posinf=0.0, neginf=0.0)
+    pass_var = np.nan_to_num(stats.sd_pass**2, nan=0.0, posinf=0.0, neginf=0.0)
+    pooled_var = (fail_df * fail_var + pass_df * pass_var) / pooled_df
+    denom = np.sqrt(pooled_var * (1.0 / max(stats.n_fail, 1) + 1.0 / max(stats.n_pass, 1)) + eps)
+    score = np.abs(stats.mu_fail - stats.mu_pass) / denom
+    return _sanitize_univariate_scores(score, x)
+
+
 def score_f_test(x: np.ndarray, y_bin: np.ndarray) -> np.ndarray:
     """Score non-constant features with scikit-learn's ANOVA F statistic."""
     x = np.asarray(x, dtype=float)
@@ -116,6 +131,7 @@ def score_pearson(x: np.ndarray, y_bin: np.ndarray) -> np.ndarray:
 
 _SCORERS: dict[str, Callable[[np.ndarray, np.ndarray], np.ndarray]] = {
     SelectorName.S2N: score_s2n,
+    SelectorName.TTEST: score_pooled_ttest,
     SelectorName.WELCH_T: score_welch_t,
     SelectorName.F_TEST: score_f_test,
     SelectorName.PEARSON: score_pearson,
