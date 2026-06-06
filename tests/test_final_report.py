@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from secom.config import ArtifactName
+from secom.config import ArtifactName, StudyStatus
 from secom.reporting import write_final_report
 from tests.assertions import assert_text_contains_all, assert_text_excludes_all
 
@@ -52,6 +52,35 @@ def test_final_report_rejects_audit_invalid_artifact_set(
         write_final_report(active_artifacts_output_dir)
 
 
+def test_final_report_ignores_stale_temporal_artifacts_after_temporal_failure(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Failed temporal status should not publish stale temporal table claims."""
+    manifest_path = active_artifacts_output_dir / "reports" / ArtifactName.MANIFEST
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["temporal_robustness_status"] = StudyStatus.FAILED
+    manifest["temporal_claim_restrictions"] = []
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2), encoding="utf-8")
+
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "Temporal robustness status: `failed`",
+            "Temporal model selection artifact missing or empty.",
+        ],
+    )
+    assert_text_excludes_all(
+        text,
+        [
+            "Primary temporal selector under the temporal protocol",
+            "### Lockbox Metrics",
+            "### Supervised vs MSPC",
+        ],
+    )
+
+
 def test_final_report_uses_required_benchmark_section_structure(
     active_artifacts_output_dir: Path,
 ) -> None:
@@ -90,6 +119,24 @@ def test_final_report_includes_temporal_model_selection_summary(
             "#### Selector Ranking and Modal Configurations",
             "modal_k",
             "modal_scaler",
+        ],
+    )
+
+
+def test_final_report_includes_drift_claim_restriction_table(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Canonical temporal section should expose drift metrics that govern claims."""
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "### Drift and Claim Restrictions",
+            "lockbox_claims_allowed",
+            "abs_prevalence_shift",
+            "ks_pvalue_scores",
+            "max_PSI",
         ],
     )
 
