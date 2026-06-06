@@ -54,7 +54,6 @@ def main() -> None:
     )
 
     print(f"BENCHMARK_TUNED_STATUS: {result['benchmark_tuned_status']}")
-    print(f"PRIMARY_STUDY_STATUS: {result['primary_study_status']}")
 
     if args.strict and result["benchmark_tuned_status"] != PASSED_STATUS:
         raise SystemExit(1)

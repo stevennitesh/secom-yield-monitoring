@@ -13,7 +13,7 @@ from secom.workflows import run_temporal_robustness
 
 DEFAULT_INPUT_DIR = "data/raw"
 DEFAULT_OUTPUT_DIR = "runs/temporal_robustness"
-FAILED_STATUS = "failed"
+STRICT_ALLOWED_STATUSES = {"passed", "warning"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,7 +35,7 @@ def main() -> None:
         for restriction in result["claim_restrictions"]:
             print(f"CLAIM_RESTRICTION: {restriction}")
 
-    if args.strict and result["temporal_robustness_status"] == FAILED_STATUS:
+    if args.strict and result["temporal_robustness_status"] not in STRICT_ALLOWED_STATUSES:
         raise SystemExit(1)
 
 
