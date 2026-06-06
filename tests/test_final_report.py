@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
+
+import pytest
 
 from secom.config import ArtifactName
 from secom.reporting import write_final_report
@@ -32,6 +35,61 @@ def test_final_report_contains_finished_narrative_sections(
         [
             "Summarize the SECOM benchmark context",
             "Describe the full-dataset replication protocol",
+        ],
+    )
+
+
+def test_final_report_rejects_audit_invalid_artifact_set(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Canonical report generation should not publish audit-invalid claims."""
+    manifest_path = active_artifacts_output_dir / "reports" / ArtifactName.MANIFEST
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["benchmark_tuned_status"] = "not_run"
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Cannot render final report because study audit failed"):
+        write_final_report(active_artifacts_output_dir)
+
+
+def test_final_report_uses_required_benchmark_section_structure(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Canonical report should expose original/tuned design, search, and results sections."""
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "## Original Replication Design",
+            "## Original Replication Search Summary",
+            "### Original Search Space",
+            "### Original Selected Configurations",
+            "## Original Replication Results",
+            "## Tuned Benchmark Design",
+            "## Tuned Benchmark Search Summary",
+            "### Tuned Search Space",
+            "### Modal Selected Configurations",
+            "## Tuned Benchmark Results",
+        ],
+    )
+
+
+def test_final_report_includes_temporal_model_selection_summary(
+    active_artifacts_output_dir: Path,
+) -> None:
+    """Canonical report should show temporal role ranking and modal selector configs."""
+    text = write_final_report(active_artifacts_output_dir).read_text(encoding="utf-8")
+
+    assert_text_contains_all(
+        text,
+        [
+            "### Temporal Model Selection Summary",
+            "Primary temporal selector under the temporal protocol",
+            "Challenger selector retained for secondary comparison",
+            "#### Selector Ranking and Modal Configurations",
+            "modal_k",
+            "modal_scaler",
         ],
     )
 

@@ -625,6 +625,19 @@ def _write_final_report_figures(ctx: ReportContext) -> None:
     )
 
 
+def _raise_for_failed_report_audit(output_dir: Path) -> None:
+    """Block final report generation when active artifacts fail the study audit."""
+    from secom.workflows.audit import run_study_audit
+
+    audit = run_study_audit(output_dir)
+    if audit.ok:
+        return
+    details = "; ".join(audit.errors[:5])
+    if len(audit.errors) > 5:
+        details = f"{details}; ... ({len(audit.errors)} total errors)"
+    raise RuntimeError(f"Cannot render final report because study audit failed: {details}")
+
+
 def _write_markdown_with_optional_pdf(final_path: Path, lines: list[str], *, export_pdf: bool) -> None:
     """Write final Markdown and append PDF export status when requested."""
     final_path.write_text("\n".join(lines), encoding="utf-8")
@@ -1232,6 +1245,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
 
 def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     """Write the final Markdown report and optionally export it through pandoc."""
+    _raise_for_failed_report_audit(output_dir)
     ctx = _load_report_context(output_dir)
     restrictions = list(ctx.manifest.get("temporal_claim_restrictions", []))
     _write_final_report_figures(ctx)
@@ -1305,7 +1319,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         "without being allowed to erase valid benchmark evidence by default."
     )
     lines.append("")
-    lines.append("## Benchmark Replication")
+    lines.append("## Original Replication Design")
     lines.append("")
     lines.append(
         "The original replication keeps a fixed feature budget, compares the literature-style selector and classifier families, "
@@ -1315,6 +1329,26 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     lines.append(
         "Original classifier configurations are selected from the same non-nested replication sweep used for reporting, so tuned benchmark results remain the stricter estimate."
     )
+    lines.append("")
+    lines.append("## Original Replication Search Summary")
+    lines.append("")
+    if ctx.benchmark_sweep is not None and not ctx.benchmark_sweep.empty:
+        lines.append("### Original Search Space")
+        lines.append("")
+        lines.extend(_original_search_space_table(ctx.benchmark_sweep))
+        lines.append("")
+    else:
+        lines.append("- Benchmark sweep artifact missing or empty.")
+        lines.append("")
+    if ctx.benchmark_best is not None and not ctx.benchmark_best.empty:
+        lines.append("### Original Selected Configurations")
+        lines.append("")
+        lines.extend(_original_best_config_table(ctx.benchmark_best))
+        lines.append("")
+    else:
+        lines.append("- Benchmark best-config artifact missing or empty.")
+        lines.append("")
+    lines.append("## Original Replication Results")
     lines.append("")
     _append_benchmark_summary_table(lines, "### Primary Benchmark Evidence", ctx.benchmark_summary)
     lines.append("### UCI Original Benchmark Reference")
@@ -1343,13 +1377,33 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
             for row in ctx.benchmark_ablation.itertuples(index=False)
         )
         lines.append("")
-    lines.append("## Tuned Benchmark")
+    lines.append("## Tuned Benchmark Design")
     lines.append("")
     lines.append(
         "The tuned benchmark tightens methodology by moving model and selector choices inside nested cross-validation. "
         "That makes the tuned results a better estimate of what a disciplined tuning process achieves on unseen folds, "
         "even when the headline BER ends up slightly worse than the best original replication row."
     )
+    lines.append("")
+    lines.append("## Tuned Benchmark Search Summary")
+    lines.append("")
+    if ctx.benchmark_tuned_search is not None and not ctx.benchmark_tuned_search.empty:
+        lines.append("### Tuned Search Space")
+        lines.append("")
+        lines.extend(_tuned_search_space_table(ctx.benchmark_tuned_search))
+        lines.append("")
+    else:
+        lines.append("- Tuned search artifact missing or empty.")
+        lines.append("")
+    if ctx.benchmark_tuned_best is not None and not ctx.benchmark_tuned_best.empty:
+        lines.append("### Modal Selected Configurations")
+        lines.append("")
+        lines.extend(_tuned_best_config_table(ctx.benchmark_tuned_best))
+        lines.append("")
+    else:
+        lines.append("- Tuned best-config artifact missing or empty.")
+        lines.append("")
+    lines.append("## Tuned Benchmark Results")
     lines.append("")
     _append_benchmark_summary_table(lines, "### Primary Tuned Evidence", ctx.benchmark_tuned_summary)
     _append_supporting_metrics_table(lines, "### Supporting Tuned Metrics", ctx.benchmark_tuned_summary)
@@ -1462,10 +1516,31 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         "It uses a chronological DEV/LOCKBOX split, time-aware model selection, threshold freeze, drift checks, and an MSPC comparison."
     )
     lines.append("")
+    lines.append("### Temporal Model Selection Summary")
+    lines.append("")
     if ctx.primary_temporal_row is not None:
         lines.append(
-            f"- The primary temporal selector is `{ctx.primary_temporal_row['selector']}` with mean BER `{_format_float(ctx.primary_temporal_row['mean_BER'])}`."
+            "- Primary temporal selector under the temporal protocol:"
+            f" `{ctx.primary_temporal_row['selector']}` with mean_BER=`{_format_float(ctx.primary_temporal_row['mean_BER'])}`."
         )
+    if ctx.temporal_selection is not None and not ctx.temporal_selection.empty:
+        challenger_rows = ctx.temporal_selection[ctx.temporal_selection["is_challenger"].astype(bool)]
+        if not challenger_rows.empty:
+            challenger_row = challenger_rows.iloc[0]
+            lines.append(
+                "- Challenger selector retained for secondary comparison:"
+                f" `{challenger_row['selector']}` with mean_BER=`{_format_float(challenger_row['mean_BER'])}`."
+            )
+        else:
+            lines.append("- No challenger met the temporal eligibility rule.")
+        lines.append("")
+        lines.append("#### Selector Ranking and Modal Configurations")
+        lines.append("")
+        lines.extend(_temporal_selection_summary_table(ctx.temporal_selection))
+        lines.append("")
+    else:
+        lines.append("- Temporal model selection artifact missing or empty.")
+        lines.append("")
     if ctx.drift_row is not None:
         lines.append(
             f"- The current temporal run is drift-gated as `{ctx.drift_row['drift_gate_status']}` with max PSI `{_format_float(ctx.drift_row['max_PSI'])}`."
