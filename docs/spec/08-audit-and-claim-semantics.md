@@ -37,6 +37,10 @@ Audit outputs should distinguish:
 
 If the temporal stress-test study yields a restricted claim, the result may still be reported descriptively, but it must not invalidate the original or tuned benchmark studies by default.
 
+## Provenance Consistency
+
+When the manifest carries CSV hashes, any changed or missing hashed CSV is a hard audit error. Public evidence export also rejects mismatched source/spec identity or incomplete run provenance. Temporal warnings and restrictions remain visible in a passing export receipt; passing the artifact audit does not mean production validation or hosted-CI verification.
+
 ## See Also
 
 - [01 Study Goal](01-study-goal.md)

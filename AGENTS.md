@@ -91,3 +91,4 @@ For large refactors, run the relevant suite plus any still-supported entrypoint 
 Do not commit unless the user explicitly asks.
 
 Generated study outputs belong under `runs/` unless the user asks to refresh tracked reference artifacts. Keep local scratch output out of tracked files.
+

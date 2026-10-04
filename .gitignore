@@ -10,6 +10,8 @@
 data/
 reports/
 runs/
+docs/results/evidence/*.csv
+docs/results/evidence/*.zip
 
 # Python bytecode and caches
 __pycache__/

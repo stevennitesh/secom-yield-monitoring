@@ -28,7 +28,8 @@ def _format_float(value: object) -> str:
     try:
         if value is None or (isinstance(value, float) and pd.isna(value)):
             return "n/a"
-        return f"{float(value):.3f}"
+        number = float(value)
+        return f"{number:.3g}" if 0 < abs(number) < 0.001 else f"{number:.3f}"
     except Exception:
         return str(value)
 
@@ -664,6 +665,8 @@ def _write_final_report_figures(ctx: ReportContext) -> None:
         ctx.feature_report,
         ctx.benchmark_tuned_feature_report,
         figures_dir / "feature_stability.png",
+        benchmark_summary=ctx.benchmark_summary,
+        benchmark_tuned_summary=ctx.benchmark_tuned_summary,
     )
     write_temporal_drift_figure(ctx.temporal_drift, figures_dir / "temporal_drift.png")
     write_lockbox_vs_mspc_figure(
@@ -851,7 +854,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
         lines.append("##### UCI Original Benchmark Reference")
         lines.append("")
         lines.append(
-            "The UCI SECOM reference table reports 40-feature selector results with a simple kernel-ridge classifier and 10-fold cross-validation. Local columns use the strict original-replication KRR row when available."
+            "The [UCI dataset page](https://archive.ics.uci.edu/dataset/179/secom) describes these 40-feature, 10-fold results as kernel ridge regression, while Table 1 in the [original paper](https://proceedings.mlr.press/v6/mccann10a/mccann10a.pdf) labels the classifier Naive Bayes. Local columns use strict KRR rows. These numbers are reference context, not proof of an exact reproduction of the original classifier protocol."
         )
         lines.append("")
         lines.extend(_uci_original_baseline_table(benchmark_summary))
@@ -1240,7 +1243,7 @@ def write_report_skeleton(output_dir: Path) -> Path:
                     "role",
                     "threshold_policy",
                     "predicted_flag_fraction",
-                    "mean_weekly_flagged_wafers",
+                    "mean_weekly_flagged_samples",
                     "mean_weekly_fail_captures",
                     "mean_weekly_fail_misses",
                 ],
@@ -1288,6 +1291,73 @@ def write_report_skeleton(output_dir: Path) -> Path:
     return out_path
 
 
+def _dataset_scope_lines(manifest: dict) -> list[str]:
+    """Report actual input observations and the public-source metadata discrepancy."""
+    data = manifest.get("dataset", {})
+    if not data:
+        return ["Dataset profile is unavailable for this artifact set."]
+    prevalence = data["n_fails"] / data["n_samples"]
+    return [
+        f"The input files contain **{data['n_samples']:,} samples × {data['n_features']} measurement columns**, "
+        f"with {data['n_passes']:,} passes and {data['n_fails']} failures ({prevalence:.2%}). "
+        f"There are {data['missing_cells']:,} missing measurement cells ({data['missing_fraction']:.2%}). "
+        f"Valid test timestamps span {data['timestamp_min']} to {data['timestamp_max']}; no rows were dropped.",
+        "",
+        "The [UCI metadata](https://archive.ics.uci.edu/dataset/179/secom) and original paper describe 591 features; "
+        "the distributed measurement file has 590 columns. Feature names here are zero-based source positions "
+        "(`X0` through `X589` and missing indicators `M0` through `M589`). A row is a production entity, "
+        "with no documented physical unit or assurance that measurements precede the outcome. "
+        "The target is the recorded test pass/fail label; early intervention benefit is unmeasured.",
+        "",
+        f"An all-pass rule has accuracy {1 - prevalence:.2%}, TPR 0, TNR 1 and BER 0.500. "
+        "This is why BER and both class recalls lead the analysis.",
+    ]
+
+
+def _missingness_context_lines(
+    manifest: dict, feature_report: pd.DataFrame | None, best: pd.Series | None
+) -> list[str]:
+    """Explain co-occurring indicators and month shift without claiming causes."""
+    if feature_report is None or best is None:
+        return []
+    selected = feature_report[
+        (feature_report["selector"] == best["selector"])
+        & (feature_report["classifier"] == best["classifier"])
+        & (feature_report["replication_mode"] == best["replication_mode"])
+        & (feature_report["feature_type"] == "missing_indicator")
+        & (feature_report["selection_frequency"] > 0)
+    ]
+    selected_names = set(selected["feature_name_or_source_col"])
+    groups = [
+        group
+        for group in manifest.get("dataset", {}).get("shared_missingness_patterns", [])
+        if selected_names.intersection(group["features"])
+    ]
+    if not groups:
+        return []
+    lines = [
+        "### Missingness Context",
+        "",
+        "These full-sample diagnostics explain selected missing indicators; "
+        "they are not additional model validation or causal evidence.",
+        "",
+    ]
+    for group in groups[:3]:
+        names = ", ".join(f"`{name}`" for name in group["features"][:12])
+        suffix = f" (and {len(group['features']) - 12} others)" if len(group["features"]) > 12 else ""
+        monthly = "; ".join(f"{month}: {rate:.1%}" for month, rate in group["monthly_missing_rates"].items())
+        lines.append(
+            f"- {names}{suffix} have identical missingness masks. Missing rate by month: {monthly}. "
+            f"Overall pass/fail missing rates: {group['pass_missing_rate']:.1%} / {group['fail_missing_rate']:.1%}."
+        )
+    lines += [
+        "",
+        "Co-occurring missingness can encode acquisition regime or time as well as process state. "
+        "Repeated selection does not identify independent sensor effects, root causes, or a stable deployment signal.",
+    ]
+    return lines
+
+
 def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     """Write the final Markdown report and optionally export it through pandoc."""
     _raise_for_failed_report_audit(output_dir)
@@ -1313,7 +1383,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     _append_bullet_list(
         lines,
         [
-            "The benchmark studies support a credible yield-prediction signal in the SECOM sensor and process measurements.",
+            "The benchmark studies evaluate association between SECOM measurements and recorded pass/fail labels; they do not establish early warning, causal drivers, or production readiness.",
             (
                 f"The strongest original replication row is `{ctx.best_benchmark_row['selector']}` / "
                 f"`{ctx.best_benchmark_row['classifier']}` / `{ctx.best_benchmark_row['replication_mode']}` "
@@ -1364,6 +1434,8 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         "without being allowed to erase valid benchmark evidence by default."
     )
     lines.append("")
+    lines.extend(_dataset_scope_lines(ctx.manifest))
+    lines.append("")
     lines.append("## Original Replication Design")
     lines.append("")
     lines.append(
@@ -1399,7 +1471,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     lines.append("### UCI Original Benchmark Reference")
     lines.append("")
     lines.append(
-        "The UCI SECOM reference table reports 40-feature selector results with a simple kernel-ridge classifier and 10-fold cross-validation. Local columns use the strict original-replication KRR row when available."
+        "The [UCI dataset page](https://archive.ics.uci.edu/dataset/179/secom) describes these 40-feature, 10-fold results as kernel ridge regression, while Table 1 in the [original paper](https://proceedings.mlr.press/v6/mccann10a/mccann10a.pdf) labels the classifier Naive Bayes. Local columns use strict KRR rows. These numbers are reference context, not proof of an exact reproduction of the original classifier protocol."
     )
     lines.append("")
     lines.extend(_uci_original_baseline_table(ctx.benchmark_summary))
@@ -1411,21 +1483,21 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         lines,
         "Benchmark comparison",
         "figures/benchmark_comparison.png",
-        "Figure 1 shows the strongest original and tuned benchmark rows by mean BER, with uncertainty bars where the benchmark summaries expose fold-bootstrap confidence intervals.",
+        "Figure 1 shows the leading rows including replication mode. Bars are descriptive 95% fold-bootstrap confidence intervals over ten fold metrics; overlapping training sets and post-hoc family selection prevent treating them as independent confirmation of superiority.",
     )
     if ctx.benchmark_ablation is not None and not ctx.benchmark_ablation.empty:
         lines.append("### Missing-Indicator Ablation")
         lines.append("")
         lines.extend(
             f"- `{row.selector}` / `{row.classifier}` changes mean BER by `{_format_float(row.delta_BER)}` "
-            "when missing indicators are added."
+            "(strict minus missing-indicator BER; positive means improvement)."
             for row in ctx.benchmark_ablation.itertuples(index=False)
         )
         lines.append("")
     lines.append("## Tuned Benchmark Design")
     lines.append("")
     lines.append(
-        "The tuned benchmark tightens methodology by moving model and selector choices inside nested cross-validation. "
+        "The tuned benchmark selects hyperparameters inside nested cross-validation separately for each selector/classifier/mode family. The leading family is selected retrospectively from the outer-fold results, so its minimum BER is descriptive rather than an independently validated champion estimate. "
         "That makes the tuned results a better estimate of what a disciplined tuning process achieves on unseen folds, "
         "even when the headline BER ends up slightly worse than the best original replication row."
     )
@@ -1452,6 +1524,20 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     lines.append("")
     _append_benchmark_summary_table(lines, "### Primary Tuned Evidence", ctx.benchmark_tuned_summary)
     _append_supporting_metrics_table(lines, "### Supporting Tuned Metrics", ctx.benchmark_tuned_summary)
+    if ctx.benchmark_tuned_ablation is not None and not ctx.benchmark_tuned_ablation.empty:
+        lines.append("### Tuned Missing-Indicator Ablation")
+        lines.append("")
+        lines.extend(
+            _markdown_table(
+                ctx.benchmark_tuned_ablation,
+                ["selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"],
+            )
+        )
+        lines.append(
+            "Positive delta is strict minus missing-indicator BER: a BER reduction. "
+            "Deltas compare paired outer-fold means; no independent industrial benefit is established."
+        )
+        lines.append("")
     if ctx.modal_tuned_config_row is not None:
         lines.append("### Tuned Selection Stability")
         lines.append("")
@@ -1548,16 +1634,42 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     else:
         lines.append("- Tuned feature report artifact missing or empty.")
     lines.append("")
+    lines.extend(_missingness_context_lines(ctx.manifest, ctx.feature_report, ctx.best_benchmark_row))
+    lines.append("")
+    lines.append("### Logistic Regression Association Diagnostics")
+    lines.append("")
+    lines.append(
+        "For logistic regression, effect magnitude is the absolute coefficient from a full-data fit "
+        "after the chosen preprocessing. Expected contribution is selection frequency × that magnitude, "
+        "a prioritization heuristic. These are in-sample associations conditional on the selected features; "
+        "they are not causal effects or validated failure probabilities. RBF KRR has no comparable coefficient, "
+        "so its effect and contribution fields remain unavailable."
+    )
+    for study, summary, report in (
+        ("Original", ctx.benchmark_summary, ctx.feature_report),
+        ("Tuned", ctx.benchmark_tuned_summary, ctx.benchmark_tuned_feature_report),
+    ):
+        if summary is not None and report is not None:
+            logreg = summary[summary["classifier"] == BenchmarkClassifier.LOGREG].sort_values("mean_BER")
+            if not logreg.empty:
+                row = logreg.iloc[0]
+                lines.append("")
+                lines.append(f"#### {study}: {row['selector']} / logreg / {row['replication_mode']}")
+                lines.append("")
+                lines.extend(
+                    _best_row_feature_table(report, str(row["selector"]), "logreg", str(row["replication_mode"]))
+                )
+    lines.append("")
     _append_figure(
         lines,
         "Feature stability",
         "figures/feature_stability.png",
-        "Figure 3 summarizes benchmark feature-prioritization evidence across the benchmark studies, while preserving the distinction between raw value features and missing indicators.",
+        "Figure 3 shows outer-fold selection frequency for one leading configuration per study in separate panels. Coefficient magnitudes are not combined with frequencies; blue denotes value features and orange denotes missing indicators.",
     )
     lines.append("## Temporal Robustness Stress Test")
     lines.append("")
     lines.append(
-        "The temporal study is a deployment-like stress test rather than the source of the project’s primary success claim. "
+        "The temporal study is a chronological robustness stress test using balanced logistic regression, separate from the KRR benchmark anchor. "
         "It uses a chronological DEV/LOCKBOX split, time-aware model selection, threshold freeze, drift checks, and an MSPC comparison."
     )
     lines.append("")
@@ -1627,21 +1739,35 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
             lines.append("- No temporal claim restrictions are active in this run.")
         lines.append("")
     if ctx.temporal_lockbox is not None and not ctx.temporal_lockbox.empty:
+        lockbox_table = ctx.temporal_lockbox.copy()
+        if {"lockbox_fails", "lockbox_n", "FN", "FP"}.issubset(lockbox_table.columns):
+            lockbox_table["TP"] = lockbox_table["lockbox_fails"] - lockbox_table["FN"]
+            lockbox_table["TN"] = lockbox_table["lockbox_n"] - lockbox_table["lockbox_fails"] - lockbox_table["FP"]
         lines.append("### Lockbox Metrics")
         lines.append("")
         lines.extend(
             _markdown_table(
-                ctx.temporal_lockbox.sort_values(["role", "threshold_policy"]),
+                lockbox_table.sort_values(["role", "threshold_policy"]),
                 [
-                    "role",
-                    "threshold_policy",
-                    "BER",
-                    "True+",
-                    "True-",
-                    "ROC_AUC",
-                    "PR_AUC",
-                    "MCC",
-                    "F2",
+                    column
+                    for column in [
+                        "role",
+                        "threshold_policy",
+                        "BER",
+                        "True+",
+                        "True-",
+                        "ROC_AUC",
+                        "PR_AUC",
+                        "MCC",
+                        "F2",
+                        "TP",
+                        "FP",
+                        "TN",
+                        "FN",
+                        "lockbox_n",
+                        "lockbox_fails",
+                    ]
+                    if column in lockbox_table.columns
                 ],
             )
         )
@@ -1667,7 +1793,7 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
         lines,
         "Lockbox supervised vs MSPC",
         "figures/lockbox_vs_mspc.png",
-        "Figure 5 compares the supervised lockbox TPR at matched TNR90 against the best MSPC comparator. When claim restrictions are active, this remains descriptive evidence only.",
+        "Figure 5 compares retrospective lockbox ROC operating points at TNR ≥ 90%. These thresholds are chosen using lockbox labels and are diagnostic only; scientific and operational results use DEV-fitted frozen thresholds. Active restrictions prevent superiority claims.",
     )
     _append_figure(
         lines,
@@ -1718,6 +1844,18 @@ def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
     lines.append(
         f"- Temporal robustness status: `{ctx.manifest.get('temporal_robustness_status', StudyStatus.NOT_RUN)}`"
     )
+    if "source_tree" in ctx.manifest:
+        lines.append(f"- Source tree content hash (LF normalized): `{ctx.manifest['source_tree']['sha256']}`")
+        lines.append(
+            "- A dirty run identifies the base Git commit plus exact source-file hashes; it does not claim the base commit contains the edits."
+        )
+    if "execution" in ctx.manifest:
+        execution = ctx.manifest["execution"]
+        lines.append(f"- Run started (UTC): `{execution.get('started_at_utc', 'unknown')}`")
+        lines.append(f"- Modeling duration (seconds): `{execution.get('duration_seconds', {})}`")
+        lines.append(
+            "- Input file SHA-256, resolved dependency versions, seeds, search grids and thread settings are recorded in `run_manifest.json`."
+        )
     lines.append("- Library versions:")
     for name, version in sorted(dict(ctx.manifest.get("library_versions", {})).items(), key=lambda item: item[0]):
         lines.append(f"  - `{name}`: `{version}`")

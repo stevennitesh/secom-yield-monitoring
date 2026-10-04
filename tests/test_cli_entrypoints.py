@@ -251,6 +251,9 @@ def test_full_study_writes_canonical_report_after_passing_audit(
     """Full-study orchestration should produce the canonical report, not the scaffold."""
     import secom.workflows.full_study as full_study
 
+    monkeypatch.setattr(full_study, "begin_full_study", lambda *_args: None)
+    monkeypatch.setattr(full_study, "finish_full_study", lambda *_args: None)
+
     final_report = workspace_tmp_dir / "reports" / ArtifactName.FINAL_REPORT
 
     monkeypatch.setattr(
@@ -286,6 +289,9 @@ def test_full_study_skips_report_when_audit_fails(
 ) -> None:
     """Full-study orchestration should not render canonical claims after failed audit."""
     import secom.workflows.full_study as full_study
+
+    monkeypatch.setattr(full_study, "begin_full_study", lambda *_args: None)
+    monkeypatch.setattr(full_study, "finish_full_study", lambda *_args: None)
 
     report_calls = []
 
@@ -324,6 +330,9 @@ def test_full_study_renders_report_after_temporal_failure_when_audit_allows_it(
 ) -> None:
     """Temporal workflow failures should stay warning-level when benchmark evidence is valid."""
     import secom.workflows.full_study as full_study
+
+    monkeypatch.setattr(full_study, "begin_full_study", lambda *_args: None)
+    monkeypatch.setattr(full_study, "finish_full_study", lambda *_args: None)
 
     final_report = workspace_tmp_dir / "reports" / ArtifactName.FINAL_REPORT
 
@@ -379,6 +388,9 @@ def test_full_study_stops_after_benchmark_failure_and_skips_report(
 ) -> None:
     """Benchmark failures should remain hard blockers for full-study reporting."""
     import secom.workflows.full_study as full_study
+
+    monkeypatch.setattr(full_study, "begin_full_study", lambda *_args: None)
+    monkeypatch.setattr(full_study, "finish_full_study", lambda *_args: None)
 
     temporal_calls = []
     report_calls = []

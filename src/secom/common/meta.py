@@ -6,6 +6,7 @@ import hashlib
 import subprocess
 import sys
 from pathlib import Path
+from importlib.metadata import version, distributions
 
 _SPEC_DIR = Path("docs") / "spec"
 _SPEC_FILENAMES = [
@@ -58,7 +59,7 @@ def strategy_sha256(project_root: Path) -> str:
 
     digest = hashlib.sha256()
     for path in spec_paths:
-        content = path.read_bytes()
+        content = path.read_bytes().replace(b"\r\n", b"\n")
         rel_path = path.relative_to(project_root).as_posix().encode()
         digest.update(rel_path)
         digest.update(b"\0")
@@ -79,14 +80,13 @@ def library_versions() -> dict[str, str]:
     import sklearn
 
     try:
-        import skrebate
-
-        skrebate_v = getattr(skrebate, "__version__", "UNKNOWN")
+        skrebate_v = version("skrebate")
     except Exception:
         skrebate_v = _UNAVAILABLE_VERSION
 
     return {
         "python": sys.version.split()[0],
+        "certifi": version("certifi"),
         "matplotlib": matplotlib.__version__,
         "numpy": numpy.__version__,
         "pandas": pandas.__version__,
@@ -94,3 +94,24 @@ def library_versions() -> dict[str, str]:
         "scipy": scipy.__version__,
         "skrebate": skrebate_v,
     }
+
+
+def source_tree_identity(project_root: Path) -> dict[str, object]:
+    """Identify executable study source, specs and pins even before a commit exists."""
+    paths = [project_root / name for name in ("pyproject.toml", "requirements.txt")]
+    for directory, pattern in (("src/secom", "*.py"), ("scripts", "*.py"), ("docs/spec", "*.md")):
+        paths.extend((project_root / directory).rglob(pattern))
+    hashes = {
+        path.relative_to(project_root).as_posix(): hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+        for path in sorted(paths)
+        if path.is_file()
+    }
+    digest = hashlib.sha256()
+    for name, sha in sorted(hashes.items()):
+        digest.update(f"{name}\0{sha}\n".encode())
+    return {"normalization": "UTF-8 text with LF line endings", "sha256": digest.hexdigest(), "files": hashes}
+
+
+def installed_package_versions() -> dict[str, str]:
+    """Record the resolved environment, including transitive dependencies."""
+    return dict(sorted((dist.metadata["Name"].lower(), dist.version) for dist in distributions()))

@@ -127,3 +127,12 @@ def test_skrebate_pin_imports_and_fits_with_runtime_stack() -> None:
     model.fit(x, y)
 
     assert model.feature_importances_.shape == (2,)
+
+
+def test_spec_hash_is_identical_across_checkout_line_endings(workspace_tmp_dir: Path) -> None:
+    """Windows and Unix checkouts must identify the same scientific contract."""
+    _write_spec_set(workspace_tmp_dir)
+    expected = strategy_sha256(workspace_tmp_dir)
+    for path in (workspace_tmp_dir / "docs/spec").glob("*.md"):
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    assert strategy_sha256(workspace_tmp_dir) == expected

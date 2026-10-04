@@ -198,7 +198,7 @@ _TEMPORAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
         "role",
         "threshold_policy",
         "predicted_flag_fraction",
-        "mean_weekly_flagged_wafers",
+        "mean_weekly_flagged_samples",
     },
 }
 
@@ -1002,7 +1002,7 @@ def _validate_temporal_numeric_ranges(
         ),
         ArtifactName.TEMPORAL_MANAGER_OUTPUTS: (
             manager,
-            ["mean_weekly_flagged_wafers", "mean_weekly_fail_captures", "mean_weekly_fail_misses"],
+            ["mean_weekly_flagged_samples", "mean_weekly_fail_captures", "mean_weekly_fail_misses"],
         ),
     }
     for artifact_name, (frame, columns) in nonnegative_columns.items():

@@ -70,7 +70,7 @@ def test_operational_threshold_returns_infinity_when_cap_cannot_be_satisfied() -
 
 
 def test_operational_threshold_rejects_mismatched_input_lengths() -> None:
-    """Operational threshold inputs must describe the same wafers."""
+    """Operational threshold inputs must describe the same samples."""
     scores = np.asarray([0.5, 0.4, 0.3], dtype=float)
     y_true = np.asarray([1, 0], dtype=int)
     week_labels = np.asarray([0, 0, 0], dtype=int)

@@ -9,12 +9,13 @@ description = "SECOM yield monitoring implementation"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "certifi==2026.7.22",
   "matplotlib==3.10.9",
   "numpy==2.4.6",
   "pandas==3.0.3",
   "scikit-learn==1.9.0",
   "scipy==1.17.1",
-  "skrebate==0.62",
+  "skrebate==0.8.4",
 ]
 
 [tool.setuptools]

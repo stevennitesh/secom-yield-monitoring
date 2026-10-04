@@ -1,0 +1,14 @@
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.csv text eol=lf
+Makefile text eol=lf
+*.png binary
+*.zip binary
+
+# Generated evidence receipts hash exact bytes; do not transform them on checkout.
+docs/results/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

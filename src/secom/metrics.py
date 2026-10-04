@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
@@ -92,6 +93,11 @@ def candidate_thresholds(scores: np.ndarray) -> np.ndarray:
     return np.concatenate((np.array([-np.inf]), uniq, np.array([np.inf])))
 
 
+def _scalar_isclose(a: float, b: float) -> bool:
+    """Match NumPy's default asymmetric tolerance without constructing scalar arrays."""
+    return a == b or (math.isfinite(b) and abs(a - b) <= 1e-8 + 1e-5 * abs(b))
+
+
 def _is_better_threshold(
     ber: float,
     tpr: float,
@@ -103,10 +109,10 @@ def _is_better_threshold(
     """Apply BER, then TPR, then lower-threshold tie breaking."""
     if ber < best_ber:
         return True
-    if np.isclose(ber, best_ber):
+    if _scalar_isclose(ber, best_ber):
         if tpr > best_tpr:
             return True
-        if np.isclose(tpr, best_tpr) and (best_threshold is None or float(threshold) < float(best_threshold)):
+        if _scalar_isclose(tpr, best_tpr) and (best_threshold is None or float(threshold) < float(best_threshold)):
             return True
     return False
 
@@ -417,7 +423,7 @@ def bootstrap_ci_for_mean(
     return (float(np.quantile(means, lower_q)), float(np.quantile(means, upper_q)))
 
 
-def expected_cost_per_wafer(fp: float, fn: float, n: float, cost_ratio: float) -> float:
+def expected_cost_per_sample(fp: float, fn: float, n: float, cost_ratio: float) -> float:
     """Return simple expected cost where false-negative cost is ``cost_ratio`` times FP."""
     if n <= 0:
         return np.nan

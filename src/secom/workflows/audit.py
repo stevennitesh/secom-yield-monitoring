@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
 
 from secom.artifacts import (
     ValidationResult,
@@ -47,6 +48,17 @@ def run_study_audit(output_dir: Path) -> ValidationResult:
         manifest=manifest,
     )
 
+    hashes = manifest.get("artifact_sha256", {})
+    if not isinstance(hashes, dict):
+        errors.append("run_manifest.json: artifact_sha256 must be an object")
+    else:
+        for name, expected in hashes.items():
+            if Path(name).name != name or not name.endswith(".csv"):
+                errors.append(f"run_manifest.json: invalid artifact hash name {name}")
+                continue
+            path = reports / name
+            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                errors.append(f"run_manifest.json: artifact hash mismatch for {name}")
     merged_errors = list(dict.fromkeys(errors + schema.errors))
     merged_warnings = list(dict.fromkeys(schema.warnings))
     merged_restrictions = list(dict.fromkeys(schema.claim_restrictions))

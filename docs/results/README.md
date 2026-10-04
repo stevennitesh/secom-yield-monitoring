@@ -1,36 +1,24 @@
-# Results Evidence Snapshot
+# Results Snapshot
 
-This directory is the public evidence surface for the current SECOM study results. It contains a curated snapshot copied from the generated full-study output under `runs/full_study/reports/`.
+Read [final_report.md](final_report.md) first. This small public snapshot was exported from `runs\finalization_20261003_optimized_v3` after the complete artifact audit passed. Git tracks the report, its figures, the unchanged execution manifest and the audit receipt. Detailed CSVs and the full source/artifact ZIP remain in ignored run storage.
 
-The full `runs/` directory stays gitignored because it contains large generated search tables and rerunnable experiment output. This folder keeps the files a public reader needs to verify the headline claims without checking in the entire run directory.
+The source execution records base Git commit `3a016025b702e4c3166b4d931020987dae9ed6e5`, dirty status `True` and exact source content hash `9c660d2bb051504fe86203e90797e1b60e3f14e4d8bca538bec4ea47a83f3814`. A dirty run includes uncommitted source changes; it does not pretend the base commit contains them. The unchanged [run manifest](evidence/run_manifest.json) records input hashes, resolved dependencies, study settings, timing and artifact hashes. The publication revision is the repository commit that eventually contains this snapshot.
 
-## What To Read First
+- Primary benchmark status: `passed`.
+- Temporal stress-test status: `warning`.
+- Temporal claim restrictions: `primary_high_shift_blocks_lockbox_superiority_claim`.
+- [Audit receipt](evidence/audit_receipt.json): errors, warnings, restrictions and exported-file hashes.
+- Complete CSVs stay in `runs\finalization_20261003_optimized_v3/reports/`.
+- The full artifact/source archive is `runs\finalization_20261003_optimized_v3\evidence\study_artifacts.zip`: all CSVs, manifest, report, figures and exact study source, without raw data. It is a local file, not a GitHub download; the public receipt records its hash.
 
-| File | Purpose |
-| --- | --- |
-| `final_report.md` | Canonical generated report with the benchmark, tuned benchmark, temporal robustness, and industrialization-gap narrative. |
-| `figures/*.png` | Report figures used by `final_report.md`. |
-| `evidence/run_manifest.json` | Provenance record for the snapshot, including the public snapshot marker, dirty status, Python version, library versions, study spec hash, and study-layer statuses. |
-| `evidence/benchmark_summary.csv` | Original benchmark replication summary behind the headline BER result. |
-| `evidence/benchmark_tuned_summary.csv` | Tuned benchmark summary behind the stricter nested-CV result. |
-| `evidence/temporal_drift_summary.csv` | Drift evidence behind the temporal robustness warning. |
-| `evidence/temporal_lockbox.csv` | Lockbox stress-test metrics used as descriptive temporal evidence. |
+## Reproduce and Audit
 
-## Snapshot Status
-
-- Source run: `runs/full_study`
-- Public snapshot revision: the repository commit containing this `docs/results/` tree
-- Git dirty at manifest refresh: `false`
-- Primary benchmark study: `passed`
-- Temporal robustness: `warning`
-- Active claim restriction: `primary_high_shift_blocks_lockbox_superiority_claim`
-
-## Regenerate
-
-Place the UCI SECOM raw files under `data/raw/`, then run:
+Use Python 3.11 or 3.12. See the root README for portable installation. Fetch verified data with `python scripts/fetch_secom.py`, then run into a fresh directory:
 
 ```bash
-python scripts/run_full_study.py --input-dir data/raw --output-dir runs/full_study --strict
+python scripts/run_full_study.py --input-dir data/raw --output-dir runs/reproduction --classifiers krr,logreg --progress --strict
+python scripts/run_audit.py --output-dir runs/reproduction --strict
+python scripts/export_results.py --output-dir runs/reproduction
 ```
 
-The generated report and full artifact set will be written under `runs/full_study/reports/`. This curated directory should be refreshed only when the public-facing evidence snapshot needs to change.
+The full study performs many repeated fits; this snapshot's manifest records the measured modeling duration and thread settings. Export saves the full archive under `runs/reproduction/evidence/study_artifacts.zip`. To audit that local archive without training, unzip it and run its `source/scripts/run_audit.py --output-dir <extracted-directory> --strict`. To reproduce the exact dirty source, install from the archive's `source/` directory and run its scripts. Original non-nested results, tuned family-wise estimates and chronological logistic-regression diagnostics retain separate claim scopes.

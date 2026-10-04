@@ -265,7 +265,7 @@ def _write_temporal_artifacts(reports: Path) -> None:
             "role": "primary",
             "threshold_policy": "scientific",
             "predicted_flag_fraction": 0.15,
-            "mean_weekly_flagged_wafers": 4.0,
+            "mean_weekly_flagged_samples": 4.0,
         },
     )
 
@@ -621,7 +621,7 @@ def test_study_audit_rejects_invalid_temporal_numeric_ranges(workspace_tmp_dir: 
             "role": "primary",
             "threshold_policy": "scientific",
             "predicted_flag_fraction": 1.5,
-            "mean_weekly_flagged_wafers": -1.0,
+            "mean_weekly_flagged_samples": -1.0,
         },
     )
     write_artifact_row(
@@ -638,7 +638,7 @@ def test_study_audit_rejects_invalid_temporal_numeric_ranges(workspace_tmp_dir: 
         for error in result.errors
     )
     assert any(
-        "temporal_manager_outputs.csv: mean_weekly_flagged_wafers must be nonnegative" in error
+        "temporal_manager_outputs.csv: mean_weekly_flagged_samples must be nonnegative" in error
         for error in result.errors
     )
     assert any("temporal_cost_curves.csv: cost_ratio must be positive" in error for error in result.errors)
@@ -666,7 +666,7 @@ def test_study_audit_rejects_temporal_role_policy_lineage_mismatch(workspace_tmp
             "role": "challenger",
             "threshold_policy": "scientific",
             "predicted_flag_fraction": 0.15,
-            "mean_weekly_flagged_wafers": 4.0,
+            "mean_weekly_flagged_samples": 4.0,
         },
     )
 

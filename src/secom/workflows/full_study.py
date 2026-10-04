@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
+from time import perf_counter
 
 from secom.artifacts import read_manifest
 from secom.config import ArtifactName, StudyStatus
+from secom.common.paths import project_root_from_repo_structure
+from secom.provenance import begin_full_study, finish_full_study
 from secom.workflows.audit import run_study_audit
 from secom.workflows.benchmark_replication import run_benchmark_replication
 from secom.workflows.temporal_robustness import run_temporal_robustness
@@ -53,22 +57,46 @@ def _workflow_error(step: str, exc: Exception) -> dict[str, str]:
     return {"step": step, "error": detail}
 
 
-def run_full_study(input_dir: Path, output_dir: Path) -> dict[str, object]:
+def run_full_study(
+    input_dir: Path,
+    output_dir: Path,
+    *,
+    classifiers_run: list[str] | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, object]:
     """Run all currently supported study workflows into a shared output directory."""
+    begin_full_study(input_dir, output_dir, project_root_from_repo_structure(), classifiers_run)
+    durations: dict[str, float] = {}
+    started = perf_counter()
     workflow_errors: list[dict[str, str]] = []
     benchmark_result: dict[str, Any] | None = None
     temporal_result: dict[str, Any] | None = None
 
     try:
-        benchmark_result = run_benchmark_replication(input_dir=input_dir, output_dir=output_dir)
+        if progress:
+            progress("benchmark bundle started")
+        benchmark_result = run_benchmark_replication(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            classifiers_run=classifiers_run,
+            progress=progress,
+        )
     except Exception as exc:
         workflow_errors.append(_workflow_error("benchmark", exc))
     else:
+        durations["benchmark"] = perf_counter() - started
+        temporal_started = perf_counter()
+        if progress:
+            progress("temporal robustness started")
         try:
-            temporal_result = run_temporal_robustness(input_dir=input_dir, output_dir=output_dir)
+            temporal_result = run_temporal_robustness(input_dir=input_dir, output_dir=output_dir, progress=progress)
         except Exception as exc:
             workflow_errors.append(_workflow_error("temporal", exc))
 
+        durations["temporal"] = perf_counter() - temporal_started
+
+    durations["total_modeling"] = perf_counter() - started
+    finish_full_study(output_dir, durations)
     manifest = _read_manifest_if_present(output_dir)
     benchmark_result = {**_fallback_benchmark_result(manifest), **(benchmark_result or {})}
     temporal_result = {**_fallback_temporal_result(manifest), **(temporal_result or {})}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+from collections import OrderedDict
 from itertools import product
 from pathlib import Path
 from collections.abc import Sequence
@@ -407,6 +409,30 @@ def prepare_selector_views(
     }
 
 
+MODEL_SCORE_CACHE_SIZE = 4096
+_MODEL_SCORE_CACHE: OrderedDict[tuple, tuple[np.ndarray, np.ndarray]] = OrderedDict()
+_MODEL_SCORE_CACHE_HITS = 0
+_MODEL_SCORE_CACHE_MISSES = 0
+
+
+def reset_model_score_cache() -> None:
+    """Start complete-run timing with a cold, bounded model-score cache."""
+    global _MODEL_SCORE_CACHE_HITS, _MODEL_SCORE_CACHE_MISSES
+    _MODEL_SCORE_CACHE.clear()
+    _MODEL_SCORE_CACHE_HITS = _MODEL_SCORE_CACHE_MISSES = 0
+
+
+def model_score_cache_info() -> dict[str, int]:
+    """Report reuse and retained score bytes; no raw measurements or models are stored."""
+    return {
+        "hits": _MODEL_SCORE_CACHE_HITS,
+        "misses": _MODEL_SCORE_CACHE_MISSES,
+        "entries": len(_MODEL_SCORE_CACHE),
+        "max_entries": MODEL_SCORE_CACHE_SIZE,
+        "score_bytes": sum(a.nbytes + b.nbytes for a, b in _MODEL_SCORE_CACHE.values()),
+    }
+
+
 def fit_classifier_scores(
     classifier: str,
     x_train_sel: np.ndarray,
@@ -416,6 +442,26 @@ def fit_classifier_scores(
     include_train_scores: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Fit a benchmark classifier and return train/eval score vectors."""
+    global _MODEL_SCORE_CACHE_HITS, _MODEL_SCORE_CACHE_MISSES
+    digest = hashlib.sha256()
+    for values in (x_train_sel, y_train, x_eval_sel):
+        array = np.asarray(values)
+        digest.update(f"{array.shape}\0{array.dtype.str}\0{array.strides}\0".encode())
+        digest.update(array.tobytes(order="C"))
+    key = (
+        classifier,
+        tuple(sorted(classifier_config.items())),
+        include_train_scores,
+        fit_benchmark_krr_model,
+        make_benchmark_logreg_model,
+        digest.digest(),
+    )
+    if key in _MODEL_SCORE_CACHE:
+        _MODEL_SCORE_CACHE_HITS += 1
+        _MODEL_SCORE_CACHE.move_to_end(key)
+        train_scores, eval_scores = _MODEL_SCORE_CACHE[key]
+        return train_scores.copy(), eval_scores.copy()
+    _MODEL_SCORE_CACHE_MISSES += 1
     if classifier == BenchmarkClassifier.KRR:
         clf = fit_benchmark_krr_model(
             x_train_sel,
@@ -438,6 +484,9 @@ def fit_classifier_scores(
         eval_scores = np.asarray(clf.predict_proba(x_eval_sel)[:, 1], dtype=float)
     else:
         raise ValueError(f"Unknown benchmark classifier mode: {classifier}")
+    _MODEL_SCORE_CACHE[key] = (train_scores.copy(), eval_scores.copy())
+    if len(_MODEL_SCORE_CACHE) > MODEL_SCORE_CACHE_SIZE:
+        _MODEL_SCORE_CACHE.popitem(last=False)
     return train_scores, eval_scores
 
 

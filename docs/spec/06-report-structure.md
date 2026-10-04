@@ -49,7 +49,7 @@ These belong in the temporal robustness section and must not be presented as the
 
 These may be shown for operational framing, but must be labeled illustrative or exploratory rather than production-validated:
 
-1. weekly flagged wafers
+1. weekly flagged samples
 2. weekly fail captures and misses
 3. `predicted_flag_fraction`
 4. workload framing

@@ -1,24 +1,1313 @@
 {
+  "artifact_sha256": {
+    "benchmark_ablation.csv": "0ae6ea23dec887d0253b5be746811bbfb551f058dde8405b3dc054f6c04096ad",
+    "benchmark_best_config.csv": "76b25a0dd080a8419897904df594d2978aac2a416f11542e1be011a7313123cf",
+    "benchmark_fold_metrics.csv": "4a9a2e36aa3533cdae65fefc3f010eedc23b92776b1cfd04d1f1a570c3f805b2",
+    "benchmark_full_fit_summary.csv": "5cd5261b89bfee64d6786b57b4181f7b68367011985d9643f1d5689a6ae630c4",
+    "benchmark_summary.csv": "e9dc19b6a8e438a35b1376f53216219dbc55cc52259c27ab91eb3bc70902cdb3",
+    "benchmark_sweep.csv": "2b3aede9ef3fbb85e75a876eb054f3b6b1cdfb9f5b7b256e9b49be1383e8fc1e",
+    "benchmark_tuned_ablation.csv": "a1c56f62d180099270cd33eb8972ac3f81ecbfb25952d74de1f8d58c18a1f301",
+    "benchmark_tuned_best_config.csv": "74b0be217d87d6cf5790283f3ffc9f6c663937a26574e6042d880dfe9762d911",
+    "benchmark_tuned_feature_report.csv": "b6390050db4bbfc44feced891db585df75753107488301d1a16ac364d50ebd92",
+    "benchmark_tuned_feature_stability.csv": "e7b8c5dca5df34bb9c65f719673d55523c8cac402c26002f4c4e303b197f2fde",
+    "benchmark_tuned_fold_metrics.csv": "4d5bf3f50d01c4726d3e572ac8f175c83ec799049385fd65733f8851d80c2269",
+    "benchmark_tuned_full_fit_summary.csv": "ad09da0d86c00c4e79f3704eb5e2219f677b714b2b30ff0b478ec083d8392c66",
+    "benchmark_tuned_search.csv": "cf48d0ce01f70948289ec4ad5e0bd83d4842ecb0c34e5e24c0e50c94ccb778a2",
+    "benchmark_tuned_summary.csv": "b378d84e1fafae5225938f4cb20f99e18ee9cdb029f906bb945c0d95a7cfb116",
+    "feature_report.csv": "b7ddd5313ce2470801ed5ba1734cb536283a8fec97e3e18b22c5820cd110cecd",
+    "feature_stability.csv": "9a1cb5534b03cbd1580d2ce6a4298f83cf543c200e31ab08ebea6e234cb3bd6f",
+    "temporal_cost_curves.csv": "619e7148cf36a9241f36443395b55f677680943f8ea274baa862e0cee3ba54f8",
+    "temporal_drift_summary.csv": "cb9f3d08cc517840a55a1b0863ec4bb10ce3537d84951a8302260f8f8601e96e",
+    "temporal_freeze.csv": "1fa51d3fd31606e827032c9b63f08a0e1f0b0d06b46c4d0ccb2a202223e23ba3",
+    "temporal_inner_cv.csv": "70988cce7d473f991743b3c9054bb4d584a3bfa3fab29b55993d94dd37b5e92b",
+    "temporal_lockbox.csv": "233bf020ce354108b01d6afef4d92255102cc9f706d8aeb89ed974279764fd2c",
+    "temporal_manager_outputs.csv": "73dc80ad7b30c461a8893756ffee68b838c8ffe44ab592fe16c65b7658a43190",
+    "temporal_model_selection.csv": "fbff8bcb0b65e7cbf1d69656b76391c47fd4d10dfd7a79eb12b5e71bf77fb151",
+    "temporal_mspc.csv": "6f4d8ea05c1f5747f2a1b79a8c2e91589a07fc47ac69dfec2cba8c4d5b1d1bd5",
+    "temporal_selector_screening.csv": "9ec284309b8cd05ff7edbc07d4ed13c212b877156d50207afb6fcf5f4af92e87",
+    "temporal_split_metadata.csv": "9760e48e8d5b0dbbe2022d78d45bb557a4822ed44f2cbf90147d040516b478b0"
+  },
   "benchmark_original_status": "passed",
   "benchmark_tuned_status": "passed",
-  "git_commit": "public-snapshot-containing-commit",
-  "git_dirty": false,
+  "dataset": {
+    "doi": "10.24432/C54305",
+    "files": {
+      "secom.data": {
+        "bytes": 5389983,
+        "sha256": "20f0e7ee434f7dcbae0eea9ffff009a2b57f42d6b0dc9a5bd4f00782c0a3374c"
+      },
+      "secom_labels.data": {
+        "bytes": 40638,
+        "sha256": "126884cf453705c9e61a903fe906f0665a3b45ce3639e621edc5c93c89627e03"
+      }
+    },
+    "invalid_timestamps": 0,
+    "license": "CC BY 4.0",
+    "matches_reference_files": true,
+    "missing_cells": 41951,
+    "missing_fraction": 0.0453755,
+    "monthly_sample_counts": {
+      "2008-07": 63,
+      "2008-08": 555,
+      "2008-09": 590,
+      "2008-10": 359
+    },
+    "n_fails": 104,
+    "n_features": 590,
+    "n_passes": 1463,
+    "n_samples": 1567,
+    "row_grain": "production entity; physical unit unspecified",
+    "shared_missingness_patterns": [
+      {
+        "fail_missing_rate": 0.711538,
+        "features": [
+          "M109",
+          "M110",
+          "M111",
+          "M244",
+          "M245",
+          "M246",
+          "M382",
+          "M383",
+          "M384",
+          "M516",
+          "M517",
+          "M518"
+        ],
+        "missing_rate": 0.649649,
+        "monthly_missing_rates": {
+          "2008-07": 1.0,
+          "2008-08": 1.0,
+          "2008-09": 0.572881,
+          "2008-10": 0.172702
+        },
+        "monthly_range": 0.827298,
+        "pass_missing_rate": 0.645249
+      },
+      {
+        "fail_missing_rate": 0.317308,
+        "features": [
+          "M112",
+          "M247",
+          "M385",
+          "M519"
+        ],
+        "missing_rate": 0.456286,
+        "monthly_missing_rates": {
+          "2008-07": 0.31746,
+          "2008-08": 0.174775,
+          "2008-09": 0.469492,
+          "2008-10": 0.89415
+        },
+        "monthly_range": 0.719376,
+        "pass_missing_rate": 0.466165
+      },
+      {
+        "fail_missing_rate": 0.346154,
+        "features": [
+          "M72",
+          "M73",
+          "M345",
+          "M346"
+        ],
+        "missing_rate": 0.506701,
+        "monthly_missing_rates": {
+          "2008-07": 0.15873,
+          "2008-08": 0.322523,
+          "2008-09": 0.620339,
+          "2008-10": 0.665738
+        },
+        "monthly_range": 0.507008,
+        "pass_missing_rate": 0.518113
+      },
+      {
+        "fail_missing_rate": 0.567308,
+        "features": [
+          "M578",
+          "M579",
+          "M580",
+          "M581"
+        ],
+        "missing_rate": 0.605616,
+        "monthly_missing_rates": {
+          "2008-07": 0.238095,
+          "2008-08": 0.621622,
+          "2008-09": 0.686441,
+          "2008-10": 0.512535
+        },
+        "monthly_range": 0.448345,
+        "pass_missing_rate": 0.608339
+      },
+      {
+        "fail_missing_rate": 0.230769,
+        "features": [
+          "M562",
+          "M563",
+          "M564",
+          "M565",
+          "M566",
+          "M567",
+          "M568",
+          "M569"
+        ],
+        "missing_rate": 0.174218,
+        "monthly_missing_rates": {
+          "2008-07": 0.349206,
+          "2008-08": 0.362162,
+          "2008-09": 0.0813559,
+          "2008-10": 0.00557103
+        },
+        "monthly_range": 0.356591,
+        "pass_missing_rate": 0.170198
+      },
+      {
+        "fail_missing_rate": 0.894231,
+        "features": [
+          "M85",
+          "M220",
+          "M358",
+          "M492"
+        ],
+        "missing_rate": 0.855775,
+        "monthly_missing_rates": {
+          "2008-07": 1.0,
+          "2008-08": 1.0,
+          "2008-09": 0.777966,
+          "2008-10": 0.735376
+        },
+        "monthly_range": 0.264624,
+        "pass_missing_rate": 0.853042
+      },
+      {
+        "fail_missing_rate": 0.173077,
+        "features": [
+          "M546",
+          "M547",
+          "M548",
+          "M549",
+          "M550",
+          "M551",
+          "M552",
+          "M553",
+          "M554",
+          "M555",
+          "M556",
+          "M557"
+        ],
+        "missing_rate": 0.165922,
+        "monthly_missing_rates": {
+          "2008-07": 0.0952381,
+          "2008-08": 0.264865,
+          "2008-09": 0.172881,
+          "2008-10": 0.0139276
+        },
+        "monthly_range": 0.250937,
+        "pass_missing_rate": 0.165414
+      },
+      {
+        "fail_missing_rate": 0.00961538,
+        "features": [
+          "M89",
+          "M90",
+          "M224",
+          "M225",
+          "M362",
+          "M363",
+          "M496",
+          "M497"
+        ],
+        "missing_rate": 0.0325463,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0,
+          "2008-09": 0.0,
+          "2008-10": 0.142061
+        },
+        "monthly_range": 0.142061,
+        "pass_missing_rate": 0.0341763
+      },
+      {
+        "fail_missing_rate": 0.923077,
+        "features": [
+          "M157",
+          "M158",
+          "M292",
+          "M293"
+        ],
+        "missing_rate": 0.911934,
+        "monthly_missing_rates": {
+          "2008-07": 0.984127,
+          "2008-08": 0.900901,
+          "2008-09": 0.901695,
+          "2008-10": 0.933148
+        },
+        "monthly_range": 0.0832261,
+        "pass_missing_rate": 0.911141
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M75",
+          "M76",
+          "M77",
+          "M78",
+          "M79",
+          "M80",
+          "M81",
+          "M82",
+          "M118",
+          "M210",
+          "M211",
+          "M212",
+          "M213",
+          "M214",
+          "M215",
+          "M216",
+          "M217",
+          "M253",
+          "M348",
+          "M349",
+          "M350",
+          "M351",
+          "M352",
+          "M353",
+          "M354",
+          "M355",
+          "M391",
+          "M482",
+          "M483",
+          "M484",
+          "M485",
+          "M486",
+          "M487",
+          "M488",
+          "M489",
+          "M525"
+        ],
+        "missing_rate": 0.0153159,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0,
+          "2008-09": 0.0,
+          "2008-10": 0.0668524
+        },
+        "monthly_range": 0.0668524,
+        "pass_missing_rate": 0.0164046
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M40",
+          "M41",
+          "M178",
+          "M313",
+          "M314",
+          "M449",
+          "M450"
+        ],
+        "missing_rate": 0.0153159,
+        "monthly_missing_rates": {
+          "2008-07": 0.031746,
+          "2008-08": 0.00720721,
+          "2008-09": 0.0288136,
+          "2008-10": 0.00278552
+        },
+        "monthly_range": 0.0289605,
+        "pass_missing_rate": 0.0164046
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M2",
+          "M3",
+          "M4",
+          "M5",
+          "M6",
+          "M138",
+          "M139",
+          "M140",
+          "M141",
+          "M142",
+          "M273",
+          "M274",
+          "M275",
+          "M276",
+          "M277",
+          "M411",
+          "M412",
+          "M413",
+          "M414",
+          "M415"
+        ],
+        "missing_rate": 0.00893427,
+        "monthly_missing_rates": {
+          "2008-07": 0.015873,
+          "2008-08": 0.0,
+          "2008-09": 0.0101695,
+          "2008-10": 0.0194986
+        },
+        "monthly_range": 0.0194986,
+        "pass_missing_rate": 0.00956938
+      },
+      {
+        "fail_missing_rate": 0.00961538,
+        "features": [
+          "M19",
+          "M155",
+          "M290",
+          "M428"
+        ],
+        "missing_rate": 0.00638162,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0162162,
+          "2008-09": 0.00169492,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.0162162,
+        "pass_missing_rate": 0.00615174
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M0",
+          "M136",
+          "M271",
+          "M409"
+        ],
+        "missing_rate": 0.00382897,
+        "monthly_missing_rates": {
+          "2008-07": 0.015873,
+          "2008-08": 0.00540541,
+          "2008-09": 0.00338983,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.015873,
+        "pass_missing_rate": 0.00410116
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M586",
+          "M587",
+          "M588",
+          "M589"
+        ],
+        "missing_rate": 0.000638162,
+        "monthly_missing_rates": {
+          "2008-07": 0.015873,
+          "2008-08": 0.0,
+          "2008-09": 0.0,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.015873,
+        "pass_missing_rate": 0.000683527
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M84",
+          "M219",
+          "M357",
+          "M491"
+        ],
+        "missing_rate": 0.00765795,
+        "monthly_missing_rates": {
+          "2008-07": 0.015873,
+          "2008-08": 0.0126126,
+          "2008-09": 0.00677966,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.015873,
+        "pass_missing_rate": 0.00820232
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M121",
+          "M122",
+          "M123",
+          "M124",
+          "M125",
+          "M126",
+          "M127",
+          "M128",
+          "M129",
+          "M130",
+          "M131",
+          "M256",
+          "M257",
+          "M258",
+          "M259",
+          "M260",
+          "M261",
+          "M262",
+          "M263",
+          "M264",
+          "M265",
+          "M266",
+          "M394",
+          "M395",
+          "M396",
+          "M397",
+          "M398",
+          "M399",
+          "M400",
+          "M401",
+          "M402",
+          "M403",
+          "M404",
+          "M528",
+          "M529",
+          "M530",
+          "M531",
+          "M532",
+          "M533",
+          "M534",
+          "M535",
+          "M536",
+          "M537",
+          "M538"
+        ],
+        "missing_rate": 0.00574346,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0108108,
+          "2008-09": 0.0,
+          "2008-10": 0.00835655
+        },
+        "monthly_range": 0.0108108,
+        "pass_missing_rate": 0.00615174
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M7",
+          "M143",
+          "M278",
+          "M416"
+        ],
+        "missing_rate": 0.00574346,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0018018,
+          "2008-09": 0.0101695,
+          "2008-10": 0.00557103
+        },
+        "monthly_range": 0.0101695,
+        "pass_missing_rate": 0.00615174
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M91",
+          "M94",
+          "M95",
+          "M96",
+          "M97",
+          "M98",
+          "M99",
+          "M100",
+          "M101",
+          "M102",
+          "M105",
+          "M106",
+          "M107",
+          "M108",
+          "M226",
+          "M229",
+          "M230",
+          "M231",
+          "M232",
+          "M233",
+          "M234",
+          "M235",
+          "M236",
+          "M237",
+          "M240",
+          "M241",
+          "M242",
+          "M243",
+          "M364",
+          "M367",
+          "M368",
+          "M369",
+          "M370",
+          "M371",
+          "M372",
+          "M373",
+          "M374",
+          "M375",
+          "M378",
+          "M379",
+          "M380",
+          "M381",
+          "M498",
+          "M501",
+          "M502",
+          "M503",
+          "M504",
+          "M505",
+          "M506",
+          "M507",
+          "M508",
+          "M509",
+          "M512",
+          "M513",
+          "M514",
+          "M515"
+        ],
+        "missing_rate": 0.00382897,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0,
+          "2008-09": 0.0101695,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.0101695,
+        "pass_missing_rate": 0.00410116
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M132",
+          "M133",
+          "M134",
+          "M267",
+          "M268",
+          "M269",
+          "M405",
+          "M406",
+          "M407",
+          "M539",
+          "M540",
+          "M541"
+        ],
+        "missing_rate": 0.0051053,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.00900901,
+          "2008-09": 0.0,
+          "2008-10": 0.00835655
+        },
+        "monthly_range": 0.00900901,
+        "pass_missing_rate": 0.00546822
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M13",
+          "M14",
+          "M15",
+          "M16",
+          "M17",
+          "M18",
+          "M149",
+          "M150",
+          "M151",
+          "M152",
+          "M153",
+          "M154",
+          "M284",
+          "M285",
+          "M286",
+          "M287",
+          "M288",
+          "M289",
+          "M422",
+          "M423",
+          "M424",
+          "M425",
+          "M426",
+          "M427"
+        ],
+        "missing_rate": 0.00191449,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0,
+          "2008-09": 0.0,
+          "2008-10": 0.00835655
+        },
+        "monthly_range": 0.00835655,
+        "pass_missing_rate": 0.00205058
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M135",
+          "M270",
+          "M408"
+        ],
+        "missing_rate": 0.00319081,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.00720721,
+          "2008-09": 0.00169492,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.00720721,
+        "pass_missing_rate": 0.00341763
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M59",
+          "M63",
+          "M64",
+          "M65",
+          "M196",
+          "M200",
+          "M201",
+          "M202",
+          "M332",
+          "M336",
+          "M337",
+          "M338",
+          "M468",
+          "M472",
+          "M473",
+          "M474"
+        ],
+        "missing_rate": 0.00446713,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0036036,
+          "2008-09": 0.00677966,
+          "2008-10": 0.00278552
+        },
+        "monthly_range": 0.00677966,
+        "pass_missing_rate": 0.00478469
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M60",
+          "M61",
+          "M62",
+          "M66",
+          "M67",
+          "M68",
+          "M69",
+          "M70",
+          "M71",
+          "M74",
+          "M197",
+          "M198",
+          "M199",
+          "M203",
+          "M204",
+          "M205",
+          "M206",
+          "M207",
+          "M208",
+          "M209",
+          "M333",
+          "M334",
+          "M335",
+          "M339",
+          "M340",
+          "M341",
+          "M342",
+          "M343",
+          "M344",
+          "M347",
+          "M469",
+          "M470",
+          "M471",
+          "M475",
+          "M476",
+          "M477",
+          "M478",
+          "M479",
+          "M480",
+          "M481"
+        ],
+        "missing_rate": 0.00382897,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0018018,
+          "2008-09": 0.00677966,
+          "2008-10": 0.00278552
+        },
+        "monthly_range": 0.00677966,
+        "pass_missing_rate": 0.00410116
+      },
+      {
+        "fail_missing_rate": 0.00961538,
+        "features": [
+          "M1",
+          "M137",
+          "M272",
+          "M410"
+        ],
+        "missing_rate": 0.00446713,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.00540541,
+          "2008-09": 0.00338983,
+          "2008-10": 0.00557103
+        },
+        "monthly_range": 0.00557103,
+        "pass_missing_rate": 0.00410116
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M542",
+          "M543",
+          "M544",
+          "M545"
+        ],
+        "missing_rate": 0.00127632,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0,
+          "2008-09": 0.0,
+          "2008-10": 0.00557103
+        },
+        "monthly_range": 0.00557103,
+        "pass_missing_rate": 0.00136705
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M8",
+          "M9",
+          "M10",
+          "M11",
+          "M12",
+          "M144",
+          "M145",
+          "M146",
+          "M147",
+          "M148",
+          "M279",
+          "M280",
+          "M281",
+          "M282",
+          "M283",
+          "M417",
+          "M418",
+          "M419",
+          "M420",
+          "M421"
+        ],
+        "missing_rate": 0.00127632,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0,
+          "2008-09": 0.0,
+          "2008-10": 0.00557103
+        },
+        "monthly_range": 0.00557103,
+        "pass_missing_rate": 0.00136705
+      },
+      {
+        "fail_missing_rate": 0.00961538,
+        "features": [
+          "M53",
+          "M54",
+          "M55",
+          "M56",
+          "M57",
+          "M58",
+          "M190",
+          "M191",
+          "M192",
+          "M193",
+          "M194",
+          "M195",
+          "M326",
+          "M327",
+          "M328",
+          "M329",
+          "M330",
+          "M331",
+          "M462",
+          "M463",
+          "M464",
+          "M465",
+          "M466",
+          "M467"
+        ],
+        "missing_rate": 0.00255265,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0036036,
+          "2008-09": 0.00338983,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.0036036,
+        "pass_missing_rate": 0.00205058
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M92",
+          "M93",
+          "M103",
+          "M104",
+          "M227",
+          "M228",
+          "M238",
+          "M239",
+          "M365",
+          "M366",
+          "M376",
+          "M377",
+          "M499",
+          "M500",
+          "M510",
+          "M511"
+        ],
+        "missing_rate": 0.00127632,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0,
+          "2008-09": 0.00338983,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.00338983,
+        "pass_missing_rate": 0.00136705
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M83",
+          "M218",
+          "M356",
+          "M490"
+        ],
+        "missing_rate": 0.000638162,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0,
+          "2008-09": 0.0,
+          "2008-10": 0.00278552
+        },
+        "monthly_range": 0.00278552,
+        "pass_missing_rate": 0.000683527
+      },
+      {
+        "fail_missing_rate": 0.00961538,
+        "features": [
+          "M21",
+          "M22",
+          "M23",
+          "M24",
+          "M25",
+          "M26",
+          "M27",
+          "M28",
+          "M29",
+          "M30",
+          "M31",
+          "M159",
+          "M160",
+          "M161",
+          "M162",
+          "M163",
+          "M164",
+          "M165",
+          "M166",
+          "M167",
+          "M168",
+          "M169",
+          "M294",
+          "M295",
+          "M296",
+          "M297",
+          "M298",
+          "M299",
+          "M300",
+          "M301",
+          "M302",
+          "M303",
+          "M304",
+          "M430",
+          "M431",
+          "M432",
+          "M433",
+          "M434",
+          "M435",
+          "M436",
+          "M437",
+          "M438",
+          "M439",
+          "M440"
+        ],
+        "missing_rate": 0.00127632,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0018018,
+          "2008-09": 0.00169492,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.0018018,
+        "pass_missing_rate": 0.000683527
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M32",
+          "M33",
+          "M34",
+          "M35",
+          "M36",
+          "M37",
+          "M38",
+          "M39",
+          "M170",
+          "M171",
+          "M172",
+          "M173",
+          "M174",
+          "M175",
+          "M176",
+          "M177",
+          "M305",
+          "M306",
+          "M307",
+          "M308",
+          "M309",
+          "M310",
+          "M311",
+          "M312",
+          "M441",
+          "M442",
+          "M443",
+          "M444",
+          "M445",
+          "M446",
+          "M447",
+          "M448"
+        ],
+        "missing_rate": 0.000638162,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0018018,
+          "2008-09": 0.0,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.0018018,
+        "pass_missing_rate": 0.000683527
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M42",
+          "M43",
+          "M44",
+          "M45",
+          "M46",
+          "M47",
+          "M48",
+          "M49",
+          "M50",
+          "M51",
+          "M52",
+          "M179",
+          "M180",
+          "M181",
+          "M182",
+          "M183",
+          "M184",
+          "M185",
+          "M186",
+          "M187",
+          "M188",
+          "M189",
+          "M315",
+          "M316",
+          "M317",
+          "M318",
+          "M319",
+          "M320",
+          "M321",
+          "M322",
+          "M323",
+          "M324",
+          "M325",
+          "M451",
+          "M452",
+          "M453",
+          "M454",
+          "M455",
+          "M456",
+          "M457",
+          "M458",
+          "M459",
+          "M460",
+          "M461"
+        ],
+        "missing_rate": 0.000638162,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0018018,
+          "2008-09": 0.0,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.0018018,
+        "pass_missing_rate": 0.000683527
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M558",
+          "M559",
+          "M560",
+          "M561"
+        ],
+        "missing_rate": 0.000638162,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0018018,
+          "2008-09": 0.0,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.0018018,
+        "pass_missing_rate": 0.000683527
+      },
+      {
+        "fail_missing_rate": 0.0,
+        "features": [
+          "M582",
+          "M583",
+          "M584",
+          "M585"
+        ],
+        "missing_rate": 0.000638162,
+        "monthly_missing_rates": {
+          "2008-07": 0.0,
+          "2008-08": 0.0018018,
+          "2008-09": 0.0,
+          "2008-10": 0.0
+        },
+        "monthly_range": 0.0018018,
+        "pass_missing_rate": 0.000683527
+      }
+    ],
+    "source_url": "https://archive.ics.uci.edu/dataset/179/secom",
+    "timestamp_max": "2008-10-17T06:07:00",
+    "timestamp_min": "2008-07-19T11:55:00"
+  },
+  "execution": {
+    "duration_seconds": {
+      "benchmark": 761.831,
+      "temporal": 494.964,
+      "total_modeling": 1256.79
+    },
+    "finished_at_utc": "2026-10-04T00:36:36.606464+00:00",
+    "model_score_cache": {
+      "entries": 4096,
+      "hits": 5263,
+      "max_entries": 4096,
+      "misses": 17039,
+      "score_bytes": 46280680
+    },
+    "platform": "Windows-11-10.0.26200-SP0",
+    "settings": {
+      "benchmark_inner_folds": 3,
+      "benchmark_outer_folds": 10,
+      "benchmark_seed": 42,
+      "bootstrap_draws": 1000,
+      "bootstrap_seed": 42,
+      "classifiers": [
+        "krr",
+        "logreg"
+      ],
+      "krr_alpha_grid": [
+        0.1,
+        1.0,
+        10.0
+      ],
+      "krr_gamma_grid": [
+        null,
+        0.01,
+        0.1,
+        1.0
+      ],
+      "lockbox_fraction": 0.15,
+      "logreg_C_grid": [
+        0.01,
+        0.1,
+        1.0,
+        10.0
+      ],
+      "original_feature_budget": 40,
+      "original_selectors": [
+        "S2N",
+        "Ttest",
+        "F-test",
+        "ReliefF",
+        "Gram-Schmidt",
+        "Pearson"
+      ],
+      "relief_backend": "vectorized",
+      "relief_cache_max_rankings": 128,
+      "relief_n_jobs": 1,
+      "relief_neighbors_original": 10,
+      "relief_neighbors_tuned": [
+        5,
+        10,
+        20
+      ],
+      "relief_reference_version": "0.8.4",
+      "temporal_classifier": "balanced logistic regression",
+      "temporal_freeze_seeds": [
+        42,
+        11,
+        23,
+        37,
+        59
+      ],
+      "temporal_stage_b_seeds": [
+        42,
+        11,
+        23,
+        37,
+        59
+      ],
+      "tuned_feature_budgets": [
+        10,
+        20,
+        40
+      ],
+      "tuned_selectors": [
+        "S2N",
+        "Ttest",
+        "F-test",
+        "ReliefF",
+        "Gram-Schmidt"
+      ]
+    },
+    "started_at_utc": "2026-10-04T00:15:39.798037+00:00",
+    "thread_environment": {
+      "MKL_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "SECOM_RELIEF_BACKEND": "vectorized",
+      "SECOM_RELIEF_N_JOBS": null
+    }
+  },
+  "git_commit": "3a016025b702e4c3166b4d931020987dae9ed6e5",
+  "git_dirty": true,
   "industrialization_notes": [],
   "library_versions": {
+    "certifi": "2026.7.22",
     "matplotlib": "3.10.9",
     "numpy": "2.4.6",
     "pandas": "3.0.3",
-    "python": "3.12.3",
+    "python": "3.12.12",
     "scipy": "1.17.1",
     "sklearn": "1.9.0",
-    "skrebate": "0.62"
+    "skrebate": "0.8.4"
   },
   "manifest_version": "2.0",
   "primary_study_status": "passed",
-  "python_executable": "/home/steve/code/secom-yield-monitoring/.venv/bin/python",
-  "snapshot_provenance": "This checked-in public snapshot is audited by the repository commit that contains docs/results; source artifacts were copied from runs/full_study before publication.",
+  "python_executable": "E:\\GitHub\\code\\secom-yield-monitoring\\.venv\\Scripts\\python.exe",
+  "resolved_packages": {
+    "certifi": "2026.7.22",
+    "cloudpickle": "3.1.2",
+    "colorama": "0.4.6",
+    "contourpy": "1.4.0",
+    "coverage": "7.16.2",
+    "cycler": "0.12.1",
+    "fonttools": "4.66.1",
+    "iniconfig": "2.3.0",
+    "joblib": "1.6.0",
+    "kiwisolver": "1.5.1",
+    "matplotlib": "3.10.9",
+    "narwhals": "2.26.0",
+    "numpy": "2.4.6",
+    "packaging": "26.3",
+    "pandas": "3.0.3",
+    "pillow": "12.3.0",
+    "pluggy": "1.6.0",
+    "pygments": "2.21.0",
+    "pyparsing": "3.3.3",
+    "pytest": "9.0.3",
+    "pytest-cov": "7.1.0",
+    "python-dateutil": "2.9.0.post0",
+    "ruff": "0.15.15",
+    "scikit-learn": "1.9.0",
+    "scipy": "1.17.1",
+    "secom-yield-monitoring": "0.1.0",
+    "setuptools": "82.0.1",
+    "six": "1.17.0",
+    "skrebate": "0.8.4",
+    "threadpoolctl": "3.7.0",
+    "tzdata": "2026.5",
+    "wheel": "0.47.0"
+  },
+  "source_tree": {
+    "files": {
+      "docs/spec/01-study-goal.md": "e8a4e6940f28bbfdecd97ab1112d52c3b3a56db384214f9f0014a668da559daa",
+      "docs/spec/02-benchmark-replication-study.md": "6017960f858a7555f4679a399750ae8b00bbc675e39649ab8ac28180386a3748",
+      "docs/spec/03-feature-stability-and-interpretation.md": "cac391d24fd5eb6a393fb2259a1598b7662f108f5e656e67595f04ea34a1df1d",
+      "docs/spec/04-temporal-robustness-study.md": "628fa22ec4dcc630fc313533f968a486f894ceadafbeaaef4fc219d3f8c1dfc5",
+      "docs/spec/05-industrialization-gap-analysis.md": "758868b67991f58ba91844bee2d226d9026208b3cc768ea21b4110a6249afe0a",
+      "docs/spec/06-report-structure.md": "2e0b2237bae61ab8709434557bfd6e08e29d026e317ef9337127d558907a08f7",
+      "docs/spec/07-artifact-contracts.md": "f61d585efa2d3aff2f775523995cd287ff579fe6ea822f41f98c225d1f5510d3",
+      "docs/spec/08-audit-and-claim-semantics.md": "874ba310834b7f8c5c185a56cc0062bc4db9c5ce1b75e11003f91e560b483f1c",
+      "docs/spec/README.md": "e0ca39f8c7c8047b5cbc637ffa86583a201d451b639d8b08b1b3ed19fbed2a05",
+      "pyproject.toml": "a1a3dc6be0ccb71c20fc030124a2216823faf05e896fc1dc75f56f7fdf37e6e9",
+      "requirements.txt": "b5c841138a85d6ed9a12a7460ac254fa5ecf570bc1d7611c01db72f98de3d274",
+      "scripts/_script_path.py": "ead15501e47fc8240ecbe5eb894d77607cf7c870a3f9c8523419d34170046033",
+      "scripts/_script_status.py": "614462b5f16f7bd87abe63d5b7d6e4d8ad71a62bfe0361a3b018ec3b96fd3864",
+      "scripts/benchmark_relief.py": "ca0e960f8fd4ddb75ee585bf9f24b70a5d1c9dae8505d2dc40329b1d9e14b556",
+      "scripts/export_results.py": "3c7b7f37165c29893f6acb15a6a6d4c04e0319edddb39e4d535c73673be24f49",
+      "scripts/fetch_secom.py": "127b4809f9f9c18bc6e0eaed0fa865868bd99b028a5523148a8d06ad78c3d5a6",
+      "scripts/run_audit.py": "fecf877742b1e1654330ec2ea452de5e1c7963704b55974647c6090b3841292b",
+      "scripts/run_benchmark_replication.py": "e9b436b58087a8ea24d45d5d001320d743c79dec151f28db505887ab87a56d5c",
+      "scripts/run_benchmark_tuned.py": "4f9f1f1654337d7170dfb6acb21c0488931cf7f4298160006579da43e49809df",
+      "scripts/run_final_report.py": "d1b290d74cc4e525a6fbdb23bc8ed8aac8ba3993d6ebd31cb002feededaee7eb",
+      "scripts/run_full_study.py": "ae6620f2a5ae505863a3a66353e0e9a78c6fb05bffceeaa7aa5f8ba2c005d713",
+      "scripts/run_original_replication.py": "35fde85cc7ad2dda3384dca9dfcfe03f7d45e0f8cfbe94dc6dc1ecf9b60fe0cc",
+      "scripts/run_report_skeleton.py": "e72140f9351932136b5956773cd76f00a76c70792f2e01f335847d4ac1c692f4",
+      "scripts/run_temporal_robustness.py": "f4173c011ae6c00df4ea2b508fe34b42ab704a4753e2f32c8895cdf494b1f3fa",
+      "src/secom/__init__.py": "f863d8f46f746d30fcc05a58396ef07221ade83004aff1eeebc36003c55eeb4d",
+      "src/secom/artifacts.py": "a847740165ca2c50e32dd582b8aa67a309ac061bf59dbc7bea3fb03866db3159",
+      "src/secom/common/__init__.py": "77ab0139ea26201cbc3ca1d9111e5c61f463ea9bc6d08a3cf3661c091d4e5d81",
+      "src/secom/common/drift.py": "aff361fa1a6aa27030e3298ffa42126b500d57466abb60db4d62b172013cfe7f",
+      "src/secom/common/meta.py": "f90c88408842d7847b023837ef17115bc945cf44b4b599512dc9a0b772b2bba1",
+      "src/secom/common/paths.py": "dc3db076fc6fd5cb0aef04c3e5e42372d9f65c57c250fef938cff4fbbb09f88e",
+      "src/secom/common/thresholds.py": "18a4549c8c2455c4c4629bb27582682bbb00801ee9d84a8bf8297e40da1ec22f",
+      "src/secom/config.py": "fb5dd79154a352b45cd565bb6e9900eb5272ed5bfde657b4df57426b5f3c3706",
+      "src/secom/cv.py": "dcfc75eef3f5db3e5276b4b5e6c5e0e9d84cb5b9e2a292b00d947b0edb949ff7",
+      "src/secom/evidence.py": "48e5574d8124daf4efed18fb2a1f9a07f7bce74df30f900e7cdcd4bc9178f67e",
+      "src/secom/feature_select/__init__.py": "59f9d8929414373ff1581a4e62e24279114ec15643bce253070bd4c3337ab8cb",
+      "src/secom/feature_select/_ranking.py": "40dc2bbf96998e50970af10418709a8e2cc59d67025b114de85f57b08435dae2",
+      "src/secom/feature_select/_relief_backend.py": "28f5e4e4f1b4daaa1649a04fd615f7d2364e0d56a6d8a5a8659a3610426a370f",
+      "src/secom/feature_select/gram_schmidt.py": "f632c9bc7ec8932799876071b30b217f787681cf3326d2c31bbdd94be1aeeab7",
+      "src/secom/feature_select/relief.py": "e810d5674a7837c8986a04e6a03b00e1dc2930b504a42ecce07f12de922a4c54",
+      "src/secom/feature_select/univariate.py": "bee9a540b4948c8f5e38cea211d33c2158db089b816f6ee53e9e64b2fb996693",
+      "src/secom/io.py": "b41071e4ed206a83d8c23df6d808a458f9a179120e5238b5edfd27847d02f692",
+      "src/secom/metrics.py": "41a7a67c84ae2941fecf250e88a12a084d4944220ee53f9ad21a2250b69278f1",
+      "src/secom/models.py": "5856db1f5044e1c41f830590c7e2d5a3feebaeb2e8f1e0134907d9805a3f43d2",
+      "src/secom/preprocess.py": "bd1ded538ec41b5b023ff6d81cd8935bf445c2c724b8422f707ec804a7239324",
+      "src/secom/provenance.py": "ae5742b2bfe41e91123ac4b539be94e58bbb7585d4ffce39e9a06d5985a88f3f",
+      "src/secom/qa.py": "da37fd7ac9b4b091751b9857c06aadd325d44fd9b456c5c101b11e82cf99ee42",
+      "src/secom/report_figures.py": "f98b8cf119bba40442c4d6dd76dd67d8dfed2d6d3c45ce9af9bd081a02818a5d",
+      "src/secom/reporting.py": "c0499cfa5730f7b8c93ec6bceee437fd33d2b6dacaab2c1fb673baf02f6dcb7e",
+      "src/secom/selection/__init__.py": "fe845840a8cc723fca9fb829eec4e52d21afa799ba7ba4a2ceb26cdd23dea3dd",
+      "src/secom/selection/engine.py": "92a666d644cf22504e4bfe91815e14d24026e47d64c53ff8a0c9ab0cc7608c4c",
+      "src/secom/selection/tuning.py": "d8d07334d84b5db16bec7fcc104387205f52b964ad0f2d88e80c73c92f32d2f2",
+      "src/secom/types.py": "996641e6b69b850496f4cb176c807af23dda1755c492e96757df327961ba0fa8",
+      "src/secom/workflows/__init__.py": "bb7190999e60ff4e7d4a3be83fc54bca3e5c74f1c2d0b3848d2b11a1a17069c0",
+      "src/secom/workflows/audit.py": "a786e0186686bc157865f91e5b11c20c11618a156796eed367f9ebbd21b38d31",
+      "src/secom/workflows/benchmark_common.py": "b3e6edb46feba6fdf2fb6e9478052b3c21e3eeba68739b5ad9b9abba100a9b58",
+      "src/secom/workflows/benchmark_replication.py": "8f6af1a295ad5c1a71b8abead7ca7ea96e0795091a0f0c450b234e804db77a5c",
+      "src/secom/workflows/benchmark_tuned.py": "925433bf7b992ecb942aaaceafe6ea417fae3c584a87f9cbac36eb13734997e6",
+      "src/secom/workflows/full_study.py": "892efc72a84cb86df869ce4af6ecb5c7a59d3dfbbf0f406496552cd82ae33c70",
+      "src/secom/workflows/manifest.py": "a1f2e18caa92c84e5f1f5bd54e15c182da815293e0eed1d8c313d11a762fa923",
+      "src/secom/workflows/temporal_robustness.py": "52d9b48b5dded1ab7b4bb75b0b1f0fe45ad6835709e57a8f066b7dbc1f78d315"
+    },
+    "normalization": "UTF-8 text with LF line endings",
+    "sha256": "9c660d2bb051504fe86203e90797e1b60e3f14e4d8bca538bec4ea47a83f3814"
+  },
   "study_spec_path": "docs/spec",
-  "study_spec_sha256": "96dee0e0de2ca45a0c2f8a32e506bdde5363e4eb08cb6d0885e913bf3b453d47",
+  "study_spec_sha256": "5c5ef3c040d1504116e7345213e7a44a8a04e807d4787bca9aaca02c4ed100f6",
   "temporal_claim_restrictions": [
     "primary_high_shift_blocks_lockbox_superiority_claim"
   ],

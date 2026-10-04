@@ -65,7 +65,9 @@ def write_benchmark_comparison_figure(
     original["study"] = "original"
     tuned["study"] = "tuned"
     frame = pd.concat([original, tuned], ignore_index=True)
-    frame["label"] = frame["study"] + ": " + frame["selector"] + " / " + frame["classifier"]
+    frame["label"] = (
+        frame["study"] + ": " + frame["selector"] + " / " + frame["classifier"] + " / " + frame["replication_mode"]
+    )
     frame = frame.sort_values("mean_BER", ascending=True)
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -117,7 +119,7 @@ def write_tuned_delta_figure(
     merged["label"] = merged["selector"] + " / " + merged["classifier"] + " / " + merged["replication_mode"]
     merged = merged.sort_values("delta_BER", ascending=True)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(10, max(6, 0.35 * len(merged) + 1.5)))
     colors = ["#6d597a" if value <= 0 else "#e56b6f" for value in merged["delta_BER"]]
     ax.barh(merged["label"], merged["delta_BER"], color=colors)
     ax.axvline(0.0, color="#444444", linewidth=1)
@@ -128,35 +130,49 @@ def write_tuned_delta_figure(
     plt.close(fig)
 
 
+def feature_stability_plot_rows(feature_report: pd.DataFrame, summary: pd.DataFrame) -> pd.DataFrame:
+    """Choose a single leading configuration; rank only by cross-fold selection frequency."""
+    best = summary.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).iloc[0]
+    rows = feature_report[
+        (feature_report["selector"] == best["selector"])
+        & (feature_report["classifier"] == best["classifier"])
+        & (feature_report["replication_mode"] == best["replication_mode"])
+    ].copy()
+    return rows.sort_values(["selection_frequency", "feature_name_or_source_col"], ascending=[False, True]).head(10)
+
+
 def write_feature_stability_figure(
     feature_report: pd.DataFrame | None,
     tuned_feature_report: pd.DataFrame | None,
     output_path: Path,
+    *,
+    benchmark_summary: pd.DataFrame | None = None,
+    benchmark_tuned_summary: pd.DataFrame | None = None,
 ) -> None:
-    """Plot benchmark feature-prioritization evidence without implying causality."""
-    if feature_report is None or feature_report.empty or tuned_feature_report is None or tuned_feature_report.empty:
+    """Show original and tuned stability in separate, explicitly scoped panels."""
+    inputs = (feature_report, tuned_feature_report, benchmark_summary, benchmark_tuned_summary)
+    if any(frame is None or frame.empty for frame in inputs):
         _save_placeholder_figure(
-            output_path,
-            "Feature Stability",
-            "Feature report artifacts are missing.",
+            output_path, "Feature Stability", "Feature reports or benchmark summaries are missing."
         )
         return
-
-    original = feature_report.copy()
-    tuned = tuned_feature_report.copy()
-    original["study"] = "original"
-    tuned["study"] = "tuned"
-    frame = pd.concat([original, tuned], ignore_index=True)
-    frame["plot_score"] = frame["expected_contribution"].fillna(frame["selection_frequency"])
-    frame = frame.sort_values("plot_score", ascending=False).head(12).copy()
-    frame["label"] = frame["study"] + ": " + frame["feature_name_or_source_col"]
-    colors = frame["feature_type"].map({"value": "#457b9d", "missing_indicator": "#e76f51"}).fillna("#8d99ae")
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.barh(frame["label"], frame["plot_score"], color=colors)
-    ax.set_title("Feature Prioritization Across Benchmark Studies")
-    ax.set_xlabel("model-prioritization score")
-    ax.invert_yaxis()
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True)
+    for ax, study, report, summary in zip(
+        axes,
+        ("Original", "Tuned"),
+        (feature_report, tuned_feature_report),
+        (benchmark_summary, benchmark_tuned_summary),
+        strict=True,
+    ):
+        rows = feature_stability_plot_rows(report, summary)
+        best = summary.sort_values(["mean_BER", "selector", "classifier", "replication_mode"]).iloc[0]
+        colors = rows["feature_type"].map({"value": "#457b9d", "missing_indicator": "#e76f51"})
+        ax.barh(rows["feature_name_or_source_col"], rows["selection_frequency"] * 100, color=colors)
+        ax.set_title(f"{study}: {best['selector']} / {best['classifier']}\n{best['replication_mode']}")
+        ax.set_xlabel("Selected in outer folds (%)")
+        ax.set_xlim(0, 105)
+        ax.invert_yaxis()
+    fig.suptitle("Feature selection stability (blue: value; orange: missing indicator)")
     fig.tight_layout()
     fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
@@ -176,18 +192,15 @@ def write_temporal_drift_figure(
         return
 
     row = temporal_drift.iloc[0]
-    metrics = pd.Series(
-        {
-            "abs_prevalence_shift": float(row.get("abs_prevalence_shift", np.nan)),
-            "max_PSI": float(row.get("max_PSI", np.nan)),
-            "median_PSI": float(row.get("median_PSI", np.nan)),
-        }
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
+    axes[0].bar(["Absolute prevalence shift"], [100 * float(row.get("abs_prevalence_shift", np.nan))], color="#2a9d8f")
+    axes[0].set_ylabel("percentage points")
+    psi = pd.Series(
+        {"max PSI": float(row.get("max_PSI", np.nan)), "median PSI": float(row.get("median_PSI", np.nan))}
     ).dropna()
-
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.bar(metrics.index.tolist(), metrics.values.tolist(), color=["#2a9d8f", "#e76f51", "#e9c46a"])
-    ax.set_title(f"Temporal Drift Summary ({row.get('drift_gate_status', 'unknown')})")
-    ax.set_ylabel("value")
+    axes[1].bar(psi.index, psi.values, color=["#e76f51", "#e9c46a"])
+    axes[1].set_ylabel("Population Stability Index")
+    fig.suptitle(f"Temporal drift ({row.get('drift_gate_status', 'unknown')})")
     fig.tight_layout()
     fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
     plt.close(fig)
@@ -238,7 +251,7 @@ def write_lockbox_vs_mspc_figure(
     fig, ax = plt.subplots(figsize=(7, 4.5))
     ax.bar(labels, values, color=["#264653", "#f4a261"])
     ax.set_ylim(0, max(1.0, max(finite_values) + 0.1))
-    ax.set_title("Lockbox TPR at Matched TNR90")
+    ax.set_title("Retrospective Lockbox ROC Comparison (TNR ≥ 90%)")
     ax.set_ylabel("TPR_at_TNR90")
     fig.tight_layout()
     fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches="tight")
@@ -263,9 +276,9 @@ def write_workload_cost_figure(
 
     manager = temporal_manager.copy()
     manager["label"] = manager["role"] + " / " + manager["threshold_policy"]
-    axes[0].bar(manager["label"], manager["mean_weekly_flagged_wafers"], color="#577590")
-    axes[0].set_title("Weekly Flagged Wafers")
-    axes[0].set_ylabel("mean flagged wafers")
+    axes[0].bar(manager["label"], manager["mean_weekly_flagged_samples"], color="#577590")
+    axes[0].set_title("Weekly Flagged Samples")
+    axes[0].set_ylabel("mean flagged samples")
     axes[0].tick_params(axis="x", rotation=20)
 
     for column in ["primary_scientific", "primary_operational", "all_pass_baseline", "all_flag_baseline"]:

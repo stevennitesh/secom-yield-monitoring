@@ -26,6 +26,12 @@ The temporal robustness study answers:
 3. Drift restrictions and lockbox claim restrictions are scoped to this study unless explicitly elevated.
 4. Operational framing from this study is informative, but not a substitute for real deployment evidence.
 
+## Model and Threshold Semantics
+
+The temporal workflow evaluates balanced logistic regression. It is a separate chronological stress test, not an out-of-time validation of the exact selected KRR benchmark model. Scientific and illustrative operational thresholds are fitted on DEV scores and frozen before lockbox evaluation. They are not independently calibrated operating points.
+
+Matched-TNR90 supervised/MSPC comparisons select ROC thresholds retrospectively using evaluation labels. Label them diagnostic and descriptive; do not present them as frozen-threshold operating performance. Report lockbox sample/failure counts and TP/FP/TN/FN alongside rates. Small failure counts and drift limit precision and superiority claims.
+
 ## See Also
 
 - [01 Study Goal](01-study-goal.md)

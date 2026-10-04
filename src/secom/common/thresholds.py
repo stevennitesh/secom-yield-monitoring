@@ -10,7 +10,7 @@ MAX_WEEKLY_FLAG_FRACTION = 0.10
 
 
 def weekly_flag_fraction(scores: np.ndarray, threshold: float, week_labels: np.ndarray) -> float:
-    """Return the mean weekly fraction of wafers flagged at ``threshold``."""
+    """Return the mean weekly fraction of samples flagged at ``threshold``."""
     predictions = predict_from_threshold(scores, threshold)
     weeks = np.asarray(week_labels, dtype=int)
 

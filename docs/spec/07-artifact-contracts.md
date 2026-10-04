@@ -109,6 +109,12 @@ The run manifest must distinguish between:
 
 Artifact naming should follow the new study structure rather than the legacy lane numbering or old workflow ordering.
 
+## Complete-Run Provenance and Evidence Export
+
+A full study requires a fresh output directory. Its manifest additionally records exact input-file hashes and observed dataset shape/counts/timestamps/missingness, LF-normalized source/spec content identity, resolved packages, seeds/grids/classifiers, UTC start/end times, modeling duration and thread settings. Git dirty status remains truthful; the base commit is never replaced by a publication placeholder. Completed CSV hashes bind the artifact set to that run. Focused study commands retain layer-specific manifests; public export requires the complete-run provenance.
+
+The public snapshot exporter validates all artifacts and their CSV hashes, verifies the current source/spec against the run identity, and preserves the original manifest unchanged. Git tracks only the report, its figures and small manifest/audit receipts. Detailed CSVs remain under ignored `runs/<study>/reports/`; a compressed archive of complete reports and exact normalized source is saved under `runs/<study>/evidence/`. The archive excludes raw data, and its hash appears in the public receipt. Publication revision and source execution identity are distinct concepts. Export removes only named generated CSVs and the legacy ZIP from the public snapshot, preserving manual files and local runs.
+
 ## See Also
 
 - [02 Benchmark Replication Study](02-benchmark-replication-study.md)

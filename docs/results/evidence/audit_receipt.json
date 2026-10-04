@@ -1,0 +1,25 @@
+{
+  "audit_ok": true,
+  "claim_restrictions": [
+    "primary_high_shift_blocks_lockbox_superiority_claim"
+  ],
+  "errors": [],
+  "exported_at_utc": "2026-10-04T00:37:46.954972+00:00",
+  "files_sha256": {
+    "evidence/run_manifest.json": "aadb6ee7429ad0c961aad2f6a5c43ed775d8af977f6a9eba8daacbaa685c4847",
+    "figures/benchmark_comparison.png": "b581f1d825025b605503b2a1a29151793af42861534cba3bda5cef7c3f9a1483",
+    "figures/feature_stability.png": "12ff9d12fd8c62b8dd7ef5638234477f6149ffdceefb63f580a3fbfddc44e612",
+    "figures/lockbox_vs_mspc.png": "7d481f62d0efdb99a54cfe777cee2d5e3df580d64a05c72516f5a8e0ec4d9d7a",
+    "figures/temporal_drift.png": "d8fd8e80130931d9a94263bb2edfcc51b041e22b4936a94f26512b8f7922eacf",
+    "figures/tuned_vs_original_delta.png": "4a94ebd06364e5d92f0b33b63fd7b33f60d2d1eb622e21e77c106116db0e5cc0",
+    "figures/workload_cost_framing.png": "66e1e6cda870d3c2f3b09451d5ca8813f0dec2c427a4303695fc1e646624eda9",
+    "final_report.md": "25df6fa3b68d7f11974de7e8d816c3dbb8af43a9453abd4435de36532429321d"
+  },
+  "local_archive_path": "runs\\finalization_20261003_optimized_v3\\evidence\\study_artifacts.zip",
+  "local_archive_sha256": "024cb9f82c4a2efae114d2709ef6a8ce5dc3d62abfaab619f15c87a95feacf4d",
+  "source_run": "runs\\finalization_20261003_optimized_v3",
+  "source_tree_sha256": "9c660d2bb051504fe86203e90797e1b60e3f14e4d8bca538bec4ea47a83f3814",
+  "warnings": [
+    "temporal robustness status indicates warnings"
+  ]
+}

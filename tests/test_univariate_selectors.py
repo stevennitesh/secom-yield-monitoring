@@ -266,64 +266,27 @@ def test_gram_schmidt_rank_features_skips_redundant_correlated_feature() -> None
     assert scores[2] > scores[1]
 
 
-def test_relief_rank_features_fallback_matches_known_neighborhood_geometry(monkeypatch) -> None:
-    """Fallback ReliefF should reward nearest misses and penalize nearest hits."""
+def test_relief_rank_features_missing_dependency_is_an_error(monkeypatch) -> None:
+    """A missing dependency must not substitute a different selector algorithm."""
     monkeypatch.setitem(sys.modules, "skrebate", None)
-    x = np.asarray(
-        [
-            [0.0, 0.0],
-            [0.0, 1.0],
-            [2.0, 0.0],
-            [2.0, 1.0],
-        ],
-        dtype=float,
-    )
-    y = np.asarray([0, 0, 1, 1], dtype=int)
-
-    order, scores = relief_rank_features(x, y, n_neighbors=1)
-
-    assert order.tolist() == [0, 1]
-    assert np.allclose(scores, [2.0, -1.0])
+    with np.testing.assert_raises(ModuleNotFoundError):
+        relief_rank_features(np.asarray([[0.0], [1.0]]), np.asarray([0, 1]), n_neighbors=1)
 
 
-def test_relief_rank_features_fallback_marks_constant_columns_as_bottom_rank(monkeypatch) -> None:
-    """Fallback ReliefF should never prefer constant columns over usable features."""
-    monkeypatch.setitem(sys.modules, "skrebate", None)
-    x = np.asarray(
-        [
-            [0.0, 0.0, 5.0],
-            [0.0, 1.0, 5.0],
-            [2.0, 0.0, 5.0],
-            [2.0, 1.0, 5.0],
-        ],
-        dtype=float,
-    )
-    y = np.asarray([0, 0, 1, 1], dtype=int)
+def test_relief_rank_features_fit_failure_is_an_error(monkeypatch) -> None:
+    """A dependency failure must be visible to workflow status and audit handling."""
+    monkeypatch.setenv("SECOM_RELIEF_BACKEND", "reference")
 
-    order, scores = relief_rank_features(x, y, n_neighbors=1)
+    class BrokenReliefF:
+        def __init__(self, **kwargs):
+            pass
 
-    assert order.tolist() == [0, 1, 2]
-    assert np.isneginf(scores[2])
+        def fit(self, x, y):
+            raise RuntimeError("selector failed")
 
-
-def test_relief_rank_features_caps_fallback_neighbors_to_available_candidates(monkeypatch) -> None:
-    """Fallback ReliefF should handle neighbor requests larger than class candidate counts."""
-    monkeypatch.setitem(sys.modules, "skrebate", None)
-    x = np.asarray(
-        [
-            [0.0, 0.0],
-            [0.0, 1.0],
-            [2.0, 0.0],
-            [2.0, 1.0],
-        ],
-        dtype=float,
-    )
-    y = np.asarray([0, 0, 1, 1], dtype=int)
-
-    order, scores = relief_rank_features(x, y, n_neighbors=10)
-
-    assert order.tolist() == [0, 1]
-    assert np.allclose(scores, [2.0, -0.5])
+    monkeypatch.setitem(sys.modules, "skrebate", types.SimpleNamespace(ReliefF=BrokenReliefF))
+    with np.testing.assert_raises_regex(RuntimeError, "selector failed"):
+        relief_rank_features(np.asarray([[0.0], [1.0]]), np.asarray([0, 1]), n_neighbors=1)
 
 
 def test_relief_rank_features_rejects_nonpositive_neighbors() -> None:
@@ -337,7 +300,9 @@ def test_relief_rank_features_rejects_nonpositive_neighbors() -> None:
 
 
 def test_relief_rank_features_external_path_sanitizes_scores_and_constants(monkeypatch) -> None:
-    """External skrebate scores should receive the same deterministic cleanup as fallback scores."""
+    """External skrebate scores should receive the deterministic cleanup before ranking."""
+    monkeypatch.setenv("SECOM_RELIEF_BACKEND", "reference")
+    monkeypatch.setenv("SECOM_RELIEF_N_JOBS", "1")
     captured: dict[str, int] = {}
 
     class FakeReliefF:
@@ -368,37 +333,54 @@ def test_relief_rank_features_external_path_sanitizes_scores_and_constants(monke
 
     order, scores = relief_rank_features(x, y, n_neighbors=3)
 
-    assert captured == {"n_features_to_select": 3, "n_neighbors": 3, "n_jobs": -1, "fit_rows": 4, "fit_labels": 4}
+    assert captured == {"n_features_to_select": 3, "n_neighbors": 3, "n_jobs": 1, "fit_rows": 4, "fit_labels": 4}
     assert order.tolist() == [0, 1, 2]
     assert scores[0] == 0.5
     assert np.isneginf(scores[1])
     assert np.isneginf(scores[2])
 
 
-def test_relief_rank_features_fallback_uses_deterministic_order(monkeypatch) -> None:
-    """Fallback ReliefF ranking should sanitize invalid scores deterministically."""
+def test_relief_cache_binds_training_inputs_and_returns_copies(monkeypatch) -> None:
+    """Reuse exactly matching training arrays without sharing mutable results or labels."""
     import secom.feature_select.relief as relief
 
-    def fake_fallback(x: np.ndarray, y: np.ndarray, n_neighbors: int) -> np.ndarray:
-        """Return fixed fallback ReliefF scores including an invalid value."""
-        return np.asarray([0.5, np.nan, 1.0, 1.0], dtype=float)
+    monkeypatch.setenv("SECOM_RELIEF_BACKEND", "reference")
+    monkeypatch.setenv("SECOM_RELIEF_N_JOBS", "1")
+    relief._SCORE_CACHE.clear()
+    calls = []
 
-    monkeypatch.setitem(sys.modules, "skrebate", None)
-    monkeypatch.setattr(relief, "_fallback_relief_scores", fake_fallback)
+    class FakeReliefF:
+        def __init__(self, **kwargs):
+            self.feature_importances_ = np.asarray([0.2, 0.8])
 
-    order, scores = relief_rank_features(
-        np.asarray(
-            [
-                [0.0, 1.0, 2.0, 3.0],
-                [1.0, 2.0, 3.0, 4.0],
-                [2.0, 3.0, 4.0, 5.0],
-                [3.0, 4.0, 5.0, 6.0],
-            ],
-            dtype=float,
-        ),
-        np.asarray([0, 1, 0, 1], dtype=int),
-        n_neighbors=1,
-    )
+        def fit(self, x, y):
+            calls.append((x.copy(), y.copy()))
 
-    assert order.tolist() == [2, 3, 0, 1]
-    assert np.isneginf(scores[1])
+    monkeypatch.setitem(sys.modules, "skrebate", types.SimpleNamespace(ReliefF=FakeReliefF))
+    x = np.asarray([[0.0, 1.0], [1.0, 0.0], [2.0, 1.0], [3.0, 0.0]])
+    y = np.asarray([0, 0, 1, 1])
+    order, scores = relief_rank_features(x, y, 1)
+    order[:] = 99
+    scores[:] = 99
+    cached_order, cached_scores = relief_rank_features(x.copy(), y.copy(), 1)
+    assert len(calls) == 1
+    assert cached_order.tolist() == [1, 0]
+    assert np.allclose(cached_scores, [0.2, 0.8])
+    relief_rank_features(x + 0.1, y, 1)
+    relief_rank_features(x, y[::-1], 1)
+    relief_rank_features(x, y, 2)
+    assert len(calls) == 4
+
+
+def test_relief_parallel_scores_equal_serial_scores(monkeypatch) -> None:
+    """Bounded parallel computation must preserve the scientific ranking and scores."""
+    monkeypatch.setenv("SECOM_RELIEF_BACKEND", "reference")
+    rng = np.random.default_rng(20)
+    x = rng.normal(size=(30, 8))
+    y = np.repeat([0, 1], 15)
+    monkeypatch.setenv("SECOM_RELIEF_N_JOBS", "1")
+    serial_order, serial_scores = relief_rank_features(x, y, 3)
+    monkeypatch.setenv("SECOM_RELIEF_N_JOBS", "2")
+    parallel_order, parallel_scores = relief_rank_features(x, y, 3)
+    assert np.array_equal(parallel_order, serial_order)
+    assert np.array_equal(parallel_scores, serial_scores)

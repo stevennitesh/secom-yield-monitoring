@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from _script_path import ensure_src_on_path
@@ -24,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input-dir", default=DEFAULT_INPUT_DIR)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--progress", action="store_true", help="Print study progress to stderr")
     return parser.parse_args()
 
 
@@ -32,8 +34,11 @@ def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
     workflow_error: str | None = None
+    options = {}
+    if args.progress:
+        options["progress"] = lambda message: print(message, file=sys.stderr, flush=True)
     try:
-        result = run_temporal_robustness(Path(args.input_dir), output_dir)
+        result = run_temporal_robustness(Path(args.input_dir), output_dir, **options)
     except Exception as exc:
         result = temporal_status_from_manifest(output_dir)
         workflow_error = workflow_error_line("temporal", exc)

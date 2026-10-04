@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from collections.abc import Callable
 import math
 from itertools import product
 from pathlib import Path
@@ -44,7 +45,7 @@ from secom.io import load_raw_secom, parse_sort_and_label
 from secom.metrics import (
     binary_metrics_at_threshold,
     core_binary_metrics_at_threshold,
-    expected_cost_per_wafer,
+    expected_cost_per_sample,
     extract_tpr_at_tnr,
     find_ber_optimal_threshold,
     predict_from_threshold,
@@ -359,12 +360,15 @@ def _phase2_freeze_for_role(
     selector: str,
     x_dev: np.ndarray,
     y_dev: np.ndarray,
+    progress: Callable[[str], None] | None = None,
 ) -> tuple[pd.DataFrame, RoleConfig]:
     """Freeze one role's selector, feature budget, C, scaler, and ReliefF neighbors."""
     configs = build_stage_b_config_grid(selector)
     per_config: dict[tuple[int, float, str, int | None], list[dict[str, Any]]] = {}
 
     for (k, scaler_name, n_neighbors), prep_configs in _group_stage_b_configs_by_preparation(configs).items():
+        if progress:
+            progress(f"temporal freeze role={role} k={k} scaler={scaler_name} neighbors={n_neighbors}")
         prepared_views = _prepare_phase2_inner_views(
             selector=selector,
             x_dev=x_dev,
@@ -539,6 +543,8 @@ def _score_lockbox_for_role(
                 "threshold_at_TNR90": float(lock_ctx["threshold_at_tnr90"]),
                 "TNR_at_TNR90": float(lock_ctx["tnr_at_tnr90"]),
                 "TPR_at_TNR90": float(lock_ctx["tpr_at_tnr90"]),
+                "TP": int(m["lockbox_fails"] - m["FN"]),
+                "TN": int(m["lockbox_n"] - m["lockbox_fails"] - m["FP"]),
                 "FP": int(m["FP"]),
                 "FN": int(m["FN"]),
             }
@@ -597,7 +603,7 @@ def _mspc_fit_and_score(
     x_eval: np.ndarray,
     y_eval: np.ndarray,
 ) -> dict[str, Any]:
-    """Fit a PCA MSPC baseline on pass wafers and score an eval window."""
+    """Fit a PCA MSPC baseline on pass samples and score an eval window."""
     imputer = SimpleImputer(strategy="median", keep_empty_features=True, add_indicator=False)
     scaler = StandardScaler()
     x_train_imp = imputer.fit_transform(x_train_pass)
@@ -670,7 +676,7 @@ def _manager_weekly_metrics(
     sample_count = len(y_true)
     return {
         "predicted_flag_fraction": float(np.mean(preds)) if sample_count else 0.0,
-        "mean_weekly_flagged_wafers": float(np.mean(flagged_counts)) if flagged_counts.size else 0.0,
+        "mean_weekly_flagged_samples": float(np.mean(flagged_counts)) if flagged_counts.size else 0.0,
         "mean_weekly_fail_captures": float(np.mean(tp_counts)) if tp_counts.size else 0.0,
         "mean_weekly_fail_misses": float(np.mean(fn_counts)) if fn_counts.size else 0.0,
     }
@@ -689,7 +695,7 @@ def _build_temporal_cost_curves(lockbox_df: pd.DataFrame, y_lock: np.ndarray) ->
                     row[key] = np.nan
                 else:
                     rr = sub.iloc[0]
-                    row[key] = expected_cost_per_wafer(
+                    row[key] = expected_cost_per_sample(
                         fp=float(rr["FP"]),
                         fn=float(rr["FN"]),
                         n=float(rr["lockbox_n"]),
@@ -722,7 +728,7 @@ def _build_manager_outputs(
                     "selector": fitted.config.selector,
                     "threshold_policy": policy,
                     "predicted_flag_fraction": float(weekly["predicted_flag_fraction"]),
-                    "mean_weekly_flagged_wafers": float(weekly["mean_weekly_flagged_wafers"]),
+                    "mean_weekly_flagged_samples": float(weekly["mean_weekly_flagged_samples"]),
                     "mean_weekly_fail_captures": float(weekly["mean_weekly_fail_captures"]),
                     "mean_weekly_fail_misses": float(weekly["mean_weekly_fail_misses"]),
                 }
@@ -781,7 +787,7 @@ def _stage_b_inner_artifact_row(
 
 
 def _flagged_fraction(metrics: dict[str, float]) -> float:
-    """Return the fraction of wafers flagged by a binary metric payload."""
+    """Return the fraction of samples flagged by a binary metric payload."""
     flagged = float(metrics["FP"]) + (float(metrics["lockbox_fails"]) - float(metrics["FN"]))
     return float(flagged / max(float(metrics["lockbox_n"]), 1.0))
 
@@ -938,6 +944,7 @@ def _run_stage_b_model_selection(
     selectors_run: list[str],
     x_dev: np.ndarray,
     y_dev: np.ndarray,
+    progress: Callable[[str], None] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Run temporal Stage-B inner search and outer evaluation for all selectors."""
     if bundle.fold_plan is None:
@@ -956,6 +963,8 @@ def _run_stage_b_model_selection(
             y_outer_test = y_dev[fold.test_index]
 
             for seed in SEEDS_STAGE_B:
+                if progress:
+                    progress(f"temporal selection selector={selector} outer_fold={fold.outer_fold} seed={seed}")
                 config_scores = []
                 resample_id = f"outer_{fold.outer_fold}_seed_{seed}"
                 for (k_value, scaler_name, n_neighbors), cfg_group in config_groups.items():
@@ -1022,6 +1031,7 @@ def run_temporal_robustness(
     output_dir: Path,
     *,
     selectors_run: list[str] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Run temporal robustness and persist failed status before re-raising errors."""
     try:
@@ -1029,6 +1039,7 @@ def run_temporal_robustness(
             input_dir=input_dir,
             output_dir=output_dir,
             selectors_run=selectors_run,
+            progress=progress,
         )
     except Exception as exc:
         with suppress(Exception):
@@ -1046,6 +1057,7 @@ def _run_temporal_robustness(
     output_dir: Path,
     *,
     selectors_run: list[str] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Run the temporal robustness study and write all temporal artifacts."""
     reports = ensure_reports_dir(output_dir)
@@ -1089,6 +1101,8 @@ def _run_temporal_robustness(
     stage_a_rows: list[dict[str, Any]] = []
     for cfg in _stage_a_configs(selectors_run):
         selector = cfg["selector"]
+        if progress:
+            progress(f"temporal screening selector={selector}")
         fold_ber_values: list[float] = []
         for fold in bundle.fold_plan.folds:
             metrics, _threshold = _fit_eval_with_labels(
@@ -1117,6 +1131,7 @@ def _run_temporal_robustness(
         selectors_run=selectors_run,
         x_dev=x_dev,
         y_dev=y_dev,
+        progress=progress,
     )
     write_csv(inner_df, reports / ArtifactName.TEMPORAL_INNER_CV)
 
@@ -1134,11 +1149,11 @@ def _run_temporal_robustness(
 
     freeze_frames = []
     frozen_roles: list[RoleConfig] = []
-    freeze_primary_df, cfg_primary = _phase2_freeze_for_role("primary", primary, x_dev, y_dev)
+    freeze_primary_df, cfg_primary = _phase2_freeze_for_role("primary", primary, x_dev, y_dev, progress)
     freeze_frames.append(freeze_primary_df)
     frozen_roles.append(cfg_primary)
     if challenger is not None:
-        freeze_ch_df, cfg_ch = _phase2_freeze_for_role("challenger", challenger, x_dev, y_dev)
+        freeze_ch_df, cfg_ch = _phase2_freeze_for_role("challenger", challenger, x_dev, y_dev, progress)
         freeze_frames.append(freeze_ch_df)
         frozen_roles.append(cfg_ch)
     freeze_df = pd.concat(freeze_frames, ignore_index=True)
@@ -1155,6 +1170,8 @@ def _run_temporal_robustness(
         for cfg in frozen_roles
     ]
 
+    if progress:
+        progress("temporal frozen models fitted; scoring lockbox, drift and MSPC")
     lock_rows = []
     drift_rows = []
     for fitted in fitted_models:
@@ -1204,6 +1221,8 @@ def _run_temporal_robustness(
         temporal_status=StudyStatus.WARNING if restrictions else StudyStatus.PASSED,
         claim_restrictions=restrictions,
     )
+    if progress:
+        progress("temporal artifacts written")
     return {
         "temporal_robustness_status": manifest["temporal_robustness_status"],
         "primary_selector": primary,

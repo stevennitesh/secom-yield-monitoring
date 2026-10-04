@@ -1,0 +1,79 @@
+{
+  "csv_sha256": {
+    "benchmark_ablation.csv": "0ae6ea23dec887d0253b5be746811bbfb551f058dde8405b3dc054f6c04096ad",
+    "benchmark_best_config.csv": "76b25a0dd080a8419897904df594d2978aac2a416f11542e1be011a7313123cf",
+    "benchmark_fold_metrics.csv": "4a9a2e36aa3533cdae65fefc3f010eedc23b92776b1cfd04d1f1a570c3f805b2",
+    "benchmark_full_fit_summary.csv": "5cd5261b89bfee64d6786b57b4181f7b68367011985d9643f1d5689a6ae630c4",
+    "benchmark_summary.csv": "e9dc19b6a8e438a35b1376f53216219dbc55cc52259c27ab91eb3bc70902cdb3",
+    "benchmark_sweep.csv": "2b3aede9ef3fbb85e75a876eb054f3b6b1cdfb9f5b7b256e9b49be1383e8fc1e",
+    "benchmark_tuned_ablation.csv": "a1c56f62d180099270cd33eb8972ac3f81ecbfb25952d74de1f8d58c18a1f301",
+    "benchmark_tuned_best_config.csv": "74b0be217d87d6cf5790283f3ffc9f6c663937a26574e6042d880dfe9762d911",
+    "benchmark_tuned_feature_report.csv": "b6390050db4bbfc44feced891db585df75753107488301d1a16ac364d50ebd92",
+    "benchmark_tuned_feature_stability.csv": "e7b8c5dca5df34bb9c65f719673d55523c8cac402c26002f4c4e303b197f2fde",
+    "benchmark_tuned_fold_metrics.csv": "4d5bf3f50d01c4726d3e572ac8f175c83ec799049385fd65733f8851d80c2269",
+    "benchmark_tuned_full_fit_summary.csv": "ad09da0d86c00c4e79f3704eb5e2219f677b714b2b30ff0b478ec083d8392c66",
+    "benchmark_tuned_search.csv": "cf48d0ce01f70948289ec4ad5e0bd83d4842ecb0c34e5e24c0e50c94ccb778a2",
+    "benchmark_tuned_summary.csv": "b378d84e1fafae5225938f4cb20f99e18ee9cdb029f906bb945c0d95a7cfb116",
+    "feature_report.csv": "b7ddd5313ce2470801ed5ba1734cb536283a8fec97e3e18b22c5820cd110cecd",
+    "feature_stability.csv": "9a1cb5534b03cbd1580d2ce6a4298f83cf543c200e31ab08ebea6e234cb3bd6f",
+    "temporal_cost_curves.csv": "619e7148cf36a9241f36443395b55f677680943f8ea274baa862e0cee3ba54f8",
+    "temporal_drift_summary.csv": "cb9f3d08cc517840a55a1b0863ec4bb10ce3537d84951a8302260f8f8601e96e",
+    "temporal_freeze.csv": "1fa51d3fd31606e827032c9b63f08a0e1f0b0d06b46c4d0ccb2a202223e23ba3",
+    "temporal_inner_cv.csv": "70988cce7d473f991743b3c9054bb4d584a3bfa3fab29b55993d94dd37b5e92b",
+    "temporal_lockbox.csv": "233bf020ce354108b01d6afef4d92255102cc9f706d8aeb89ed974279764fd2c",
+    "temporal_manager_outputs.csv": "73dc80ad7b30c461a8893756ffee68b838c8ffe44ab592fe16c65b7658a43190",
+    "temporal_model_selection.csv": "fbff8bcb0b65e7cbf1d69656b76391c47fd4d10dfd7a79eb12b5e71bf77fb151",
+    "temporal_mspc.csv": "6f4d8ea05c1f5747f2a1b79a8c2e91589a07fc47ac69dfec2cba8c4d5b1d1bd5",
+    "temporal_selector_screening.csv": "9ec284309b8cd05ff7edbc07d4ed13c212b877156d50207afb6fcf5f4af92e87",
+    "temporal_split_metadata.csv": "9760e48e8d5b0dbbe2022d78d45bb557a4822ed44f2cbf90147d040516b478b0"
+  },
+  "identical_scientific_csvs": 26,
+  "optimized_duration_seconds": {
+    "benchmark": 761.831,
+    "temporal": 494.964,
+    "total_modeling": 1256.79
+  },
+  "optimized_source_sha256": "9c660d2bb051504fe86203e90797e1b60e3f14e4d8bca538bec4ea47a83f3814",
+  "reference_duration_seconds": {
+    "benchmark": 2111.26,
+    "temporal": 2454.64,
+    "total_modeling": 4565.9
+  },
+  "reference_source_sha256": "ecd15943b124811cfdd6177530372fc2d7c20d1b773b004f7f49b7b16160b79a",
+  "relief_microbenchmark": [
+    {
+      "exact_scores_and_ranks": true,
+      "n_features": 1032,
+      "n_samples": 1200,
+      "neighbors": 5,
+      "reference_seconds": 9.020028200000525,
+      "reference_workers": 4,
+      "speedup": 14.54294379145786,
+      "vectorized_seconds": 0.620234000030905,
+      "vectorized_workers": 1
+    },
+    {
+      "exact_scores_and_ranks": true,
+      "n_features": 1032,
+      "n_samples": 1200,
+      "neighbors": 10,
+      "reference_seconds": 7.5557794000487775,
+      "reference_workers": 4,
+      "speedup": 10.970922143637711,
+      "vectorized_seconds": 0.6887095998972654,
+      "vectorized_workers": 1
+    },
+    {
+      "exact_scores_and_ranks": true,
+      "n_features": 1032,
+      "n_samples": 1200,
+      "neighbors": 20,
+      "reference_seconds": 7.646077499957755,
+      "reference_workers": 4,
+      "speedup": 9.301536051821655,
+      "vectorized_seconds": 0.8220230999868363,
+      "vectorized_workers": 1
+    }
+  ],
+  "total_speedup": 3.6329856221007484
+}

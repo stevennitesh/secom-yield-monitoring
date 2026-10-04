@@ -263,7 +263,7 @@ def test_final_report_scopes_feature_selection_claims(
         [
             "Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof",
             "validated process-driver identification",
-            "Figure 3 summarizes benchmark feature-prioritization evidence",
+            "Figure 3 shows outer-fold selection frequency for one leading configuration per study",
         ],
     )
     assert_text_excludes_all(text, ["most stable and influential features"])

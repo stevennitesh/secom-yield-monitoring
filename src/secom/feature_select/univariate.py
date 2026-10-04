@@ -56,7 +56,7 @@ def _class_stats(x: np.ndarray, y_bin: np.ndarray) -> _ClassStats:
 
 
 def score_s2n(x: np.ndarray, y_bin: np.ndarray, eps: float = EPS_SELECTOR) -> np.ndarray:
-    """Score features by signal-to-noise separation between fail and pass wafers."""
+    """Score features by signal-to-noise separation between fail and pass samples."""
     x = np.asarray(x, dtype=float)
     stats = _class_stats(x, y_bin)
     score = np.abs(stats.mu_fail - stats.mu_pass) / (stats.sd_fail + stats.sd_pass + eps)

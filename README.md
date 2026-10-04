@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/stevennitesh/secom-yield-monitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/stevennitesh/secom-yield-monitoring/actions/workflows/ci.yml)
 
-Production-style machine learning study for semiconductor yield risk monitoring.
+A reproducible benchmark study of semiconductor test pass/fail prediction and chronological robustness.
 
-This project turns the public [UCI SECOM dataset](https://archive.ics.uci.edu/dataset/179/secom) into a reproducible Python study pipeline. It predicts wafer pass/fail outcomes from high-dimensional manufacturing sensor data, compares benchmark and tuned models under leakage-controlled evaluation, and generates audit-ready artifacts plus a final markdown report.
+This project turns the public [UCI SECOM dataset](https://archive.ics.uci.edu/dataset/179/secom) into a reproducible Python study pipeline. It predicts recorded test pass/fail outcomes from high-dimensional manufacturing sensor data, compares benchmark and tuned models under leakage-controlled evaluation, and generates audit-ready artifacts plus a final markdown report.
 
 The repo is designed as a defensible ML engineering case study. It emphasizes reproducibility, careful evaluation, transparent artifacts, and clear limits on what can and cannot be claimed from a public benchmark dataset.
 
@@ -13,8 +13,8 @@ The repo is designed as a defensible ML engineering case study. It emphasizes re
 | Area | Summary |
 | --- | --- |
 | Domain | Semiconductor manufacturing yield monitoring |
-| Business question | Can sensor data identify wafers at elevated failure risk early enough to prioritize engineering review? |
-| Dataset | UCI SECOM: 1,567 manufacturing examples, 591 process features, missing values, and 104 failures |
+| Business question | Can sensor data predict recorded pass/fail labels, and how robust is that association under chronological shift? |
+| Dataset | UCI SECOM: 1,567 manufacturing examples, 590 measurement columns (591 in source metadata), missing values, and 104 failures |
 | ML task | Imbalanced binary classification for pass/fail risk scoring |
 | Primary metric | Balanced Error Rate (BER), supported by fail recall, pass specificity, ROC AUC, PR AUC, MCC, and F2 |
 | Study design | Benchmark replication first, tuned benchmark second, temporal robustness as a separate stress test |
@@ -50,45 +50,33 @@ The project is organized around four evidence layers.
 
 | Layer | What It Does | Why It Matters |
 | --- | --- | --- |
-| Original benchmark replication | Reproduces the literature-style 40-feature benchmark family. | Establishes that the project can match the known comparison target before claiming improvements. |
+| Original benchmark replication | Reproduces the literature-style 40-feature benchmark family. | Provides a literature-style reference comparison, with the published classifier discrepancy disclosed. |
 | Tuned benchmark | Tunes selectors and classifiers under the same benchmark framing. | Tests whether a better risk-scoring model is possible without changing the study target. |
-| Temporal robustness | Runs chronological development and lockbox stress tests. | Checks whether signal quality changes when future wafers differ from historical wafers. |
+| Temporal robustness | Runs chronological development and lockbox stress tests. | Checks whether signal quality changes when later production entities differ from earlier ones. |
 | Industrialization-gap analysis | Documents missing deployment evidence. | Makes clear what cost, workflow, governance, and monitoring decisions would be needed before production use. |
 
 The key design choice is claim separation. Temporal robustness can restrict operational confidence, but it does not automatically invalidate the original benchmark replication or tuned benchmark comparison.
 
 ## Current Results
 
-A regenerated full-study run on June 6, 2026 produced the public evidence snapshot under `docs/results/`, including the generated report at `docs/results/final_report.md`. Lower BER is better because it averages the error rate across the failure and pass classes.
+A fresh full study on October 3, 2026 produced the [report](docs/results/final_report.md), [audit receipt](docs/results/evidence/audit_receipt.json) and [execution manifest](docs/results/evidence/run_manifest.json). Git keeps this small snapshot and its figures; detailed CSVs and the full artifact/source archive remain under ignored `runs/`. The artifact audit passed; temporal warnings and claim restrictions remain active. The manifest records approximately 20.9 minutes of modeling with the `vectorized` ReliefF backend and 1 scoring process(es). See [runtime measurements and equivalence checks](docs/performance.md).
 
-| Evidence Layer | Headline Result | How To Read It |
+Lower BER is better: it averages the failure miss rate and pass false-alarm rate. An all-pass rule has BER 0.500 despite 93.36% accuracy.
+
+| Evidence Layer | Observed Result | Interpretation |
 | --- | --- | --- |
-| Original benchmark replication | Strict UCI-style baseline: best local row mean BER `0.310`; missing-indicator ablation winner mean BER `0.292` | The strict rows compare directly with the published benchmark, while missing indicators show the best result from the original-replication study. |
-| Tuned benchmark | Best row: `ReliefF` + `krr` in strict mode, mean BER `0.319` | This is the more conservative benchmark estimate because hyperparameters are selected inside nested cross-validation. |
-| Temporal robustness | Primary chronological candidate: `ReliefF`, mean BER `0.471` | The future-looking stress test is much harder than the benchmark setting. |
-| Temporal claim status | `HIGH_SHIFT` drift gate with one active claim restriction | Lockbox results remain useful diagnostics, but not confirmatory proof of operational superiority. |
+| Original benchmark | `ReliefF` / `krr` / `with_missing_indicators`, mean BER `0.292`, TPR `0.627`, TNR `0.788` | Configurations are selected from the same non-nested CV sweep used to report them. |
+| Tuned benchmark | `F-test` / `logreg` / `with_missing_indicators`, mean BER `0.309`, TPR `0.685`, TNR `0.697` | Hyperparameters are tuned within each family using nested CV; the leading family is selected retrospectively. |
+| Temporal stress test | `ReliefF` with balanced logistic regression; DEV mean BER `0.471` | A separate chronological study, rather than out-of-time validation of the exact KRR model. |
+| Temporal claim status | `HIGH_SHIFT`; 1 active restriction(s) | Lockbox results are descriptive and do not establish operational superiority. |
 
-### Original Benchmark Comparison
+The primary scientific lockbox threshold catches 4 of 9 failures among 235 samples, with 0 false positives and 5 missed failures. The small failure count limits precision. Matched-TNR90 comparisons use retrospective ROC thresholds chosen with lockbox labels; they are diagnostic, not frozen operating performance.
 
-The apples-to-apples baseline comparison is the UCI 40-feature kernel-ridge benchmark versus this repo's strict original-replication KRR rows. Lower BER is better, so positive improvement means the local replication reduced balanced error relative to the published benchmark reference. The stronger `0.292` headline result comes from the paired missing-indicator ablation, not from this strict UCI-style comparison.
+The reference comparison also has a source discrepancy: [UCI](https://archive.ics.uci.edu/dataset/179/secom) describes the published 40-feature table as kernel ridge, while [Table 1 of the original paper](https://proceedings.mlr.press/v6/mccann10a/mccann10a.pdf) labels it Naive Bayes. The report keeps those values as reference context and qualifies exact replication claims.
 
-| UCI method | Local selector | UCI BER % | Local BER % | BER improvement |
-| --- | --- | ---: | ---: | ---: |
-| S2N | S2N | 34.5 | 35.3 | -0.8 pp |
-| Ttest | Ttest | 33.7 | 31.0 | 2.7 pp |
-| Relief | ReliefF | 40.1 | 32.5 | 7.6 pp |
-| Pearson | Pearson | 34.1 | 31.0 | 3.1 pp |
-| Ftest | F-test | 33.5 | 31.0 | 2.5 pp |
-| Gram Schmidt | Gram-Schmidt | 35.6 | 33.5 | 2.1 pp |
+Feature evidence separates selection stability from full-data logistic-regression coefficients. Prominent missing indicators M112/M247/M385/M519 have identical missingness masks, with an October missing rate near 89%; that association may reflect collection regime or time. Early warning, causal process drivers and intervention benefit remain unestablished.
 
-Plain-language interpretation:
-
-- The benchmark studies support the core project claim: SECOM sensor data contains usable signal for yield-risk modeling.
-- Against the original UCI benchmark setup, the strict local KRR replication improves BER for five of six selector rows; the largest apples-to-apples gain is `7.6 pp` for ReliefF.
-- Missing-indicator features further improve the best original-replication row: ReliefF KRR moves from strict BER `0.325` to BER `0.292`, a `3.2 pp` reduction.
-- The tuned benchmark is intentionally stricter than the original replication, so its slightly worse BER is not a regression; it is a more conservative estimate.
-- The temporal study warns that future wafers look materially different from the development period. The development failure rate was `7.13%`, while the lockbox failure rate was `3.83%`; the score-distribution KS p-value was `3.79e-08`, max PSI was `5.125`, and median PSI was `0.569`.
-- Because of that shift, the report does not claim production readiness. It reports the lockbox evidence as descriptive stress-test evidence and keeps deployment requirements explicit.
+Git dirty status is preserved as `True`. The execution manifest identifies the base commit plus exact source hashes, and the archive contains that source. A passing artifact audit is local study validation; the updated hosted CI workflow still needs a published commit to run.
 
 ## Key Engineering Choices
 
@@ -107,7 +95,7 @@ For a quick project review:
 3. Inspect `src/secom/workflows/benchmark_replication.py` and `src/secom/workflows/benchmark_tuned.py` for orchestration.
 4. Inspect `src/secom/selection/engine.py`, `src/secom/metrics.py`, and `src/secom/io.py` for the core ML and data-quality logic.
 5. Read `tests/test_benchmark_replication.py`, `tests/test_metrics_threshold_optimization.py`, and `tests/test_io.py` for representative regression coverage.
-6. Run `make check` after local setup to verify Ruff linting, Ruff formatting, and pytest.
+6. Run the direct Python checks under Run Locally, or optional `make check`, to verify Ruff linting, Ruff formatting, and pytest.
 
 For a deeper technical review:
 
@@ -126,38 +114,38 @@ For a deeper technical review:
 | `tests/` | Regression tests for parsing, metrics, selectors, workflows, audit rules, and report output |
 | `docs/spec/` | Canonical study contract, artifact schemas, report structure, and claim semantics |
 | `docs/plans/` | Historical implementation plans for the report design |
-| `docs/results/` | Curated public evidence snapshot: final report, figures, manifest, and summary CSVs |
+| `docs/results/` | Small public snapshot: final report, figures, execution manifest, and audit receipt |
 | `runs/` | Generated active study outputs; intentionally gitignored so results can be regenerated cleanly |
 
 ## Run Locally
 
-Create a Python 3.11+ virtual environment and install the project. Use any supported interpreter; replace `python3.11` with `python3.12` if that is your local version.
+Use Python 3.11 or 3.12. Installation and checks work directly through Python on Windows, Linux and macOS; Make targets are optional shortcuts.
 
 ```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-make install
+python -m venv .venv
 ```
 
-Run the standard local gate:
+Activate with `.venv\Scripts\Activate.ps1` in PowerShell or `source .venv/bin/activate` in Bash, then:
 
 ```bash
-make check
+python -m pip install -r requirements.txt
+python -m pip install -e . --no-build-isolation
+python -m ruff check src tests scripts
+python -m ruff format --check src tests scripts
+python -m pytest -q
+python scripts/fetch_secom.py --output-dir data/raw
 ```
 
-Download the UCI SECOM data and place the raw files under `data/raw/`:
+The fetch command obtains the [official UCI archive](https://archive.ics.uci.edu/static/public/179/secom.zip), verifies the two modeling files against fixed SHA-256 values and reuses existing verified files. It refuses to overwrite different local data. SECOM is attributed to McCann and Johnston through [UCI, DOI 10.24432/C54305](https://archive.ics.uci.edu/dataset/179/secom), under the dataset's CC BY 4.0 license. This is dataset attribution, not a repository software license.
 
-```text
-data/raw/secom.data
-data/raw/secom_labels.data
-```
+The raw files are `data/raw/secom.data` and `data/raw/secom_labels.data`. Observed shape is 1,567 × 590; UCI and the original paper describe 591 features. Rows are production entities of unspecified physical unit, and pre-outcome measurement availability is unproven.
 
 The `data/` directory is intentionally gitignored. The repository stores the study code and contracts, not the external dataset files.
 
-Run the full study:
+Run the full study into a fresh output directory. The evidence run includes KRR plus a balanced logistic-regression association comparator; the default without `--classifiers` remains KRR. CLI commands default `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and `MKL_NUM_THREADS` to `1` before numeric imports, while preserving explicit environment settings. ReliefF uses a NumPy scoring adapter verified against pinned skrebate 0.8.4, in one process, with a bounded cache of identical training rankings. Set `SECOM_RELIEF_BACKEND=reference` to run the upstream implementation; `SECOM_RELIEF_N_JOBS` controls its worker count (default at most four). The manifest records the chosen backend, duration and effective thread settings. `--progress` shows benchmark and temporal stages. See [runtime measurements](docs/performance.md).
 
 ```bash
-python scripts/run_full_study.py --input-dir data/raw --output-dir runs/full_study --strict
+python scripts/run_full_study.py --input-dir data/raw --output-dir runs/full_study --classifiers krr,logreg --progress --strict
 ```
 
 When the full-study audit passes, the canonical generated report is written to:
@@ -171,6 +159,14 @@ The checked-in public evidence snapshot lives at:
 ```text
 docs/results/final_report.md
 ```
+
+After reviewing a completed run, export the audited report, figures and small provenance receipts with:
+
+```bash
+python scripts/export_results.py --output-dir runs/full_study
+```
+
+The exporter preserves execution provenance and rejects changed source or mismatched artifacts. Full CSVs stay in ignored run storage, and the complete source/artifact ZIP is saved to `runs/full_study/evidence/study_artifacts.zip`. The public snapshot excludes those large files.
 
 ## Useful Commands
 

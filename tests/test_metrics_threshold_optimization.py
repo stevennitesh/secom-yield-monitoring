@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from secom.metrics import (
+    _scalar_isclose,
     candidate_thresholds,
     confusion_counts,
     extract_tpr_at_tnr,
@@ -14,6 +15,24 @@ from secom.metrics import (
     safe_std,
 )
 from tests.assertions import threshold_equal
+
+
+def test_scalar_tolerance_matches_numpy_at_boundaries_and_nonfinite_values() -> None:
+    """Keep the threshold sweep's original asymmetric tolerance and sentinel behavior."""
+    rng = np.random.default_rng(42)
+    b = rng.random(10000)
+    boundary = b + 1e-8 + 1e-5 * np.abs(b)
+    a = np.concatenate(
+        (
+            boundary,
+            np.nextafter(boundary, -np.inf),
+            np.nextafter(boundary, np.inf),
+            [np.nan, np.inf, -np.inf, np.inf, 0.0],
+        )
+    )
+    b = np.concatenate((b, b, b, [np.nan, np.inf, -np.inf, 1.0, 0.0]))
+    actual = np.array([_scalar_isclose(float(x), float(y)) for x, y in zip(a, b)])
+    np.testing.assert_array_equal(actual, np.isclose(a, b))
 
 
 def _bruteforce_reference(y_true: np.ndarray, scores: np.ndarray) -> tuple[float, dict[str, float]]:
@@ -164,7 +183,7 @@ def test_extract_tpr_at_tnr_nonfinite_scores_fallback_equivalence() -> None:
 
 
 def test_extract_tpr_at_tnr_rejects_mismatched_input_lengths() -> None:
-    """TPR-at-TNR search inputs must describe the same wafers."""
+    """TPR-at-TNR search inputs must describe the same samples."""
     y_true = np.asarray([0, 1, 0], dtype=int)
     scores = np.asarray([0.1, 0.9], dtype=float)
 
