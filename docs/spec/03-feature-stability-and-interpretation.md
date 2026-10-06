@@ -10,8 +10,8 @@ Report, at minimum:
 
 1. selection frequency
 2. transformed-feature identity
-3. conditional effect magnitude
-4. expected contribution
+3. absolute scaled coefficient
+4. stability-weighted coefficient
 5. cluster grouping for highly correlated raw value features
 
 ## Interpretation Rules
@@ -30,7 +30,7 @@ Feature stability and interpretation are part of the benchmark study layer and s
 
 Selection frequency is the fraction of outer training folds selecting a transformed feature for a specific study/selector/classifier/mode. Do not pool incompatible configurations or mix this frequency with coefficient units in charts.
 
-For balanced logistic regression, conditional effect magnitude is the absolute coefficient from the full-data fit in the selected, scaled feature space. Expected contribution is frequency times that magnitude, a heuristic ranking rather than an expected economic benefit or causal effect. For RBF KRR these coefficient quantities are unavailable; keep them null and display stability. Include a logistic-regression association comparator in the full evidence run.
+For balanced logistic regression, absolute scaled coefficient is the absolute coefficient from the full-data fit in the selected, scaled feature space. `stability_weighted_coefficient` is frequency times `absolute_scaled_coefficient`, a heuristic ranking rather than an expected economic benefit or causal effect. For RBF KRR these coefficient quantities are unavailable; keep them null and display stability. Include a logistic-regression association comparator in the full evidence run.
 
 Feature names Xn and Mn denote zero-based source column n and its missingness indicator. Report identical missingness masks and monthly missing rates for prominent selected indicators as full-sample descriptive context. These may reflect collection regime/time; multiple correlated indicators are not independent causes. Raw-value correlation clusters likewise support interpretation only.
 
@@ -40,3 +40,5 @@ Feature names Xn and Mn denote zero-based source column n and its missingness in
 - [05 Industrialization Gap Analysis](05-industrialization-gap-analysis.md)
 - [06 Report Structure](06-report-structure.md)
 - [07 Artifact Contracts](07-artifact-contracts.md)
+
+Feature frequency over overlapping training folds is descriptive, not independent-replication uncertainty. Full-data scaled coefficients are in-sample associations; the stability weighting is not an expected economic benefit or causal effect.

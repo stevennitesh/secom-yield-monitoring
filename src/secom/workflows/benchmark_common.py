@@ -20,6 +20,8 @@ from secom.config import (
     BENCHMARK_KRR_ALPHA_GRID,
     BENCHMARK_KRR_GAMMA_GRID,
     BENCHMARK_LOGREG_C_GRID,
+    TUNED_KRR_ALPHA_GRID,
+    TUNED_KRR_GAMMA_MULTIPLIERS,
     BenchmarkClassifier,
     ReplicationMode,
     ScalerName,
@@ -30,12 +32,10 @@ from secom.config import (
 from secom.io import load_raw_secom, parse_sort_and_label
 from secom.metrics import (
     binary_metrics_at_threshold,
-    bootstrap_ci_for_mean,
-    bootstrap_resample_indices,
     find_ber_optimal_threshold,
     safe_std,
 )
-from secom.models import fit_benchmark_krr_model, make_benchmark_logreg_model
+from secom.models import fit_benchmark_krr_model, make_benchmark_logreg_model, validated_model_scores
 from secom.preprocess import (
     build_feature_universe,
     local_to_global_feature_indices,
@@ -44,8 +44,6 @@ from secom.preprocess import (
 from secom.selection.engine import fit_selector_pipeline
 
 BENCHMARK_FEATURE_BUDGET = 40
-BOOTSTRAP_N = 1000
-BOOTSTRAP_SEED = 42
 VALUE_CLUSTER_CORR_THRESHOLD = 0.95
 BENCHMARK_METRICS = ("BER", "True+", "True-", "ROC_AUC", "PR_AUC", "MCC", "F2")
 AUC_METRICS = {"ROC_AUC", "PR_AUC"}
@@ -87,6 +85,27 @@ def classifier_param_grid(classifier: str) -> list[dict[str, Any]]:
     raise ValueError(f"Unknown benchmark classifier mode: {classifier}")
 
 
+def tuned_classifier_param_grid(classifier: str) -> list[dict[str, Any]]:
+    """Small tuned grid; gamma multiplier resolves against each actual selected width."""
+    if classifier == BenchmarkClassifier.KRR:
+        return [
+            {"alpha": alpha, "gamma_multiplier": multiplier}
+            for alpha, multiplier in product(TUNED_KRR_ALPHA_GRID, TUNED_KRR_GAMMA_MULTIPLIERS)
+        ]
+    return classifier_param_grid(classifier)
+
+
+def effective_classifier_config(config: dict[str, Any], width: int) -> dict[str, Any]:
+    """Resolve dimension-relative gamma without mutating the configuration receipt."""
+    result = dict(config)
+    multiplier = denormalize_optional(result.pop("gamma_multiplier", None))
+    if multiplier is not None:
+        if width < 1:
+            raise ValueError("KRR gamma requires at least one selected feature")
+        result["gamma"] = float(multiplier) / width
+    return result
+
+
 def add_indicator_for_replication_mode(replication_mode: str) -> bool:
     """Return whether a benchmark replication mode includes missingness indicators."""
     return str(replication_mode) == ReplicationMode.WITH_MISSING_INDICATORS
@@ -122,6 +141,9 @@ def config_fields(selector_config: dict[str, Any], classifier_config: dict[str, 
         "k": int(selector_config.get("k", BENCHMARK_FEATURE_BUDGET)),
         "alpha": np.nan if classifier_config.get("alpha") is None else float(classifier_config["alpha"]),
         "gamma": np.nan if gamma is None else float(gamma),
+        "gamma_multiplier": np.nan
+        if classifier_config.get("gamma_multiplier") is None
+        else float(classifier_config["gamma_multiplier"]),
         "C": np.nan if classifier_config.get("C") is None else float(classifier_config["C"]),
         "n_neighbors": np.nan if n_neighbors is None or pd.isna(n_neighbors) else int(n_neighbors),
     }
@@ -149,6 +171,9 @@ def classifier_config_from_row(row: Any) -> dict[str, Any]:
     return {
         "alpha": denormalize_optional(row.get("alpha") if isinstance(row, dict) else row.alpha),
         "gamma": denormalize_optional(row.get("gamma") if isinstance(row, dict) else row.gamma),
+        "gamma_multiplier": denormalize_optional(
+            row.get("gamma_multiplier") if isinstance(row, dict) else getattr(row, "gamma_multiplier", None)
+        ),
         "C": denormalize_optional(row.get("C") if isinstance(row, dict) else row.C),
     }
 
@@ -160,24 +185,20 @@ def config_tie_break_key(
     classifier_config: dict[str, Any],
 ) -> tuple[Any, ...]:
     """Return the deterministic simplicity key used after metric ties."""
-    selector_key: tuple[Any, ...]
-    selector_key = (int(selector_config.get("k", BENCHMARK_FEATURE_BUDGET)),)
-    if selector == SelectorName.RELIEFF:
-        nn = selector_config.get("n_neighbors", 10)
-        nn = 10 if nn is None or pd.isna(nn) else int(nn)
-        selector_key = selector_key + (nn,)
-
-    classifier_key: tuple[Any, ...]
+    k = int(selector_config.get("k", BENCHMARK_FEATURE_BUDGET))
+    neighbor = denormalize_optional(selector_config.get("n_neighbors"))
+    neighbors = float(neighbor) if selector == SelectorName.RELIEFF and neighbor is not None else float("inf")
     if classifier == BenchmarkClassifier.KRR:
-        classifier_key = (
-            float(classifier_config["alpha"]),
-            float(gamma_sort_key(classifier_config.get("gamma"))),
+        multiplier = denormalize_optional(classifier_config.get("gamma_multiplier"))
+        return (
+            k,
+            -float(classifier_config["alpha"]),
+            gamma_sort_key(multiplier if multiplier is not None else classifier_config.get("gamma")),
+            neighbors,
         )
-    elif classifier == BenchmarkClassifier.LOGREG:
-        classifier_key = (float(classifier_config["C"]),)
-    else:
-        classifier_key = ()
-    return selector_key + classifier_key
+    if classifier == BenchmarkClassifier.LOGREG:
+        return (k, float(classifier_config["C"]), float("inf"), neighbors)
+    return (k, float("inf"), float("inf"), neighbors)
 
 
 def prepare_cv(
@@ -187,6 +208,8 @@ def prepare_cv(
     """Build the fixed 10-fold shuffled benchmark CV split."""
     x = df[feature_cols].to_numpy(dtype=float)
     y = df["y_bin"].to_numpy(dtype=int)
+    if min(int(np.sum(y == 0)), int(np.sum(y == 1))) < 10:
+        raise ValueError("Benchmark 10-fold CV requires at least ten samples of each class")
     skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=SEED_BENCHMARK)
     folds = [(train_idx, test_idx) for train_idx, test_idx in skf.split(x, y)]
     return x, y, folds
@@ -204,6 +227,7 @@ def prepare_benchmark_dataset(input_dir: Path) -> dict[str, Any]:
         "x": x,
         "y": y,
         "folds": folds,
+        "sample_ids": df["raw_row_id"].to_numpy(dtype=int),
     }
 
 
@@ -448,9 +472,13 @@ def fit_classifier_scores(
         array = np.asarray(values)
         digest.update(f"{array.shape}\0{array.dtype.str}\0{array.strides}\0".encode())
         digest.update(array.tobytes(order="C"))
+    classifier_config = effective_classifier_config(classifier_config, x_train_sel.shape[1])
+    cache_config = dict(classifier_config)
+    if classifier == BenchmarkClassifier.KRR and cache_config.get("gamma") is None:
+        cache_config["gamma"] = 1.0 / x_train_sel.shape[1]
     key = (
         classifier,
-        tuple(sorted(classifier_config.items())),
+        tuple(sorted(cache_config.items())),
         include_train_scores,
         fit_benchmark_krr_model,
         make_benchmark_logreg_model,
@@ -484,6 +512,8 @@ def fit_classifier_scores(
         eval_scores = np.asarray(clf.predict_proba(x_eval_sel)[:, 1], dtype=float)
     else:
         raise ValueError(f"Unknown benchmark classifier mode: {classifier}")
+    train_scores = validated_model_scores(train_scores)
+    eval_scores = validated_model_scores(eval_scores)
     _MODEL_SCORE_CACHE[key] = (train_scores.copy(), eval_scores.copy())
     if len(_MODEL_SCORE_CACHE) > MODEL_SCORE_CACHE_SIZE:
         _MODEL_SCORE_CACHE.popitem(last=False)
@@ -497,13 +527,14 @@ def fit_full_dataset(
 ) -> dict[str, Any]:
     """Fit a selected full-dataset benchmark model and summarize in-sample metrics."""
     x_sel = prepared_full["x_sel"]
+    classifier_config = effective_classifier_config(classifier_config, x_sel.shape[1])
     y = prepared_full["y"]
     coefficient_by_feature_index: dict[int, float] = {}
 
     if classifier == BenchmarkClassifier.LOGREG:
         clf = make_benchmark_logreg_model(c_value=float(classifier_config["C"]))
         clf.fit(x_sel, y)
-        scores = np.asarray(clf.predict_proba(x_sel)[:, 1], dtype=float)
+        scores = validated_model_scores(clf.predict_proba(x_sel)[:, 1])
         coefficient_by_feature_index = {
             int(feature_index): float(abs(coef))
             for feature_index, coef in zip(prepared_full["selected_global"], clf.coef_[0])
@@ -597,14 +628,14 @@ def build_feature_report(
             "classifier": classifier,
             "replication_mode": replication_mode,
             "feature_index": int(feature_index),
-            "conditional_effect_magnitude": float(effect),
+            "absolute_scaled_coefficient": float(effect),
         }
         for (selector, classifier, replication_mode), effect_map in coefficient_maps.items()
         for feature_index, effect in effect_map.items()
     ]
     coefficient_df = pd.DataFrame(coefficient_rows)
     if coefficient_df.empty:
-        report_df["conditional_effect_magnitude"] = np.nan
+        report_df["absolute_scaled_coefficient"] = np.nan
     else:
         report_df = report_df.merge(
             coefficient_df,
@@ -613,7 +644,9 @@ def build_feature_report(
             sort=False,
         )
 
-    report_df["expected_contribution"] = report_df["selection_frequency"] * report_df["conditional_effect_magnitude"]
+    report_df["stability_weighted_coefficient"] = (
+        report_df["selection_frequency"] * report_df["absolute_scaled_coefficient"]
+    )
     cluster_series = report_df["feature_index"].map(cluster_id_map)
     report_df["cluster_id"] = np.where(report_df["feature_type"].eq("value"), cluster_series, np.nan)
     return report_df[
@@ -625,45 +658,32 @@ def build_feature_report(
             "feature_type",
             "feature_name_or_source_col",
             "selection_frequency",
-            "conditional_effect_magnitude",
-            "expected_contribution",
+            "absolute_scaled_coefficient",
+            "stability_weighted_coefficient",
             "cluster_id",
         ]
     ]
 
 
 def build_benchmark_summary_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate fold metrics with bootstrap confidence intervals."""
-    summary_rows: list[dict[str, Any]] = []
-    bootstrap_draws_by_n: dict[int, np.ndarray] = {}
+    """Summarize correlated outer folds descriptively, without performance CIs."""
+    rows = []
     for (selector, classifier, mode), frame in fold_metrics_df.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
     ):
-        n_values = int(len(frame))
-        if n_values not in bootstrap_draws_by_n:
-            bootstrap_draws_by_n[n_values] = bootstrap_resample_indices(
-                n_values=n_values,
-                n_boot=BOOTSTRAP_N,
-                seed=BOOTSTRAP_SEED,
-            )
-        draw_indices = bootstrap_draws_by_n[n_values]
-        row = {
-            "selector": selector,
-            "classifier": classifier,
-            "replication_mode": mode,
-            "n_folds": n_values,
-            "n_boot": BOOTSTRAP_N,
-            "boot_seed": BOOTSTRAP_SEED,
-        }
+        row = {"selector": selector, "classifier": classifier, "replication_mode": mode, "n_folds": len(frame)}
         for metric in BENCHMARK_METRICS:
             values = frame[metric].to_numpy(dtype=float)
-            ci_lo, ci_hi = bootstrap_ci_for_mean(values, alpha=0.95, draw_indices=draw_indices)
-            row[f"mean_{metric}"] = float(np.mean(values))
-            row[f"std_{metric}"] = safe_std(values)
-            row[f"CI_lower_{metric}"] = ci_lo
-            row[f"CI_upper_{metric}"] = ci_hi
-        summary_rows.append(row)
-    return pd.DataFrame(summary_rows)
+            row.update(
+                {
+                    f"mean_{metric}": float(np.mean(values)),
+                    f"std_{metric}": safe_std(values),
+                    f"min_{metric}": float(np.min(values)),
+                    f"max_{metric}": float(np.max(values)),
+                }
+            )
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def build_benchmark_ablation_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
@@ -680,6 +700,9 @@ def build_benchmark_ablation_df(fold_metrics_df: pd.DataFrame) -> pd.DataFrame:
                 "BER_reference": float(np.mean(strict_frame["BER"].to_numpy(dtype=float))),
                 "BER_missing_indicator": float(np.mean(mi_frame["BER"].to_numpy(dtype=float))),
                 "delta_BER": float(np.mean(delta)),
+                "std_delta_BER": safe_std(delta),
+                "min_delta_BER": float(np.min(delta)),
+                "max_delta_BER": float(np.max(delta)),
             }
         )
     return pd.DataFrame(ablation_rows)

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 SECOM_LABEL_VALUES = {-1, 1}
 
@@ -59,8 +60,18 @@ def load_raw_secom(input_dir: Path) -> LoadedSecom:
         raise FileNotFoundError(f"Missing labels file: {labels_path}")
 
     _validate_feature_row_widths(data_path)
-    x = pd.read_csv(data_path, sep=r"\s+", header=None, engine="python")
-    labels = pd.read_csv(labels_path, sep=r"\s+", header=None, names=["y_raw", "ts_raw"])
+    x = pd.read_csv(
+        data_path, sep=r"\s+", header=None, engine="python", keep_default_na=False, na_values=["NaN", "nan"]
+    )
+    try:
+        x = x.apply(pd.to_numeric, errors="raise")
+    except ValueError as exc:
+        raise ValueError(f"{data_path.name}: feature cells must be numeric or NaN") from exc
+    if np.isinf(x.to_numpy(dtype=float)).any():
+        raise ValueError(f"{data_path.name}: feature cells must not contain infinity")
+    labels = pd.read_csv(labels_path, sep=r"\s+", header=None, names=["y_raw", "ts_raw"], skip_blank_lines=False)
+    if not labels.index.equals(pd.RangeIndex(len(labels))):
+        raise ValueError(f"{labels_path.name}: expected label and quoted timestamp per row")
     labels["ts_raw"] = labels["ts_raw"].astype(str).str.replace('"', "", regex=False)
 
     if len(x) != len(labels):

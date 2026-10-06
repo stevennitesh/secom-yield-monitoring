@@ -12,7 +12,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests.artifact_writers import write_artifact_row, write_artifact_rows
+from tests.artifact_writers import (
+    complete_benchmark_fixture,
+    complete_temporal_fixture,
+    write_artifact_row,
+    write_artifact_rows,
+)
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path(".test_tmp") / "matplotlib"))
 
@@ -61,24 +66,18 @@ def _small_temporal_grid(selector: str) -> list[dict[str, object]]:
     ]
 
 
-def _ci_fields(values_by_metric: dict[str, float]) -> dict[str, float]:
+def _range_fields(values_by_metric: dict[str, float]) -> dict[str, float]:
     """Return symmetric lower/upper CI fields for compact artifact fixtures."""
-    return {
-        f"CI_{bound}_{metric}": float(value)
-        for metric, value in values_by_metric.items()
-        for bound in ("lower", "upper")
-    }
+    return {f"{bound}_{metric}": float(value) for metric, value in values_by_metric.items() for bound in ("min", "max")}
 
 
 def _run_fast_temporal_study(input_dir: Path, output_dir: Path) -> dict[str, object]:
-    """Run temporal robustness with reduced seeds and selector grid."""
+    """Run temporal robustness with a bounded selector/config grid."""
     import secom.workflows.temporal_robustness as temporal
     from secom.workflows.temporal_robustness import run_temporal_robustness
 
     monkeypatch = pytest.MonkeyPatch()
     try:
-        monkeypatch.setattr(temporal, "SEEDS_STAGE_B", [42])
-        monkeypatch.setattr(temporal, "SEEDS_PHASE2", [42])
         monkeypatch.setattr(temporal, "build_stage_b_config_grid", _small_temporal_grid)
         return run_temporal_robustness(
             input_dir=input_dir,
@@ -98,7 +97,7 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
     reports.mkdir(parents=True, exist_ok=True)
 
     manifest = {
-        "manifest_version": "2.0",
+        "manifest_version": "3.0",
         "study_spec_path": "docs/spec",
         "study_spec_sha256": "test-spec",
         "git_commit": "test-commit",
@@ -124,15 +123,15 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "C": np.nan,
         "n_neighbors": np.nan,
         "mean_BER": 0.21,
-        "CI_lower_BER": 0.18,
-        "CI_upper_BER": 0.24,
+        "min_BER": 0.18,
+        "max_BER": 0.24,
         "mean_True+": 0.72,
         "mean_True-": 0.86,
         "mean_ROC_AUC": 0.79,
         "mean_PR_AUC": 0.42,
         "mean_MCC": 0.31,
         "mean_F2": 0.58,
-        **_ci_fields(
+        **_range_fields(
             {
                 "True+": 0.72,
                 "True-": 0.86,
@@ -146,15 +145,15 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
     tuned_row = {
         **benchmark_row,
         "mean_BER": 0.18,
-        "CI_lower_BER": 0.15,
-        "CI_upper_BER": 0.22,
+        "min_BER": 0.15,
+        "max_BER": 0.22,
         "mean_True+": 0.76,
         "mean_True-": 0.88,
         "mean_ROC_AUC": 0.83,
         "mean_PR_AUC": 0.47,
         "mean_MCC": 0.36,
         "mean_F2": 0.62,
-        **_ci_fields(
+        **_range_fields(
             {
                 "True+": 0.76,
                 "True-": 0.88,
@@ -244,8 +243,8 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         "feature_name_or_source_col": "sensor_001",
         "feature_type": "value",
         "selection_frequency": 0.9,
-        "conditional_effect_magnitude": 0.35,
-        "expected_contribution": 0.315,
+        "absolute_scaled_coefficient": 0.35,
+        "stability_weighted_coefficient": 0.315,
         "cluster_id": 1,
     }
     write_artifact_row(reports, ArtifactName.FEATURE_REPORT, feature_row)
@@ -441,7 +440,7 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
             {
                 "model_scope": "primary",
                 "drift_gate_status": "HIGH_SHIFT",
-                "lockbox_claims_allowed": False,
+                "confirmatory_claims_allowed": False,
                 "abs_prevalence_shift": 0.08,
                 "ks_pvalue_scores": 0.01,
                 "max_PSI": 0.4,
@@ -450,7 +449,7 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
             {
                 "model_scope": "challenger",
                 "drift_gate_status": "PASS",
-                "lockbox_claims_allowed": True,
+                "confirmatory_claims_allowed": True,
                 "abs_prevalence_shift": 0.01,
                 "ks_pvalue_scores": 0.30,
                 "max_PSI": 0.1,
@@ -463,12 +462,12 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
         ArtifactName.TEMPORAL_MSPC,
         {
             "eval_scope": "lockbox",
-            "best_MSPC_TPR_at_TNR90": 0.3,
-            "best_MSPC_source": "Q",
+            "calibration_selected_MSPC_TPR_at_TNR90": 0.3,
+            "calibration_selected_MSPC_source": "Q",
             "T2_AUC": 0.61,
             "Q_AUC": 0.65,
             "alarm_rate": 0.12,
-            "empirical_ARL0": 8.0,
+            "observed_mean_inter_alarm_spacing": 8.0,
         },
     )
     write_artifact_row(
@@ -506,6 +505,9 @@ def _write_active_artifact_contract(output_dir: Path) -> Path:
             },
         ],
     )
+    complete_benchmark_fixture(reports)
+    complete_benchmark_fixture(reports, tuned=True)
+    complete_temporal_fixture(reports)
     return output_dir
 
 

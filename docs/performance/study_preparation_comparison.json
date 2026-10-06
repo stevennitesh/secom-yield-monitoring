@@ -1,0 +1,710 @@
+{
+  "scope": "bounded real-data stage samples, not a complete study timing or regenerated public evidence",
+  "baseline": {
+    "local_path": ".tmp/study-performance/baseline",
+    "source_sha256": "04c7095b16e261b156ccf07bf7104029025198444b488783da6bf8d82ae858c6"
+  },
+  "candidate_source_sha256": "538c07219e079a8374986ed84833dfcbc07ef119fabef3eda52cea009d5112a2",
+  "source_changes": {
+    "src/secom/workflows/benchmark_tuned.py": {
+      "baseline": "1c9780d0e208a28d17bcb61b8ded80652bd5587c10a04b9f419ca1592e5bfe3e",
+      "candidate": "3bcb5ce7e842b1df8ff5a65301d616b12b65036c5820cf2c382864e050038956"
+    },
+    "src/secom/workflows/temporal_robustness.py": {
+      "baseline": "eac9f14d1817513e639a337216bfe86fe06f240a2ed00567da631bf6773d7784",
+      "candidate": "d2f04390119e67f0f9ef12477d70473ce2ff05679d6f816a56e090f5eb60f6bb"
+    }
+  },
+  "probe_sha256": "d3960de6f23de275662c793acd37c0a41c6880cfcc74ed46047730fa830bbb6b",
+  "bootstrap_probe_sha256": "777e0b0ae5e0b7973ba369728cb5df88f985ad1d71a263834d54e7c899894042",
+  "versions": {
+    "python": "3.12.12",
+    "certifi": "2026.7.22",
+    "matplotlib": "3.10.9",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "sklearn": "1.9.0",
+    "scipy": "1.17.1",
+    "skrebate": "0.8.4"
+  },
+  "thread_settings": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "raw_sha256": {
+    "data/raw/secom.data": "20f0e7ee434f7dcbae0eea9ffff009a2b57f42d6b0dc9a5bd4f00782c0a3374c",
+    "data/raw/secom_labels.data": "126884cf453705c9e61a903fe906f0665a3b45ce3639e621edc5c93c89627e03"
+  },
+  "workload": {
+    "selectors": [
+      "F-test",
+      "Gram-Schmidt",
+      "ReliefF"
+    ],
+    "raw_rows": 1567,
+    "raw_features": 590,
+    "original": "first two unchanged original outer folds plus full-data selector views; both modes/classifiers; full model grid",
+    "tuned": "first unchanged original outer fold; both modes/classifiers; all feature/neighbor/model grid configs and selected outer evaluation",
+    "temporal-selection": "first unchanged temporal outer fold, seed 42; both scalers; full feature/neighbor/C grid",
+    "temporal-freeze": "full DEV, seed 42, all five inner folds; both scalers; full feature/neighbor/C grid per selector",
+    "cache_policy": "clear model and ReliefF caches at each workload start; preserve natural intra-workload reuse",
+    "timing": "one separate cProfile workload then three unprofiled repetitions; workload timing excludes input loading",
+    "fingerprint": "selected arrays include shape/dtype/strides and exact bytes; configuration/metric payloads, feature identities/stability and temporal CSV serialization"
+  },
+  "cases": {
+    "original": {
+      "baseline": {
+        "seconds": [
+          18.25787019985728,
+          18.687823500018567,
+          19.299809799995273
+        ],
+        "median_seconds": 18.687823500018567,
+        "load_parse_sort_seconds": [
+          0.3848522000480443,
+          0.3706653998233378,
+          0.381170199951157,
+          0.3809201999101788
+        ],
+        "result": {
+          "fingerprint": "179ee5e40ff2ef13a8c4c601be1cb338ba6fa47080778dee9ca1860dd0af0ef7",
+          "model_cache": {
+            "hits": 0,
+            "misses": 192,
+            "entries": 192,
+            "max_entries": 4096,
+            "score_bytes": 2406912
+          },
+          "retained_tuned_view_bytes": 0,
+          "relief_cache_entries": 6,
+          "relief_score_bytes": 82464
+        },
+        "profile_call_counts": {
+          "fit_selector_pipeline": 18,
+          "fit_classifier_scores": 192,
+          "fit_benchmark_krr_model": 144,
+          "binary_metrics_at_threshold": 192,
+          "core_binary_metrics_at_threshold": 0,
+          "roc_auc_or_default": 192,
+          "find_ber_optimal_threshold": 288
+        },
+        "profile": [
+          {
+            "file": "workflows/benchmark_common.py",
+            "line": 438,
+            "name": "fit_classifier_scores",
+            "calls": 192,
+            "self_seconds": 0.05650790000000001,
+            "cumulative_seconds": 10.084787200000001
+          },
+          {
+            "file": "selection/engine.py",
+            "line": 64,
+            "name": "fit_selector_pipeline",
+            "calls": 18,
+            "self_seconds": 0.0027947000000000002,
+            "cumulative_seconds": 8.3553996
+          },
+          {
+            "file": "models.py",
+            "line": 69,
+            "name": "fit_benchmark_krr_model",
+            "calls": 144,
+            "self_seconds": 0.0013268000000000002,
+            "cumulative_seconds": 7.122040800000001
+          },
+          {
+            "file": "metrics.py",
+            "line": 361,
+            "name": "binary_metrics_at_threshold",
+            "calls": 192,
+            "self_seconds": 0.0024834,
+            "cumulative_seconds": 1.2874875000000001
+          }
+        ]
+      },
+      "candidate": {
+        "seconds": [
+          18.62255850015208,
+          18.05655200011097,
+          17.958421900169924
+        ],
+        "median_seconds": 18.05655200011097,
+        "load_parse_sort_seconds": [
+          0.371601999970153,
+          0.3782231998629868,
+          0.37162430002354085,
+          0.37339670001529157
+        ],
+        "result": {
+          "fingerprint": "179ee5e40ff2ef13a8c4c601be1cb338ba6fa47080778dee9ca1860dd0af0ef7",
+          "model_cache": {
+            "hits": 0,
+            "misses": 192,
+            "entries": 192,
+            "max_entries": 4096,
+            "score_bytes": 2406912
+          },
+          "retained_tuned_view_bytes": 0,
+          "relief_cache_entries": 6,
+          "relief_score_bytes": 82464
+        },
+        "profile_call_counts": {
+          "fit_selector_pipeline": 18,
+          "fit_classifier_scores": 192,
+          "fit_benchmark_krr_model": 144,
+          "binary_metrics_at_threshold": 192,
+          "core_binary_metrics_at_threshold": 0,
+          "roc_auc_or_default": 192,
+          "find_ber_optimal_threshold": 288
+        },
+        "profile": [
+          {
+            "file": "workflows/benchmark_common.py",
+            "line": 438,
+            "name": "fit_classifier_scores",
+            "calls": 192,
+            "self_seconds": 0.0591918,
+            "cumulative_seconds": 10.3027139
+          },
+          {
+            "file": "selection/engine.py",
+            "line": 64,
+            "name": "fit_selector_pipeline",
+            "calls": 18,
+            "self_seconds": 0.0031669000000000003,
+            "cumulative_seconds": 8.0623328
+          },
+          {
+            "file": "models.py",
+            "line": 69,
+            "name": "fit_benchmark_krr_model",
+            "calls": 144,
+            "self_seconds": 0.0013469,
+            "cumulative_seconds": 7.2842503
+          },
+          {
+            "file": "metrics.py",
+            "line": 361,
+            "name": "binary_metrics_at_threshold",
+            "calls": 192,
+            "self_seconds": 0.0025751000000000003,
+            "cumulative_seconds": 1.3018752
+          }
+        ]
+      },
+      "speedup": 1.0349607998195733,
+      "time_reduction_percent": 3.3779829946862017,
+      "exact_fingerprint_match": true,
+      "same_model_cache_counts_and_bytes": true
+    },
+    "tuned": {
+      "baseline": {
+        "seconds": [
+          49.7726074999664,
+          49.87525609997101,
+          49.82341430010274
+        ],
+        "median_seconds": 49.82341430010274,
+        "load_parse_sort_seconds": [
+          0.3715913000050932,
+          0.3687167000025511,
+          0.37586509995162487,
+          0.38068890012800694
+        ],
+        "result": {
+          "fingerprint": "bbbbe2aa38e8993eaf37d8de7934bd4cde4acedc4645f0808bcc77955978ce55",
+          "model_cache": {
+            "hits": 81,
+            "misses": 1371,
+            "entries": 1371,
+            "max_entries": 4096,
+            "score_bytes": 15478696
+          },
+          "retained_tuned_view_bytes": 7357120,
+          "relief_cache_entries": 20,
+          "relief_score_bytes": 266240
+        },
+        "profile_call_counts": {
+          "fit_selector_pipeline": 99,
+          "fit_classifier_scores": 1452,
+          "fit_benchmark_krr_model": 1026,
+          "binary_metrics_at_threshold": 1452,
+          "core_binary_metrics_at_threshold": 0,
+          "roc_auc_or_default": 1452,
+          "find_ber_optimal_threshold": 1452
+        },
+        "profile": [
+          {
+            "file": "workflows/benchmark_tuned.py",
+            "line": 123,
+            "name": "_inner_cv_summary_for_config",
+            "calls": 480,
+            "self_seconds": 0.025537900000000002,
+            "cumulative_seconds": 43.8754761
+          },
+          {
+            "file": "workflows/benchmark_common.py",
+            "line": 438,
+            "name": "fit_classifier_scores",
+            "calls": 1452,
+            "self_seconds": 0.2474616,
+            "cumulative_seconds": 31.946872000000003
+          },
+          {
+            "file": "models.py",
+            "line": 69,
+            "name": "fit_benchmark_krr_model",
+            "calls": 1026,
+            "self_seconds": 0.008227700000000001,
+            "cumulative_seconds": 19.7741659
+          },
+          {
+            "file": "selection/engine.py",
+            "line": 64,
+            "name": "fit_selector_pipeline",
+            "calls": 99,
+            "self_seconds": 0.0098689,
+            "cumulative_seconds": 15.590124300000001
+          },
+          {
+            "file": "workflows/benchmark_tuned.py",
+            "line": 150,
+            "name": "_prepare_inner_selector_views",
+            "calls": 30,
+            "self_seconds": 0.09654410000000001,
+            "cumulative_seconds": 13.254651500000001
+          },
+          {
+            "file": "metrics.py",
+            "line": 361,
+            "name": "binary_metrics_at_threshold",
+            "calls": 1452,
+            "self_seconds": 0.0190949,
+            "cumulative_seconds": 9.891222
+          }
+        ]
+      },
+      "candidate": {
+        "seconds": [
+          44.414744100067765,
+          44.608525399817154,
+          43.851616699947044
+        ],
+        "median_seconds": 44.414744100067765,
+        "load_parse_sort_seconds": [
+          0.37837879988364875,
+          0.3699934999458492,
+          0.37707430007867515,
+          0.38602149998769164
+        ],
+        "result": {
+          "fingerprint": "bbbbe2aa38e8993eaf37d8de7934bd4cde4acedc4645f0808bcc77955978ce55",
+          "model_cache": {
+            "hits": 81,
+            "misses": 1371,
+            "entries": 1371,
+            "max_entries": 4096,
+            "score_bytes": 15478696
+          },
+          "retained_tuned_view_bytes": 4311520,
+          "relief_cache_entries": 20,
+          "relief_score_bytes": 266240
+        },
+        "profile_call_counts": {
+          "fit_selector_pipeline": 39,
+          "fit_classifier_scores": 1452,
+          "fit_benchmark_krr_model": 1026,
+          "binary_metrics_at_threshold": 12,
+          "core_binary_metrics_at_threshold": 1440,
+          "roc_auc_or_default": 1452,
+          "find_ber_optimal_threshold": 1452
+        },
+        "profile": [
+          {
+            "file": "workflows/benchmark_tuned.py",
+            "line": 125,
+            "name": "_inner_cv_summary_for_config",
+            "calls": 480,
+            "self_seconds": 0.024031900000000002,
+            "cumulative_seconds": 37.913014600000004
+          },
+          {
+            "file": "workflows/benchmark_common.py",
+            "line": 438,
+            "name": "fit_classifier_scores",
+            "calls": 1452,
+            "self_seconds": 0.2880371,
+            "cumulative_seconds": 32.8421885
+          },
+          {
+            "file": "models.py",
+            "line": 69,
+            "name": "fit_benchmark_krr_model",
+            "calls": 1026,
+            "self_seconds": 0.0083399,
+            "cumulative_seconds": 20.360166600000003
+          },
+          {
+            "file": "selection/engine.py",
+            "line": 64,
+            "name": "fit_selector_pipeline",
+            "calls": 39,
+            "self_seconds": 0.006011600000000001,
+            "cumulative_seconds": 11.9607506
+          },
+          {
+            "file": "workflows/benchmark_tuned.py",
+            "line": 152,
+            "name": "_prepare_inner_selector_views",
+            "calls": 10,
+            "self_seconds": 0.0341025,
+            "cumulative_seconds": 9.7880032
+          },
+          {
+            "file": "metrics.py",
+            "line": 361,
+            "name": "binary_metrics_at_threshold",
+            "calls": 12,
+            "self_seconds": 0.0001873,
+            "cumulative_seconds": 0.0838073
+          }
+        ]
+      },
+      "speedup": 1.1217764575621347,
+      "time_reduction_percent": 10.855679555513365,
+      "exact_fingerprint_match": true,
+      "same_model_cache_counts_and_bytes": true
+    },
+    "temporal-selection": {
+      "baseline": {
+        "seconds": [
+          10.764585600001737,
+          10.807481700088829,
+          10.95185360009782
+        ],
+        "median_seconds": 10.807481700088829,
+        "load_parse_sort_seconds": [
+          0.38511309982277453,
+          0.38331309985369444,
+          0.38325820001773536,
+          0.3862137000542134
+        ],
+        "result": {
+          "fingerprint": "648a5fe6a681953152d2dbf96717057ed70a66dd4f8ac7fc1ecdf774fb12d1cd",
+          "model_cache": {
+            "hits": 0,
+            "misses": 0,
+            "entries": 0,
+            "max_entries": 4096,
+            "score_bytes": 0
+          },
+          "retained_tuned_view_bytes": 0,
+          "relief_cache_entries": 31,
+          "relief_score_bytes": 378736
+        },
+        "profile_call_counts": {
+          "fit_selector_pipeline": 153,
+          "fit_classifier_scores": 0,
+          "fit_benchmark_krr_model": 0,
+          "binary_metrics_at_threshold": 603,
+          "core_binary_metrics_at_threshold": 0,
+          "roc_auc_or_default": 603,
+          "find_ber_optimal_threshold": 603
+        },
+        "profile": [
+          {
+            "file": "selection/engine.py",
+            "line": 64,
+            "name": "fit_selector_pipeline",
+            "calls": 153,
+            "self_seconds": 0.004687,
+            "cumulative_seconds": 9.172368500000001
+          },
+          {
+            "file": "workflows/temporal_robustness.py",
+            "line": 272,
+            "name": "_prepare_inner_cv_views",
+            "calls": 30,
+            "self_seconds": 0.0001812,
+            "cumulative_seconds": 9.0494974
+          },
+          {
+            "file": "workflows/temporal_robustness.py",
+            "line": 299,
+            "name": "_score_prepared_inner_cv",
+            "calls": 120,
+            "self_seconds": 0.0025526000000000004,
+            "cumulative_seconds": 7.882791800000001
+          },
+          {
+            "file": "metrics.py",
+            "line": 361,
+            "name": "binary_metrics_at_threshold",
+            "calls": 603,
+            "self_seconds": 0.006654200000000001,
+            "cumulative_seconds": 3.9055862
+          }
+        ]
+      },
+      "candidate": {
+        "seconds": [
+          6.627818099921569,
+          6.632949999999255,
+          6.638891499955207
+        ],
+        "median_seconds": 6.632949999999255,
+        "load_parse_sort_seconds": [
+          0.37744930014014244,
+          0.3760172000620514,
+          0.3836388001218438,
+          0.3769207999575883
+        ],
+        "result": {
+          "fingerprint": "648a5fe6a681953152d2dbf96717057ed70a66dd4f8ac7fc1ecdf774fb12d1cd",
+          "model_cache": {
+            "hits": 0,
+            "misses": 0,
+            "entries": 0,
+            "max_entries": 4096,
+            "score_bytes": 0
+          },
+          "retained_tuned_view_bytes": 0,
+          "relief_cache_entries": 31,
+          "relief_score_bytes": 378736
+        },
+        "profile_call_counts": {
+          "fit_selector_pipeline": 53,
+          "fit_classifier_scores": 0,
+          "fit_benchmark_krr_model": 0,
+          "binary_metrics_at_threshold": 3,
+          "core_binary_metrics_at_threshold": 600,
+          "roc_auc_or_default": 603,
+          "find_ber_optimal_threshold": 603
+        },
+        "profile": [
+          {
+            "file": "workflows/temporal_robustness.py",
+            "line": 323,
+            "name": "_score_prepared_inner_cv",
+            "calls": 120,
+            "self_seconds": 0.0019863000000000003,
+            "cumulative_seconds": 5.1782883
+          },
+          {
+            "file": "selection/engine.py",
+            "line": 64,
+            "name": "fit_selector_pipeline",
+            "calls": 53,
+            "self_seconds": 0.0023162,
+            "cumulative_seconds": 5.0497372
+          },
+          {
+            "file": "workflows/temporal_robustness.py",
+            "line": 283,
+            "name": "_prepare_inner_cv_views",
+            "calls": 10,
+            "self_seconds": 7.060000000000001e-05,
+            "cumulative_seconds": 4.8721828
+          },
+          {
+            "file": "metrics.py",
+            "line": 361,
+            "name": "binary_metrics_at_threshold",
+            "calls": 3,
+            "self_seconds": 4.91e-05,
+            "cumulative_seconds": 0.0215079
+          }
+        ]
+      },
+      "speedup": 1.6293627571578322,
+      "time_reduction_percent": 38.62631291853367,
+      "exact_fingerprint_match": true,
+      "same_model_cache_counts_and_bytes": true
+    },
+    "temporal-freeze": {
+      "baseline": {
+        "seconds": [
+          42.47516959998757,
+          41.65655900002457,
+          42.3255733998958
+        ],
+        "median_seconds": 42.3255733998958,
+        "load_parse_sort_seconds": [
+          0.38636820018291473,
+          0.38919240003451705,
+          0.3901237000245601,
+          0.38912870013155043
+        ],
+        "result": {
+          "fingerprint": "eb3589554957d8cd6e38a337e44d3439bd164b296dda0fefd889c17952cc30a8",
+          "model_cache": {
+            "hits": 0,
+            "misses": 0,
+            "entries": 0,
+            "max_entries": 4096,
+            "score_bytes": 0
+          },
+          "retained_tuned_view_bytes": 0,
+          "relief_cache_entries": 30,
+          "relief_score_bytes": 486912
+        },
+        "profile_call_counts": {
+          "fit_selector_pipeline": 150,
+          "fit_classifier_scores": 0,
+          "fit_benchmark_krr_model": 0,
+          "binary_metrics_at_threshold": 600,
+          "core_binary_metrics_at_threshold": 600,
+          "roc_auc_or_default": 1200,
+          "find_ber_optimal_threshold": 600
+        },
+        "profile": [
+          {
+            "file": "workflows/temporal_robustness.py",
+            "line": 325,
+            "name": "_prepare_phase2_inner_views",
+            "calls": 30,
+            "self_seconds": 0.0002807,
+            "cumulative_seconds": 39.8302059
+          },
+          {
+            "file": "selection/engine.py",
+            "line": 64,
+            "name": "fit_selector_pipeline",
+            "calls": 150,
+            "self_seconds": 0.0201875,
+            "cumulative_seconds": 39.3791462
+          },
+          {
+            "file": "metrics.py",
+            "line": 361,
+            "name": "binary_metrics_at_threshold",
+            "calls": 600,
+            "self_seconds": 0.0077369000000000005,
+            "cumulative_seconds": 4.0457942000000005
+          }
+        ]
+      },
+      "candidate": {
+        "seconds": [
+          28.445875100092962,
+          28.144035100005567,
+          28.982564199948683
+        ],
+        "median_seconds": 28.445875100092962,
+        "load_parse_sort_seconds": [
+          0.38617700012400746,
+          0.3858815000858158,
+          0.38661790010519326,
+          0.3745946998242289
+        ],
+        "result": {
+          "fingerprint": "eb3589554957d8cd6e38a337e44d3439bd164b296dda0fefd889c17952cc30a8",
+          "model_cache": {
+            "hits": 0,
+            "misses": 0,
+            "entries": 0,
+            "max_entries": 4096,
+            "score_bytes": 0
+          },
+          "retained_tuned_view_bytes": 0,
+          "relief_cache_entries": 30,
+          "relief_score_bytes": 486912
+        },
+        "profile_call_counts": {
+          "fit_selector_pipeline": 50,
+          "fit_classifier_scores": 0,
+          "fit_benchmark_krr_model": 0,
+          "binary_metrics_at_threshold": 0,
+          "core_binary_metrics_at_threshold": 600,
+          "roc_auc_or_default": 600,
+          "find_ber_optimal_threshold": 600
+        },
+        "profile": [
+          {
+            "file": "workflows/temporal_robustness.py",
+            "line": 350,
+            "name": "_prepare_phase2_inner_views",
+            "calls": 10,
+            "self_seconds": 0.0001017,
+            "cumulative_seconds": 25.6928218
+          },
+          {
+            "file": "selection/engine.py",
+            "line": 64,
+            "name": "fit_selector_pipeline",
+            "calls": 50,
+            "self_seconds": 0.0096164,
+            "cumulative_seconds": 25.591675100000003
+          }
+        ]
+      },
+      "speedup": 1.4879336020060596,
+      "time_reduction_percent": 32.79269997990626,
+      "exact_fingerprint_match": true,
+      "same_model_cache_counts_and_bytes": true
+    }
+  },
+  "bootstrap": {
+    "benchmark_fold_metrics.csv": {
+      "method": "build_benchmark_summary_df including all metrics, mean/std and 1000-draw confidence intervals",
+      "rows": 240,
+      "summary_triplets": 24,
+      "metrics": [
+        "BER",
+        "True+",
+        "True-",
+        "ROC_AUC",
+        "PR_AUC",
+        "MCC",
+        "F2"
+      ],
+      "seconds": [
+        0.02197070000693202,
+        0.020810200134292245,
+        0.02141789998859167,
+        0.021149399923160672,
+        0.021055900026112795
+      ],
+      "median_seconds": 0.021149399923160672,
+      "draws_per_ci": 1000
+    },
+    "benchmark_tuned_fold_metrics.csv": {
+      "method": "build_benchmark_summary_df including all metrics, mean/std and 1000-draw confidence intervals",
+      "rows": 200,
+      "summary_triplets": 20,
+      "metrics": [
+        "BER",
+        "True+",
+        "True-",
+        "ROC_AUC",
+        "PR_AUC",
+        "MCC",
+        "F2"
+      ],
+      "seconds": [
+        0.01788310008123517,
+        0.01753879990428686,
+        0.01751219993457198,
+        0.017640499863773584,
+        0.017689500004053116
+      ],
+      "median_seconds": 0.017640499863773584,
+      "draws_per_ci": 1000
+    }
+  },
+  "verification": {
+    "baseline_distinguishing_regressions": "22 failed, 28 deselected against frozen reviewed candidate",
+    "candidate_focused_tests": "50 passed in 4.48 seconds",
+    "candidate_full_python312": "349 passed in 53.82 seconds",
+    "candidate_full_python311": "349 passed in 49.02 seconds",
+    "all_active_selector_prefix_tests": "budgets 10/20/40; both scalers and indicator modes; all ReliefF neighbor settings; exact arrays/layout and independently fitted KRR/logistic predictions"
+  },
+  "limits": [
+    "No full-study rerun or whole-study speedup claim.",
+    "Temporal prepared views retain both scalers only inside the same neighbor/fold/seed context and are released after the largest budget; no process-wide peak-RSS claim.",
+    "Baseline and candidate timings can vary with local load. Original implementation is unchanged and serves as a timing control.",
+    "Historical source-bound evidence stays untouched."
+  ]
+}

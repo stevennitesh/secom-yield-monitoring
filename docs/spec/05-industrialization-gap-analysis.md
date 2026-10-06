@@ -34,3 +34,7 @@ This analysis is mandatory and should be presented as evidence of sound engineer
 - [01 Study Goal](01-study-goal.md)
 - [03 Feature Stability and Interpretation](03-feature-stability-and-interpretation.md)
 - [06 Report Structure](06-report-structure.md)
+
+## Revised Evidence Boundary
+
+Nested benchmark procedures and independent chronological calibration improve validity without supplying missing industrial data. A retrospective later block is not fresh confirmatory evidence. Missingness/regime association and scaled coefficients are not causal attribution.

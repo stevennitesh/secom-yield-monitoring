@@ -15,7 +15,7 @@ def initial_study_manifest(project_root: Path) -> dict[str, Any]:
     """Build the baseline manifest used before workflow-specific statuses are updated."""
     commit, dirty = git_commit_and_dirty(project_root)
     return {
-        "manifest_version": "2.0",
+        "manifest_version": "3.0",
         "study_spec_path": study_spec_path(),
         "study_spec_sha256": strategy_sha256(project_root),
         "git_commit": commit,

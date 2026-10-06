@@ -6,7 +6,7 @@ import numpy as np
 
 from secom.metrics import candidate_thresholds, confusion_counts, predict_from_threshold, true_pos_rate
 
-MAX_WEEKLY_FLAG_FRACTION = 0.10
+MAX_MEAN_WEEKLY_FLAG_FRACTION = 0.10
 
 
 def weekly_flag_fraction(scores: np.ndarray, threshold: float, week_labels: np.ndarray) -> float:
@@ -32,7 +32,7 @@ def _has_better_operating_tpr(tpr: float, threshold: float, best_tpr: float, bes
 
 
 def operational_threshold(scores: np.ndarray, y_true: np.ndarray, week_labels: np.ndarray) -> float:
-    """Choose the lowest-threshold max-TPR operating point under the weekly flag cap."""
+    """Choose the lowest-threshold max-TPR operating point under the mean weekly flagged-fraction constraint."""
     scores_arr = np.asarray(scores, dtype=float)
     y_arr = np.asarray(y_true, dtype=int)
     weeks = np.asarray(week_labels, dtype=int)
@@ -59,7 +59,7 @@ def operational_threshold(scores: np.ndarray, y_true: np.ndarray, week_labels: n
         """Update the best feasible threshold after the sweep state changes."""
         nonlocal best_threshold, best_tpr
         flag_fraction = float(np.mean(flagged_counts / week_counts)) if week_counts.size else 0.0
-        if flag_fraction > MAX_WEEKLY_FLAG_FRACTION:
+        if flag_fraction > MAX_MEAN_WEEKLY_FLAG_FRACTION:
             return
         tpr = 0.0 if (tp + fn) == 0 else float(tp / (tp + fn))
         if _has_better_operating_tpr(tpr, threshold, best_tpr, best_threshold):
@@ -99,7 +99,7 @@ def _operational_threshold_bruteforce(*, scores_arr: np.ndarray, y_arr: np.ndarr
     for candidate in candidate_thresholds(scores_arr):
         threshold = float(candidate)
         flag_fraction = weekly_flag_fraction(scores=scores_arr, threshold=threshold, week_labels=weeks)
-        if flag_fraction > MAX_WEEKLY_FLAG_FRACTION:
+        if flag_fraction > MAX_MEAN_WEEKLY_FLAG_FRACTION:
             continue
 
         counts = confusion_counts(y_arr, predict_from_threshold(scores_arr, threshold))

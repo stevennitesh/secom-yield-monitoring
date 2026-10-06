@@ -238,12 +238,12 @@ def test_lockbox_context_uses_frozen_temporal_transforms_and_selected_indices() 
         selected_local_idx=np.asarray([1], dtype=int),
         selected_global_idx=[1],
         clf=clf,
-        dev_scores=np.asarray([0.1, 0.8, 0.3], dtype=float),
+        calibration_scores=np.asarray([0.1, 0.8, 0.3], dtype=float),
         scientific_threshold=0.5,
         operational_threshold=0.6,
-        threshold_at_tnr90_dev=0.5,
-        tnr_at_tnr90_dev=1.0,
-        tpr_at_tnr90_dev=0.5,
+        threshold_at_tnr90_calibration=0.5,
+        tnr_at_tnr90_calibration=1.0,
+        tpr_at_tnr90_calibration=0.5,
         feature_meta=[],
     )
     x_lock_raw = np.asarray([[1.0, np.nan], [2.0, 3.0], [4.0, 5.0]], dtype=float)
@@ -270,8 +270,8 @@ def test_temporal_selector_eval_failure_names_selector_context() -> None:
         match="temporal selector failure.*selector=Gram-Schmidt.*k=2.*scaler=StandardScaler",
     ):
         temporal_robustness._prepare_selector_eval_view(
-            x_train_raw=np.ones((4, 3), dtype=float),
-            y_train=np.asarray([0, 0, 1, 1], dtype=int),
+            x_train_raw=np.ones((10, 3), dtype=float),
+            y_train=np.tile([0, 1], 5),
             x_eval_raw=np.ones((2, 3), dtype=float),
             y_eval=np.asarray([0, 1], dtype=int),
             method=SelectorName.GRAM_SCHMIDT,
@@ -293,7 +293,7 @@ def test_temporal_role_fit_failure_names_role_selector_context() -> None:
         n_neighbors=None,
     )
 
-    with pytest.raises(RuntimeError, match="temporal role selector failure.*role=primary.*selector=Gram-Schmidt"):
+    with pytest.raises(RuntimeError, match="temporal selector failure.*selector=Gram-Schmidt"):
         temporal_robustness._fit_phase3_role_model(
             role_cfg=role_cfg,
             x_dev_raw=np.ones((6, 3), dtype=float),
@@ -348,7 +348,6 @@ def test_temporal_selector_summary_uses_coherent_modal_config_tuple() -> None:
 
     summary = temporal_robustness._summarize_temporal_selector_results(
         outer_eval_df=outer_eval_df,
-        deciding_outer_fold=3,
     )
 
     row = summary[0]
@@ -356,38 +355,3 @@ def test_temporal_selector_summary_uses_coherent_modal_config_tuple() -> None:
     assert row["modal_C"] == 1.0
     assert row["modal_scaler"] == ScalerName.ROBUST
     assert np.isnan(row["modal_n_neighbors"])
-
-
-def test_temporal_role_selection_uses_deciding_fold_before_simplicity() -> None:
-    """Primary role tie-breaks should use temporal evidence before config simplicity."""
-    selector_stats = [
-        {
-            "selector": SelectorName.S2N,
-            "mean_BER": 0.20,
-            "mean_True+": 0.70,
-            "mean_True-": 0.80,
-            "modal_k": 10,
-            "modal_C": 0.01,
-            "modal_scaler": ScalerName.STANDARD,
-            "modal_n_neighbors": np.nan,
-            "vote_outer_BER": 0.30,
-            "vote_outer_True+": 0.60,
-        },
-        {
-            "selector": SelectorName.F_TEST,
-            "mean_BER": 0.20,
-            "mean_True+": 0.70,
-            "mean_True-": 0.80,
-            "modal_k": 40,
-            "modal_C": 10.0,
-            "modal_scaler": ScalerName.ROBUST,
-            "modal_n_neighbors": np.nan,
-            "vote_outer_BER": 0.10,
-            "vote_outer_True+": 0.90,
-        },
-    ]
-
-    primary, challenger = temporal_robustness._choose_temporal_roles(selector_stats)
-
-    assert primary == SelectorName.F_TEST
-    assert challenger == SelectorName.S2N

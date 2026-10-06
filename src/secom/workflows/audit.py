@@ -27,13 +27,20 @@ def run_study_audit(output_dir: Path) -> ValidationResult:
             claim_restrictions=[],
         )
 
-    manifest = read_manifest(manifest_path)
+    try:
+        manifest = read_manifest(manifest_path)
+    except (OSError, ValueError, UnicodeError) as exc:
+        return ValidationResult(
+            ok=False,
+            errors=[f"{ArtifactName.MANIFEST}: cannot read manifest: {exc}"],
+            warnings=[],
+            claim_restrictions=[],
+        )
     primary_status = str(manifest.get("primary_study_status", StudyStatus.NOT_RUN))
     original_status = str(manifest.get("benchmark_original_status", StudyStatus.NOT_RUN))
     tuned_status = str(manifest.get("benchmark_tuned_status", StudyStatus.NOT_RUN))
     temporal_status = str(manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN))
 
-    artifact_frames = load_artifact_frames(output_dir)
     # Required artifacts depend on manifest status, while schema checks inspect available frames.
     errors = validate_required_artifacts(
         output_dir=output_dir,
@@ -42,6 +49,7 @@ def run_study_audit(output_dir: Path) -> ValidationResult:
         benchmark_tuned_status=tuned_status,
         temporal_status=temporal_status,
     )
+    artifact_frames = load_artifact_frames(output_dir, errors=errors)
     schema = validate_schema_and_logic(
         output_dir=output_dir,
         artifact_frames=artifact_frames,
@@ -57,7 +65,12 @@ def run_study_audit(output_dir: Path) -> ValidationResult:
                 errors.append(f"run_manifest.json: invalid artifact hash name {name}")
                 continue
             path = reports / name
-            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            try:
+                actual = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+            except OSError as exc:
+                errors.append(f"run_manifest.json: cannot read hashed artifact {name}: {exc}")
+                continue
+            if actual != expected or actual is None:
                 errors.append(f"run_manifest.json: artifact hash mismatch for {name}")
     merged_errors = list(dict.fromkeys(errors + schema.errors))
     merged_warnings = list(dict.fromkeys(schema.warnings))

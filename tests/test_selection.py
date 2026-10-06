@@ -240,8 +240,8 @@ def test_fit_selector_pipeline_supports_each_active_selector(selector: str, n_ne
     assert int(np.max(selected_local)) < len(feature_meta)
 
 
-def test_select_best_inner_config_prefers_ber_within_near_best_auc_band() -> None:
-    """Inner tuning should prefer BER inside the near-best AUC tolerance."""
+def test_select_best_inner_config_minimizes_ber_independent_of_auc() -> None:
+    """Inner tuning minimizes BER independently of AUC."""
     selected = select_best_inner_config(
         [
             {"mean_inner_ROC_AUC": 0.900, "mean_inner_BER": 0.30, "k": 10, "C": 1.0, "scaler": ScalerName.STANDARD},
@@ -250,7 +250,7 @@ def test_select_best_inner_config_prefers_ber_within_near_best_auc_band() -> Non
         ]
     )
 
-    assert selected["k"] == 20
+    assert selected["k"] == 5
 
 
 def test_select_best_inner_config_uses_deterministic_simplicity_tie_breaks() -> None:

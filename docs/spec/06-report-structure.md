@@ -1,133 +1,42 @@
 # 06 Report Structure
 
-## Scope
+## Required Narrative Order
 
-This file defines the required structure of the final active report.
+1. Executive summary and dataset/study scope
+2. Original replication design, inner search summary, joint held-out procedure and baselines
+3. Tuned benchmark design, inner search summary, joint held-out procedure and baselines
+4. Original versus tuned paired comparison on identical held-out IDs/folds
+5. Feature stability and descriptive interpretation for both studies
+6. Temporal robustness, drift restrictions, MSPC, and illustrative workload/costs
+7. Industrialization gaps
+8. Conclusions and next data requirements, followed by provenance
 
-## Required Sections
+## Metric and Headline Policy
 
-1. Executive summary
-2. Dataset and study scope
-3. Original replication design
-4. Original replication search summary
-5. Original replication results
-6. Tuned benchmark design
-7. Tuned benchmark search summary
-8. Tuned benchmark results
-9. Original vs tuned benchmark comparison
-10. Feature stability and interpretation
-11. Temporal robustness stress test
-12. Industrialization gaps
-13. Conclusions and next data requirements
+Add an evidence-derived result summary and section navigation. Keep detailed machine tables in expandable appendix sections with distinct headings. The primary benchmark chart focuses on the complete selected procedure and separates fold-mean error from pooled confusion counts; input-mode deltas remain supporting material. Clearly separate chronological test periods from the retrospective final block and state that calibration fractions refer to the earlier training region.
 
-## Metric Policy
+Lead with the recorded manufacturing pass/fail question and why raw accuracy misleads. Define balanced error, failure recall, pass specificity, calibration, cross-validation and both model families at first use. Main text, tables and charts use external vocabulary: complete selected procedure, measurements only, measurements plus missing flags, earlier fitting samples, held-out calibration and later test periods. Preserve machine identifiers, exact search tables and provenance in technical appendices. Explain bounded tuning's recall/false-alert tradeoff and limited feature engineering without declaring a hindsight winner.
 
-### Headline Metrics
+The six existing figures retain their filenames and evidence owners. Comparison/delta figures use predefined held-out procedures and a positive balanced-error reduction sign. Stability labels anonymous value/missing-flag columns and exploratory family selection. Drift distinguishes raw-feature fitting references from same-model held-out calibration score references. The later LR/MSPC chart shows frozen-threshold counts; evaluation-label 90%-specificity diagnostics remain separately tabulated. Workload/cost captions identify hypothetical calibration-only quantities, cost-ratio meaning and the mean-weekly policy scope. Captions state sample, threshold and descriptive uncertainty limits.
 
-The main report narrative must prioritize these benchmark-study metrics:
+Headline metrics source the joint procedure held-out predictions: BER, TPR/True+, TNR/True-, pooled confusion counts, and descriptive fold mean/std/range. Original versus tuned uses paired fold deltas and their descriptive spread. Family minima, selector/classifier comparisons, and family input-mode ablations are explicitly exploratory nested diagnostics, not separately validated champions. ROC_AUC, PR_AUC, MCC, and F2 remain supporting diagnostics.
 
-1. `BER`
-2. `TPR` / `True+`
-3. `TNR` / `True-`
-4. uncertainty summaries for the mean metric values
-5. missing-indicator ablation deltas
-6. selector/classifier comparison outcomes
-7. feature-stability summaries from the benchmark studies
+Compare all-pass, missingness-only, values-only, and values-plus-indicators on the same folds. Explain fixed40 versus tuned k10/20/40 and ReliefF neighbors10 versus5/10/20. Both parameter/threshold searches are nested, BER-first, with training-only preprocessing and inner OOF calibration. Declare the OOF/refit score-distribution limitation.
 
-### Secondary Robustness Metrics
+Do not label fold bootstrap spread as algorithm-performance CIs. Feature selection frequencies over overlapping training folds and full-data fitted coefficient summaries are descriptive. Use absolute_scaled_coefficient and stability_weighted_coefficient; do not imply causal or expected economic effects.
 
-These belong in the temporal robustness section and must not be presented as the main project result:
+## Temporal and Operational Disclosure
 
-1. temporal `BER`, `TPR`, `TNR`
-2. lockbox `BER`, `TPR`, `TNR`
-3. prevalence shift
-4. KS score-shift test results
-5. PSI summaries
-6. matched-`TNR=90%` supervised vs MSPC comparison
+Describe the logistic-regression role study and separate bounded DEV-only KRR comparison, fixed nonoverlapping calendar DEV tests, deterministic chronological inner tuning, FIT/calibration/future separation, and a retained model with no post-threshold refit. The last15% block is always retrospective, not fresh confirmatory. Report counts, exact conditional-independent-trial TPR/TNR intervals, and sparse-class limitations. Drift heuristics cannot authorize superiority.
 
-### Illustrative Industry Metrics
+Distinguish frozen thresholds from retrospective evaluation-label TNR90 diagnostics. MSPC source/thresholds freeze on calibration. Report observed mean inter-alarm spacing, not ARL0. KS uses same-model held-out calibration reference; selected-indicator missingness-rate shifts describe regime associations.
 
-These may be shown for operational framing, but must be labeled illustrative or exploratory rather than production-validated:
+Manager workload names held-out DEV calibration, is illustrative, and describes a mean-weekly policy rather than a per-week hard cap. Calibration workload does not validate future capacity/cost. Keep temporal evidence and required industrialization gaps separate from benchmark conclusions.
 
-1. weekly flagged samples
-2. weekly fail captures and misses
-3. `predicted_flag_fraction`
-4. workload framing
-5. cost curves
-6. operating-point recommendations
+## Source and Historical Status
 
-### De-emphasized Metrics
+UCI describes KRR; McCann/Johnston Table2 labels Naive Bayes. Local raw measurements have590 columns versus metadata591. Scientific design changes require a new full real-data run before new performance claims. An explicitly requested presentation-only refresh may render unchanged audited evidence under the narrow provenance rules in specs07/08. Preserve every historical run and execution manifest byte; a new rendering source never becomes the executed modeling source.
 
-The following may appear as supporting diagnostics, appendix material, or tables, but should not drive the main conclusions:
+## Bounded Tuning and Calibration Disclosure
 
-1. `ROC_AUC`
-2. `PR_AUC`
-3. `MCC`
-4. `F2`
-
-## Ordering Rules
-
-1. Original replication results must appear before tuned benchmark results.
-2. Original replication design must explain:
-   1. fixed feature budget,
-   2. literature-style selector/classifier comparison,
-   3. in-fold preprocessing and selection,
-   4. missing-indicator paired comparison,
-   5. final thresholded reporting via `BER`, `TPR`, and `TNR`.
-3. Original replication search summary must show:
-   1. evaluated selector/classifier/mode combinations,
-   2. the fixed search space,
-   3. selected configurations per selector/classifier/mode.
-4. Tuned benchmark design must explain:
-   1. nested CV,
-   2. tuned selector parameters,
-   3. tuned classifier parameters,
-   4. `ROC_AUC` as the threshold-free inner objective,
-   5. final thresholded reporting via `BER`, `TPR`, and `TNR`.
-5. Tuned benchmark search summary must show:
-   1. search-space coverage,
-   2. selected-config counts,
-   3. modal selected configurations per selector/classifier/mode.
-6. Temporal robustness must explain:
-   1. chronological DEV/LOCKBOX split,
-   2. time-aware folds,
-   3. selector screening,
-   4. temporal model selection,
-   5. config and threshold freeze,
-   6. lockbox evaluation,
-   7. drift gating,
-   8. MSPC comparison.
-7. Temporal model selection summary must show:
-   1. primary selector,
-   2. challenger availability,
-   3. selector ranking,
-   4. modal configurations for the selected selectors.
-8. Drift and claim restrictions must appear before MSPC, workload, or cost interpretation.
-9. Both benchmark studies must appear before temporal stress-test results.
-10. Feature interpretation must be attached to the benchmark studies, not treated only as an operational appendix.
-11. Industrialization gaps must be explicit and substantive.
-12. Conclusions must separate:
-   1. what was replicated,
-   2. what improved under tuning,
-   3. what was stress-tested,
-   4. what remains unsupported.
-
-## Narrative Rule
-
-The report must make it obvious which findings are:
-
-1. original benchmark conclusions,
-2. tuned benchmark conclusions,
-3. secondary robustness observations,
-4. non-claimable or unsupported for real deployment.
-
-Operational framing must not be written as if the dataset already supports production-readiness claims.
-
-## See Also
-
-- [01 Study Goal](01-study-goal.md)
-- [02 Benchmark Replication Study](02-benchmark-replication-study.md)
-- [04 Temporal Robustness Study](04-temporal-robustness-study.md)
-- [05 Industrialization Gap Analysis](05-industrialization-gap-analysis.md)
-- [07 Artifact Contracts](07-artifact-contracts.md)
-- [08 Audit and Claim Semantics](08-audit-and-claim-semantics.md)
+Explain original 12 versus tuned 16 KRR configurations per selector budget, alpha100 coverage and dimension-relative gamma. State the regularization tie order and train-established width receipts. In the temporal section show per-period BER/AUC for main20% and independently tuned30% sensitivity paths on identical fixed tests, keeping LR roles and retrospective later-block evidence separate. Show calibration class counts, single-example BER steps and fixed-score LOFO ranges with fragility warnings and no confidence-interval claim. The existing six figures retain their benchmark/LR evidence owners; no KRR later-block or production figure is added.

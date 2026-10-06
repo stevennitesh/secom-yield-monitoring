@@ -5,11 +5,8 @@ from __future__ import annotations
 from typing import Final
 
 SEED_BENCHMARK: Final[int] = 42
-SEEDS_STAGE_B: Final[list[int]] = [42, 11, 23, 37, 59]
-SEEDS_PHASE2: Final[list[int]] = [42, 11, 23, 37, 59]
 
 LOCKBOX_FRAC: Final[float] = 0.15
-MIN_TEST_FAILS: Final[int] = 20
 INNER_MIN_CLASS: Final[int] = 5
 EPS_SELECTOR: Final[float] = 1e-12
 EPS_PSI: Final[float] = 1e-6
@@ -19,6 +16,9 @@ COST_RATIOS: Final[list[int]] = [1, 2, 5, 10, 20]
 BENCHMARK_KRR_ALPHA_GRID: Final[list[float]] = [0.1, 1.0, 10.0]
 BENCHMARK_KRR_GAMMA_GRID: Final[list[float | None]] = [None, 0.01, 0.1, 1.0]
 BENCHMARK_LOGREG_C_GRID: Final[list[float]] = [0.01, 0.1, 1.0, 10.0]
+TUNED_KRR_ALPHA_GRID: Final[list[float]] = [0.1, 1.0, 10.0, 100.0]
+TUNED_KRR_GAMMA_MULTIPLIERS: Final[list[float]] = [0.1, 0.2, 1.0, 2.0]
+TEMPORAL_KRR_CALIBRATION_FRACTIONS: Final[list[float]] = [0.20, 0.30]
 BENCHMARK_INNER_SPLITS: Final[int] = 3
 
 
@@ -86,11 +86,9 @@ class BenchmarkClassifier:
 
 
 class FoldPlanName:
-    """Temporal outer-fold plan labels, ordered from preferred to fallback."""
+    """Fixed calendar temporal outer-fold plan label."""
 
     PRIMARY_3FOLD = "primary_3fold"
-    FALLBACK_3FOLD = "fallback_3fold"
-    FALLBACK_2FOLD = "fallback_2fold"
 
 
 class StudyStatus:
@@ -112,6 +110,9 @@ class ArtifactName:
     BENCHMARK_SUMMARY = "benchmark_summary.csv"
     BENCHMARK_ABLATION = "benchmark_ablation.csv"
     BENCHMARK_FULL_FIT_SUMMARY = "benchmark_full_fit_summary.csv"
+    BENCHMARK_PREDICTIONS = "benchmark_predictions.csv"
+    BENCHMARK_PROCEDURE_FOLD_METRICS = "benchmark_procedure_fold_metrics.csv"
+    BENCHMARK_PROCEDURE_SUMMARY = "benchmark_procedure_summary.csv"
     FEATURE_STABILITY = "feature_stability.csv"
     FEATURE_REPORT = "feature_report.csv"
     BENCHMARK_TUNED_SEARCH = "benchmark_tuned_search.csv"
@@ -120,9 +121,19 @@ class ArtifactName:
     BENCHMARK_TUNED_SUMMARY = "benchmark_tuned_summary.csv"
     BENCHMARK_TUNED_ABLATION = "benchmark_tuned_ablation.csv"
     BENCHMARK_TUNED_FULL_FIT_SUMMARY = "benchmark_tuned_full_fit_summary.csv"
+    BENCHMARK_TUNED_PREDICTIONS = "benchmark_tuned_predictions.csv"
+    BENCHMARK_TUNED_PROCEDURE_FOLD_METRICS = "benchmark_tuned_procedure_fold_metrics.csv"
+    BENCHMARK_TUNED_PROCEDURE_SUMMARY = "benchmark_tuned_procedure_summary.csv"
     BENCHMARK_TUNED_FEATURE_STABILITY = "benchmark_tuned_feature_stability.csv"
     BENCHMARK_TUNED_FEATURE_REPORT = "benchmark_tuned_feature_report.csv"
+    TEMPORAL_KRR_SEARCH = "temporal_krr_search.csv"
+    TEMPORAL_KRR_PREDICTIONS = "temporal_krr_predictions.csv"
+    TEMPORAL_KRR_METRICS = "temporal_krr_fold_metrics.csv"
+    TEMPORAL_CALIBRATION_SCORES = "temporal_calibration_scores.csv"
+    TEMPORAL_CALIBRATION_DIAGNOSTICS = "temporal_calibration_diagnostics.csv"
     TEMPORAL_SPLIT_METADATA = "temporal_split_metadata.csv"
+    TEMPORAL_PREDICTIONS = "temporal_predictions.csv"
+    TEMPORAL_PROCEDURE_METRICS = "temporal_procedure_fold_metrics.csv"
     TEMPORAL_SELECTOR_SCREENING = "temporal_selector_screening.csv"
     TEMPORAL_MODEL_SELECTION = "temporal_model_selection.csv"
     TEMPORAL_INNER_CV = "temporal_inner_cv.csv"
@@ -144,6 +155,9 @@ REQUIRED_ARTIFACTS_PRIMARY: Final[list[str]] = [
     ArtifactName.BENCHMARK_SUMMARY,
     ArtifactName.BENCHMARK_ABLATION,
     ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+    ArtifactName.BENCHMARK_PREDICTIONS,
+    ArtifactName.BENCHMARK_PROCEDURE_FOLD_METRICS,
+    ArtifactName.BENCHMARK_PROCEDURE_SUMMARY,
     ArtifactName.FEATURE_STABILITY,
     ArtifactName.FEATURE_REPORT,
     ArtifactName.BENCHMARK_TUNED_SEARCH,
@@ -152,13 +166,23 @@ REQUIRED_ARTIFACTS_PRIMARY: Final[list[str]] = [
     ArtifactName.BENCHMARK_TUNED_SUMMARY,
     ArtifactName.BENCHMARK_TUNED_ABLATION,
     ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+    ArtifactName.BENCHMARK_TUNED_PREDICTIONS,
+    ArtifactName.BENCHMARK_TUNED_PROCEDURE_FOLD_METRICS,
+    ArtifactName.BENCHMARK_TUNED_PROCEDURE_SUMMARY,
     ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
     ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
     ArtifactName.MANIFEST,
 ]
 
 REQUIRED_ARTIFACTS_TEMPORAL: Final[list[str]] = [
+    ArtifactName.TEMPORAL_KRR_SEARCH,
+    ArtifactName.TEMPORAL_KRR_PREDICTIONS,
+    ArtifactName.TEMPORAL_KRR_METRICS,
+    ArtifactName.TEMPORAL_CALIBRATION_SCORES,
+    ArtifactName.TEMPORAL_CALIBRATION_DIAGNOSTICS,
     ArtifactName.TEMPORAL_SPLIT_METADATA,
+    ArtifactName.TEMPORAL_PREDICTIONS,
+    ArtifactName.TEMPORAL_PROCEDURE_METRICS,
     ArtifactName.TEMPORAL_SELECTOR_SCREENING,
     ArtifactName.TEMPORAL_MODEL_SELECTION,
     ArtifactName.TEMPORAL_INNER_CV,

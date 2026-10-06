@@ -17,6 +17,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate the final markdown report from active artifacts")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--export-pdf", action="store_true")
+    parser.add_argument(
+        "--presentation-output-dir",
+        type=Path,
+        help="Fresh editorial output with verified archived execution; no model fitting",
+    )
     return parser.parse_args()
 
 
@@ -27,8 +32,18 @@ def main() -> None:
     from secom.reporting import write_final_report
 
     try:
-        out = write_final_report(Path(args.output_dir), export_pdf=args.export_pdf)
-    except RuntimeError as exc:
+        if args.presentation_output_dir is not None:
+            if args.export_pdf:
+                raise ValueError("Presentation refresh emits Markdown and six PNGs; PDF is a separate optional render")
+            from secom.common.paths import project_root_from_repo_structure
+            from secom.evidence import refresh_presentation
+
+            out = refresh_presentation(
+                Path(args.output_dir), args.presentation_output_dir, project_root_from_repo_structure()
+            )
+        else:
+            out = write_final_report(Path(args.output_dir), export_pdf=args.export_pdf)
+    except (RuntimeError, ValueError) as exc:
         print(f"ERROR: {exc}")
         raise SystemExit(1) from None
     print(out)

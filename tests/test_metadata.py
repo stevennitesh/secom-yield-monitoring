@@ -136,3 +136,35 @@ def test_spec_hash_is_identical_across_checkout_line_endings(workspace_tmp_dir: 
     for path in (workspace_tmp_dir / "docs/spec").glob("*.md"):
         path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
     assert strategy_sha256(workspace_tmp_dir) == expected
+
+
+def test_canonical_spec_owners_have_distinct_titles_and_required_responsibilities() -> None:
+    """A copied report owner must not silently replace artifact/audit contracts."""
+    expected = {
+        "06-report-structure.md": (
+            "# 06 Report Structure",
+            "## Required Narrative Order",
+            "## Metric and Headline Policy",
+        ),
+        "07-artifact-contracts.md": (
+            "# 07 Artifact Contracts",
+            "## Benchmark Study Artifact Families",
+            "## Manifest Rule",
+            "## Complete-Run Provenance and Evidence Export",
+            "## DEV Comparator and Calibration Artifacts",
+        ),
+        "08-audit-and-claim-semantics.md": (
+            "# 08 Audit and Claim Semantics",
+            "## Hard Errors",
+            "## Secondary Study Restrictions",
+            "## Required Audit Output Categories",
+            "## Provenance Consistency",
+            "## Bounded Comparator and Calibration Checks",
+        ),
+    }
+    for filename, sections in expected.items():
+        text = (_PROJECT_ROOT / "docs/spec" / filename).read_text(encoding="utf-8")
+        assert text.splitlines()[0] == sections[0], filename
+        assert all(section in text for section in sections[1:]), filename
+        if filename != "06-report-structure.md":
+            assert "## Required Narrative Order" not in text, filename

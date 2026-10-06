@@ -7,19 +7,61 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from secom.artifacts import ensure_reports_dir, write_manifest
+from secom.artifacts import ensure_reports_dir, read_manifest, write_manifest, validate_schema_and_logic
 from secom.config import ArtifactName, StudyStatus
 from secom.workflows.audit import run_study_audit
-from tests.artifact_writers import write_artifact_row, write_artifact_rows
+from tests.artifact_writers import (
+    complete_benchmark_fixture,
+    complete_temporal_fixture,
+    write_artifact_row,
+    write_artifact_rows,
+)
 
 
-def _ci_fields(values_by_metric: dict[str, float]) -> dict[str, float]:
+@pytest.mark.parametrize("payload", ["{broken", "[]", "null", '"manifest"'])
+@pytest.mark.parametrize("audit", [run_study_audit, validate_schema_and_logic])
+def test_malformed_manifest_returns_audit_error(workspace_tmp_dir: Path, payload: str, audit) -> None:
+    reports = ensure_reports_dir(workspace_tmp_dir)
+    (reports / ArtifactName.MANIFEST).write_text(payload, encoding="utf-8")
+    result = audit(workspace_tmp_dir)
+    assert not result.ok
+    assert any("run_manifest.json: cannot read manifest" in error for error in result.errors)
+
+
+@pytest.mark.parametrize("payload", ["", 'column\n"unterminated', "\xff"])
+@pytest.mark.parametrize("audit", [run_study_audit, validate_schema_and_logic])
+def test_unreadable_csv_returns_audit_error(active_artifacts_output_dir: Path, payload: str, audit) -> None:
+    path = active_artifacts_output_dir / "reports" / ArtifactName.BENCHMARK_SUMMARY
+    path.write_bytes(payload.encode("latin-1"))
+    result = audit(active_artifacts_output_dir)
+    assert not result.ok
+    assert any("benchmark_summary.csv: cannot read CSV" in error for error in result.errors)
+
+
+def test_empty_required_artifact_is_an_audit_error(active_artifacts_output_dir: Path) -> None:
+    path = active_artifacts_output_dir / "reports" / ArtifactName.BENCHMARK_ABLATION
+    frame = pd.read_csv(path)
+    frame.iloc[:0].to_csv(path, index=False)
+    result = run_study_audit(active_artifacts_output_dir)
+    assert not result.ok
+    assert "benchmark_ablation.csv: active artifact has no rows" in result.errors
+
+
+@pytest.mark.parametrize("value", [-0.1, 1.1, float("nan"), float("inf")])
+@pytest.mark.parametrize("name", [ArtifactName.BENCHMARK_SUMMARY, ArtifactName.BENCHMARK_TUNED_SUMMARY])
+def test_invalid_headline_metrics_fail_audit(active_artifacts_output_dir: Path, name: str, value: float) -> None:
+    path = active_artifacts_output_dir / "reports" / name
+    frame = pd.read_csv(path)
+    frame.loc[0, "mean_BER"] = value
+    frame.to_csv(path, index=False)
+    result = run_study_audit(active_artifacts_output_dir)
+    assert not result.ok
+    assert f"{name}: mean_BER must be between 0 and 1" in result.errors
+
+
+def _range_fields(values_by_metric: dict[str, float]) -> dict[str, float]:
     """Return symmetric lower/upper CI fields for compact artifact fixtures."""
-    return {
-        f"CI_{bound}_{metric}": float(value)
-        for metric, value in values_by_metric.items()
-        for bound in ("lower", "upper")
-    }
+    return {f"{bound}_{metric}": float(value) for metric, value in values_by_metric.items() for bound in ("min", "max")}
 
 
 def _base_manifest(
@@ -32,7 +74,7 @@ def _base_manifest(
 ) -> dict[str, object]:
     """Build a minimal manifest with configurable study-layer statuses."""
     return {
-        "manifest_version": "2.0",
+        "manifest_version": "3.0",
         "study_spec_path": "docs/spec",
         "study_spec_sha256": "test-sha256",
         "git_commit": "deadbeef",
@@ -115,15 +157,15 @@ def _write_primary_artifacts(reports: Path) -> None:
             "classifier": "krr",
             "replication_mode": "strict",
             "mean_BER": 0.30,
-            "CI_lower_BER": 0.25,
-            "CI_upper_BER": 0.35,
+            "min_BER": 0.25,
+            "max_BER": 0.35,
             "mean_True+": 0.60,
             "mean_True-": 0.80,
             "mean_ROC_AUC": 0.72,
             "mean_PR_AUC": 0.41,
             "mean_MCC": 0.33,
             "mean_F2": 0.57,
-            **_ci_fields(
+            **_range_fields(
                 {
                     "True+": 0.60,
                     "True-": 0.80,
@@ -192,10 +234,12 @@ def _write_primary_artifacts(reports: Path) -> None:
             "feature_type": "value",
             "feature_name_or_source_col": "sensor_000",
             "selection_frequency": 1.0,
-            "conditional_effect_magnitude": 0.8,
-            "expected_contribution": 0.8,
+            "absolute_scaled_coefficient": 0.8,
+            "stability_weighted_coefficient": 0.8,
         },
     )
+
+    complete_benchmark_fixture(reports)
 
 
 def _write_temporal_artifacts(reports: Path) -> None:
@@ -246,12 +290,16 @@ def _write_temporal_artifacts(reports: Path) -> None:
     write_artifact_row(
         reports,
         ArtifactName.TEMPORAL_DRIFT,
-        {"model_scope": "primary", "drift_gate_status": "HIGH_SHIFT", "lockbox_claims_allowed": False},
+        {"model_scope": "primary", "drift_gate_status": "HIGH_SHIFT", "confirmatory_claims_allowed": False},
     )
     write_artifact_row(
         reports,
         ArtifactName.TEMPORAL_MSPC,
-        {"eval_scope": "lockbox", "best_MSPC_TPR_at_TNR90": 0.35, "best_MSPC_source": "T2"},
+        {
+            "eval_scope": "lockbox",
+            "calibration_selected_MSPC_TPR_at_TNR90": 0.35,
+            "calibration_selected_MSPC_source": "T2",
+        },
     )
     write_artifact_row(
         reports,
@@ -268,6 +316,8 @@ def _write_temporal_artifacts(reports: Path) -> None:
             "mean_weekly_flagged_samples": 4.0,
         },
     )
+
+    complete_temporal_fixture(reports)
 
 
 def _write_tuned_artifacts(reports: Path) -> None:
@@ -353,32 +403,32 @@ def _write_tuned_artifacts(reports: Path) -> None:
             "boot_seed": 42,
             "mean_BER": 0.27,
             "std_BER": 0.0,
-            "CI_lower_BER": 0.27,
-            "CI_upper_BER": 0.27,
+            "min_BER": 0.27,
+            "max_BER": 0.27,
             "mean_True+": 0.62,
             "std_True+": 0.0,
-            "CI_lower_True+": 0.62,
-            "CI_upper_True+": 0.62,
+            "min_True+": 0.62,
+            "max_True+": 0.62,
             "mean_True-": 0.81,
             "std_True-": 0.0,
-            "CI_lower_True-": 0.81,
-            "CI_upper_True-": 0.81,
+            "min_True-": 0.81,
+            "max_True-": 0.81,
             "mean_ROC_AUC": 0.73,
             "std_ROC_AUC": 0.0,
-            "CI_lower_ROC_AUC": 0.73,
-            "CI_upper_ROC_AUC": 0.73,
+            "min_ROC_AUC": 0.73,
+            "max_ROC_AUC": 0.73,
             "mean_PR_AUC": 0.43,
             "std_PR_AUC": 0.0,
-            "CI_lower_PR_AUC": 0.43,
-            "CI_upper_PR_AUC": 0.43,
+            "min_PR_AUC": 0.43,
+            "max_PR_AUC": 0.43,
             "mean_MCC": 0.36,
             "std_MCC": 0.0,
-            "CI_lower_MCC": 0.36,
-            "CI_upper_MCC": 0.36,
+            "min_MCC": 0.36,
+            "max_MCC": 0.36,
             "mean_F2": 0.59,
             "std_F2": 0.0,
-            "CI_lower_F2": 0.59,
-            "CI_upper_F2": 0.59,
+            "min_F2": 0.59,
+            "max_F2": 0.59,
         },
     )
     write_artifact_row(
@@ -439,10 +489,12 @@ def _write_tuned_artifacts(reports: Path) -> None:
             "feature_type": "value",
             "feature_name_or_source_col": "sensor_000",
             "selection_frequency": 1.0,
-            "conditional_effect_magnitude": 0.8,
-            "expected_contribution": 0.8,
+            "absolute_scaled_coefficient": 0.8,
+            "stability_weighted_coefficient": 0.8,
         },
     )
+
+    complete_benchmark_fixture(reports, tuned=True)
 
 
 def test_study_audit_primary_status_requires_tuned_artifacts(workspace_tmp_dir: Path) -> None:
@@ -476,7 +528,7 @@ def test_study_audit_rejects_primary_pass_without_tuned_status(workspace_tmp_dir
 @pytest.mark.parametrize(
     ("field", "value", "expected_error"),
     [
-        ("manifest_version", "1.0", "run_manifest.json: manifest_version must be 2.0"),
+        ("manifest_version", "1.0", "run_manifest.json: manifest_version must be 3.0"),
         ("study_spec_path", "legacy/spec", "run_manifest.json: study_spec_path must be docs/spec"),
         ("study_spec_sha256", "MISSING", "run_manifest.json: study_spec_sha256 must identify the active spec set"),
     ],
@@ -538,6 +590,9 @@ def test_study_audit_rejects_temporal_claim_restriction_mismatch(workspace_tmp_d
     _write_tuned_artifacts(reports)
     _write_temporal_artifacts(reports)
 
+    manifest = read_manifest(reports / ArtifactName.MANIFEST)
+    manifest["temporal_claim_restrictions"] = []
+    write_manifest(manifest, reports / ArtifactName.MANIFEST)
     result = run_study_audit(workspace_tmp_dir)
 
     assert not result.ok
@@ -591,7 +646,7 @@ def test_study_audit_rejects_invalid_temporal_enum_values(workspace_tmp_dir: Pat
     write_artifact_row(
         reports,
         ArtifactName.TEMPORAL_DRIFT,
-        {"model_scope": "primary", "drift_gate_status": "OK", "lockbox_claims_allowed": False},
+        {"model_scope": "primary", "drift_gate_status": "OK", "confirmatory_claims_allowed": False},
     )
 
     result = run_study_audit(workspace_tmp_dir)
@@ -728,8 +783,8 @@ def test_study_audit_missing_tuned_artifact_is_blocking(workspace_tmp_dir: Path)
 @pytest.mark.parametrize(
     ("artifact_name", "missing_column"),
     [
-        (ArtifactName.BENCHMARK_SUMMARY, "CI_lower_True+"),
-        (ArtifactName.BENCHMARK_TUNED_SUMMARY, "CI_upper_MCC"),
+        (ArtifactName.BENCHMARK_SUMMARY, "min_True+"),
+        (ArtifactName.BENCHMARK_TUNED_SUMMARY, "max_MCC"),
     ],
 )
 def test_study_audit_requires_all_benchmark_metric_ci_columns(
@@ -771,8 +826,8 @@ def test_study_audit_rejects_feature_report_without_benchmark_lineage(workspace_
             "feature_type": "value",
             "feature_name_or_source_col": "sensor_000",
             "selection_frequency": 1.0,
-            "conditional_effect_magnitude": 0.8,
-            "expected_contribution": 0.8,
+            "absolute_scaled_coefficient": 0.8,
+            "stability_weighted_coefficient": 0.8,
         },
     )
 
@@ -802,8 +857,8 @@ def test_study_audit_rejects_feature_lineage_triplet_mismatch(workspace_tmp_dir:
             "feature_type": "value",
             "feature_name_or_source_col": "sensor_000",
             "selection_frequency": 1.0,
-            "conditional_effect_magnitude": 0.8,
-            "expected_contribution": 0.8,
+            "absolute_scaled_coefficient": 0.8,
+            "stability_weighted_coefficient": 0.8,
         },
     )
 
@@ -900,6 +955,7 @@ def test_study_audit_rejects_tuned_selected_config_drift(workspace_tmp_dir: Path
             "k": 40,
             "alpha": 1.0,
             "gamma": 0.1,
+            "gamma_multiplier": pd.NA,
             "C": pd.NA,
             "n_neighbors": pd.NA,
             "BER": 0.27,
@@ -945,6 +1001,7 @@ def test_study_audit_does_not_treat_falsey_selected_config_markers_as_selected(
             "k": 20,
             "alpha": 1.0,
             "gamma": 0.1,
+            "gamma_multiplier": pd.NA,
             "C": pd.NA,
             "n_neighbors": pd.NA,
             "mean_inner_ROC_AUC": 0.73,

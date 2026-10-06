@@ -1,4 +1,4 @@
-"""Binary classification metrics, threshold search, and bootstrap intervals."""
+"""Binary classification metrics, threshold search, and threshold search."""
 
 from __future__ import annotations
 
@@ -385,42 +385,6 @@ def binary_metrics_at_threshold(
     if np.isfinite(metrics["ROC_AUC"]):
         metrics["PR_AUC"] = average_precision_score(y_true=y_true, y_score=scores)
     return metrics
-
-
-def bootstrap_resample_indices(
-    n_values: int,
-    n_boot: int = 1000,
-    seed: int = 42,
-) -> np.ndarray:
-    """Return bootstrap index draws with shape ``(n_boot, n_values)``."""
-    n = int(n_values)
-    if n <= 0:
-        return np.empty((0, 0), dtype=int)
-    rng = np.random.default_rng(seed)
-    return rng.integers(0, n, size=(int(n_boot), n), endpoint=False)
-
-
-def bootstrap_ci_for_mean(
-    values: np.ndarray,
-    n_boot: int = 1000,
-    seed: int = 42,
-    alpha: float = 0.95,
-    draw_indices: np.ndarray | None = None,
-) -> tuple[float, float]:
-    """Return a percentile bootstrap CI for a mean."""
-    vals = np.asarray(values, dtype=float)
-    if vals.size == 0:
-        return (np.nan, np.nan)
-    if draw_indices is None:
-        draw_indices = bootstrap_resample_indices(n_values=vals.size, n_boot=n_boot, seed=seed)
-    else:
-        draw_indices = np.asarray(draw_indices, dtype=int)
-        if draw_indices.ndim != 2 or draw_indices.shape[1] != vals.size:
-            raise ValueError("draw_indices must have shape (n_boot, n_values)")
-    means = np.mean(vals[draw_indices], axis=1)
-    lower_q = (1 - alpha) / 2.0
-    upper_q = 1.0 - lower_q
-    return (float(np.quantile(means, lower_q)), float(np.quantile(means, upper_q)))
 
 
 def expected_cost_per_sample(fp: float, fn: float, n: float, cost_ratio: float) -> float:

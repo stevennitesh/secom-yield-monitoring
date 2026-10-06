@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
+import numpy as np
+import pandas as pd
 
 from secom.common.meta import source_tree_identity, strategy_sha256
 from secom.config import ArtifactName
@@ -54,6 +57,31 @@ def test_full_study_rejects_reusing_existing_artifacts(workspace_tmp_dir: Path) 
 
 def _bind_fixture_provenance(output_dir: Path, input_dir: Path) -> bytes:
     """Attach explicit synthetic provenance to a schema-valid artifact fixture."""
+    from secom.artifacts import write_csv
+    from secom.workflows.benchmark_procedures import prediction_metrics, procedure_summary
+
+    # Bind compact export-test predictions to the actual raw input identities.
+    # These deliberately fabricated model scores test custody, not model accuracy.
+    labels = pd.read_csv(input_dir / "secom_labels.data", sep=r"\s+", header=None, usecols=[0])[0].eq(1)
+    for prefix in ("benchmark", "benchmark_tuned"):
+        reports = output_dir / "reports"
+        old = pd.read_csv(reports / f"{prefix}_predictions.csv")
+        pieces = []
+        for fold, ids in enumerate(np.array_split(np.arange(len(labels)), 10), 1):
+            for procedure in old.procedure.unique():
+                frame = old[(old.fold == fold) & (old.procedure == procedure)].iloc[: len(ids)].copy()
+                frame["sample_id"], frame["y_true"] = ids, labels.iloc[ids].astype(int).to_numpy()
+                pieces.append(frame)
+        predictions = pd.concat(pieces, ignore_index=True)
+        folds = pd.DataFrame(
+            [
+                {"procedure": procedure, "fold": fold, **prediction_metrics(frame)}
+                for (procedure, fold), frame in predictions.groupby(["procedure", "fold"])
+            ]
+        )
+        write_csv(predictions, reports / f"{prefix}_predictions.csv")
+        write_csv(folds, reports / f"{prefix}_procedure_fold_metrics.csv")
+        write_csv(procedure_summary(folds, predictions), reports / f"{prefix}_procedure_summary.csv")
     path = output_dir / "reports" / ArtifactName.MANIFEST
     manifest = json.loads(path.read_text(encoding="utf-8"))
     manifest.update(
@@ -111,6 +139,132 @@ def test_export_removes_legacy_bulk_and_preserves_manual_files(
     assert not (evidence / "benchmark_summary.csv").exists()
     assert not (evidence / "study_artifacts.zip").exists()
     assert manual.read_text(encoding="utf-8") == "keep reviewer notes"
+
+
+@pytest.mark.parametrize("failure", ["publication", "rename", "archive_copy"])
+def test_failed_repeat_export_preserves_previously_receipted_archive(
+    active_artifacts_output_dir: Path, synthetic_input_dir: Path, workspace_tmp_dir: Path, monkeypatch, failure: str
+) -> None:
+    """A failed public replacement must preserve the ZIP referenced by the old receipt."""
+    import secom.evidence as evidence
+
+    original_manifest = _bind_fixture_provenance(active_artifacts_output_dir, synthetic_input_dir)
+    destination = workspace_tmp_dir / "public"
+    export_public_snapshot(active_artifacts_output_dir, destination, PROJECT_ROOT)
+    archive = active_artifacts_output_dir / "evidence/study_artifacts.zip"
+    old_archive = archive.read_bytes()
+    old_public = {p.relative_to(destination): p.read_bytes() for p in destination.rglob("*") if p.is_file()}
+    old_receipt = json.loads(old_public[Path("evidence/audit_receipt.json")])
+    assert hashlib.sha256(old_archive).hexdigest() == old_receipt["local_archive_sha256"]
+    # ZIP member timestamps affect bytes without changing the executed CSV content.
+    csv = active_artifacts_output_dir / "reports" / ArtifactName.BENCHMARK_SUMMARY
+    timestamp = csv.stat().st_mtime + 4
+    os.utime(csv, (timestamp, timestamp))
+    attempted_hashes = []
+
+    def record_attempt(path: Path):
+        new_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        assert new_hash != old_receipt["local_archive_sha256"]
+        attempted_hashes.append(new_hash)
+
+    if failure == "archive_copy":
+        original_copy = evidence.shutil.copy2
+
+        def fail_archive_copy(source, target, *args, **kwargs):
+            if Path(target) == archive and Path(source).name == "study_artifacts.zip":
+                record_attempt(Path(source))
+                archive.write_bytes(b"partially written replacement")
+                raise OSError("injected complete-export archive copy failure")
+            return original_copy(source, target, *args, **kwargs)
+
+        monkeypatch.setattr(evidence.shutil, "copy2", fail_archive_copy)
+    else:
+        original_publish = evidence._publish_snapshot
+        original_rename = Path.rename
+
+        def fail_rename(source, target):
+            if Path(target) == destination and source != destination:
+                raise OSError("injected complete-export directory rename failure")
+            return original_rename(source, target)
+
+        def fail_publication(*args, **kwargs):
+            record_attempt(archive)
+            if failure == "rename":
+                # Fail only the new candidate rename; permit restoration of the old snapshot.
+                with monkeypatch.context() as rename_patch:
+                    rename_patch.setattr(
+                        Path,
+                        "rename",
+                        lambda source, target: (
+                            fail_rename(source, target) if source.name == "public" else original_rename(source, target)
+                        ),
+                    )
+                    return original_publish(*args, **kwargs)
+            raise OSError("injected complete-export publication failure")
+
+        monkeypatch.setattr(evidence, "_publish_snapshot", fail_publication)
+    with pytest.raises(OSError, match="injected complete-export"):
+        export_public_snapshot(active_artifacts_output_dir, destination, PROJECT_ROOT)
+    assert len(attempted_hashes) == 1
+    assert archive.read_bytes() == old_archive
+    assert {p.relative_to(destination): p.read_bytes() for p in destination.rglob("*") if p.is_file()} == old_public
+    assert (active_artifacts_output_dir / "reports" / ArtifactName.MANIFEST).read_bytes() == original_manifest
+    monkeypatch.undo()
+    export_public_snapshot(active_artifacts_output_dir, destination, PROJECT_ROOT)
+    receipt = json.loads((destination / "evidence/audit_receipt.json").read_text(encoding="utf-8"))
+    assert hashlib.sha256(archive.read_bytes()).hexdigest() == receipt["local_archive_sha256"]
+    assert archive.read_bytes() != old_archive
+
+
+def test_export_cleanup_error_after_publication_keeps_new_receipt_and_archive_consistent(
+    active_artifacts_output_dir: Path, synthetic_input_dir: Path, workspace_tmp_dir: Path, monkeypatch
+) -> None:
+    """An exception after the directory rename must not restore an obsolete ZIP."""
+    import secom.evidence as evidence
+
+    _bind_fixture_provenance(active_artifacts_output_dir, synthetic_input_dir)
+    destination = workspace_tmp_dir / "public"
+    export_public_snapshot(active_artifacts_output_dir, destination, PROJECT_ROOT)
+    archive = active_artifacts_output_dir / "evidence/study_artifacts.zip"
+    old_receipt_bytes = (destination / "evidence/audit_receipt.json").read_bytes()
+    csv = active_artifacts_output_dir / "reports" / ArtifactName.BENCHMARK_SUMMARY
+    timestamp = csv.stat().st_mtime + 4
+    os.utime(csv, (timestamp, timestamp))
+    original_publish = evidence._publish_snapshot
+
+    def fail_after_publication(*args, **kwargs):
+        original_publish(*args, **kwargs)
+        raise OSError("injected cleanup failure after publication")
+
+    monkeypatch.setattr(evidence, "_publish_snapshot", fail_after_publication)
+    with pytest.raises(OSError, match="cleanup failure after publication"):
+        export_public_snapshot(active_artifacts_output_dir, destination, PROJECT_ROOT)
+    receipt_bytes = (destination / "evidence/audit_receipt.json").read_bytes()
+    assert receipt_bytes != old_receipt_bytes
+    assert hashlib.sha256(archive.read_bytes()).hexdigest() == json.loads(receipt_bytes)["local_archive_sha256"]
+
+
+@pytest.mark.parametrize("relative_destination", [".", "reports", "evidence", ".."])
+def test_export_rejects_overlap_before_mutating_run(
+    active_artifacts_output_dir: Path,
+    synthetic_input_dir: Path,
+    relative_destination: str,
+) -> None:
+    _bind_fixture_provenance(active_artifacts_output_dir, synthetic_input_dir)
+    original = {
+        p.relative_to(active_artifacts_output_dir): p.read_bytes()
+        for p in active_artifacts_output_dir.rglob("*")
+        if p.is_file()
+    }
+    destination = active_artifacts_output_dir / relative_destination
+    with pytest.raises(ValueError, match="must not overlap"):
+        export_public_snapshot(active_artifacts_output_dir, destination, PROJECT_ROOT)
+    after = {
+        p.relative_to(active_artifacts_output_dir): p.read_bytes()
+        for p in active_artifacts_output_dir.rglob("*")
+        if p.is_file()
+    }
+    assert after == original
 
 
 def test_changed_csv_is_rejected_before_public_export(

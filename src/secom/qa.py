@@ -10,7 +10,7 @@ from secom.config import BenchmarkClassifier, ReplicationMode, SelectorName
 _TRIPLET_COLS = ["selector", "classifier", "replication_mode"]
 _BENCHMARK_METRICS = ("BER", "True+", "True-", "ROC_AUC", "PR_AUC", "MCC", "F2")
 _BENCHMARK_MEAN_METRIC_COLUMNS = {f"mean_{metric}" for metric in _BENCHMARK_METRICS}
-_BENCHMARK_CI_COLUMNS = {f"CI_{bound}_{metric}" for metric in _BENCHMARK_METRICS for bound in ("lower", "upper")}
+_BENCHMARK_RANGE_COLUMNS = {f"{bound}_{metric}" for metric in _BENCHMARK_METRICS for bound in ("min", "max")}
 _VALID_CLASSIFIERS = set(BenchmarkClassifier.ALL)
 _VALID_REPLICATION_MODES = {ReplicationMode.STRICT, ReplicationMode.WITH_MISSING_INDICATORS}
 _VALID_SELECTORS = set(SelectorName.ALL)
@@ -60,11 +60,9 @@ def _validate_triplet_uniqueness(frames: tuple[tuple[str, pd.DataFrame], ...]) -
 
 def _validate_fold_coverage(name: str, fold_metrics_df: pd.DataFrame) -> None:
     """Require exactly one row for every fold in every benchmark triplet."""
-    fold_group_sizes = fold_metrics_df.groupby(_TRIPLET_COLS, dropna=False)["fold"].nunique()
-    if not np.all(fold_group_sizes.to_numpy(dtype=int) == 10):
-        raise ValueError(f"{name}: each triplet must include exactly 10 folds")
-    if fold_metrics_df["fold"].min() != 1 or fold_metrics_df["fold"].max() != 10:
-        raise ValueError(f"{name}: fold values must be 1..10")
+    for _triplet, group in fold_metrics_df.groupby(_TRIPLET_COLS, dropna=False):
+        if set(group["fold"]) != set(range(1, 11)):
+            raise ValueError(f"{name}: each triplet must include exactly 10 folds with values 1..10")
     if fold_metrics_df.duplicated([*_TRIPLET_COLS, "fold"], keep=False).any():
         raise ValueError(f"{name}: duplicate (selector,classifier,replication_mode,fold) rows")
 
@@ -94,6 +92,10 @@ def _validate_ablation_consistency(
 ) -> None:
     """Validate strict-vs-indicator ablation arithmetic and pair coverage."""
     if {"BER_reference", "BER_missing_indicator", "delta_BER"}.issubset(ablation_df.columns):
+        if not np.isfinite(
+            ablation_df[["BER_reference", "BER_missing_indicator", "delta_BER"]].to_numpy(dtype=float)
+        ).all():
+            raise ValueError(f"{ablation_name}: ablation BER values must be finite")
         diff = np.abs(ablation_df["delta_BER"] - (ablation_df["BER_reference"] - ablation_df["BER_missing_indicator"]))
         if np.any(diff > 1e-9):
             raise ValueError(f"{ablation_name}: delta_BER mismatch")
@@ -102,6 +104,17 @@ def _validate_ablation_consistency(
     summary_pairs = set(summary_df[["selector", "classifier"]].drop_duplicates().itertuples(index=False, name=None))
     if ablation_pairs != summary_pairs:
         raise ValueError(f"{ablation_name}: selector/classifier coverage mismatch vs summary")
+    if ablation_df.duplicated(["selector", "classifier"]).any():
+        raise ValueError(f"{ablation_name}: duplicate selector/classifier pairs")
+    for row in ablation_df.itertuples(index=False):
+        pair = summary_df[(summary_df["selector"] == row.selector) & (summary_df["classifier"] == row.classifier)]
+        for mode, value in (
+            (ReplicationMode.STRICT, row.BER_reference),
+            (ReplicationMode.WITH_MISSING_INDICATORS, row.BER_missing_indicator),
+        ):
+            expected = pair.loc[pair["replication_mode"] == mode, "mean_BER"].to_numpy(dtype=float)
+            if expected.size != 1 or not np.isclose(float(value), expected[0], rtol=0, atol=1e-9):
+                raise ValueError(f"{ablation_name}: BER values mismatch vs summary")
 
 
 def validate_benchmark_replication_artifacts(
@@ -121,7 +134,7 @@ def validate_benchmark_replication_artifacts(
         (
             "benchmark_summary",
             summary_df,
-            {"selector", "classifier", "replication_mode", *_BENCHMARK_MEAN_METRIC_COLUMNS, *_BENCHMARK_CI_COLUMNS},
+            {"selector", "classifier", "replication_mode", *_BENCHMARK_MEAN_METRIC_COLUMNS, *_BENCHMARK_RANGE_COLUMNS},
         ),
         (
             "benchmark_ablation",
@@ -167,6 +180,18 @@ def validate_benchmark_replication_artifacts(
         full_fit_df=full_fit_df,
         fold_metrics_df=fold_metrics_df,
     )
+    from secom.workflows.benchmark_common import build_benchmark_summary_df
+
+    expected_summary = build_benchmark_summary_df(fold_metrics_df)
+    keys = ["selector", "classifier", "replication_mode"]
+    actual = summary_df.set_index(keys)
+    expected = expected_summary.set_index(keys)
+    for key, row in expected.iterrows():
+        for column in expected.columns:
+            if column not in actual or not np.isclose(
+                float(actual.loc[key, column]), float(row[column]), equal_nan=True, rtol=0, atol=1e-9
+            ):
+                raise ValueError("benchmark summary: descriptive metric mismatch vs outer folds")
     _validate_ablation_consistency(
         ablation_name="benchmark_ablation",
         ablation_df=ablation_df,
@@ -211,7 +236,7 @@ def validate_tuned_benchmark_artifacts(
         (
             "benchmark_tuned_summary",
             summary_df,
-            {"selector", "classifier", "replication_mode", *_BENCHMARK_MEAN_METRIC_COLUMNS, *_BENCHMARK_CI_COLUMNS},
+            {"selector", "classifier", "replication_mode", *_BENCHMARK_MEAN_METRIC_COLUMNS, *_BENCHMARK_RANGE_COLUMNS},
         ),
         (
             "benchmark_tuned_ablation",
@@ -275,6 +300,18 @@ def validate_tuned_benchmark_artifacts(
         full_fit_df=full_fit_df,
         fold_metrics_df=fold_metrics_df,
     )
+    from secom.workflows.benchmark_common import build_benchmark_summary_df
+
+    expected_summary = build_benchmark_summary_df(fold_metrics_df)
+    keys = ["selector", "classifier", "replication_mode"]
+    actual = summary_df.set_index(keys)
+    expected = expected_summary.set_index(keys)
+    for key, row in expected.iterrows():
+        for column in expected.columns:
+            if column not in actual or not np.isclose(
+                float(actual.loc[key, column]), float(row[column]), equal_nan=True, rtol=0, atol=1e-9
+            ):
+                raise ValueError("benchmark summary: descriptive metric mismatch vs outer folds")
     _validate_ablation_consistency(
         ablation_name="benchmark_tuned_ablation",
         ablation_df=ablation_df,

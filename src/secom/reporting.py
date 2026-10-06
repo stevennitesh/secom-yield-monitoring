@@ -5,7 +5,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +12,7 @@ import pandas as pd
 
 from secom.artifacts import read_csv_if_exists, read_manifest
 from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, StudyStatus, ThresholdPolicy
+from secom.report_language import CLASSIFIERS, fold_count_label, later_sample_scope, procedure_label, role_label
 from secom.report_figures import (
     write_benchmark_comparison_figure,
     write_feature_stability_figure,
@@ -134,7 +134,7 @@ _INDUSTRIALIZATION_GAPS = [
 _INDUSTRIALIZATION_NEXT_DATA = [
     "Next data collection should add device- or tool-level identifiers, intervention logs, and longer-horizon cross-context validation.",
     "A production-grade study would also require deployment decision objectives and cost accounting.",
-    "Stronger process claims would require additional data to support stronger causal or process claims.",
+    "Named measurements, verified pre-outcome timing and intervention outcomes are needed to test causal or process explanations.",
 ]
 
 
@@ -222,12 +222,12 @@ def _top_benchmark_table(benchmark_summary: pd.DataFrame) -> list[str]:
             "classifier",
             "replication_mode",
             "mean_BER",
-            "CI_lower_BER",
-            "CI_upper_BER",
+            "min_BER",
+            "max_BER",
             "mean_True+",
             "mean_True-",
         ],
-        headers=["selector", "classifier", "mode", "mean_BER", "CI_low", "CI_high", "mean_TPR", "mean_TNR"],
+        headers=["selector", "classifier", "mode", "mean_BER", "fold_min", "fold_max", "mean_TPR", "mean_TNR"],
     )
 
 
@@ -273,6 +273,7 @@ def _search_space_table(frame: pd.DataFrame, *, evaluated_columns: list[str]) ->
                 "c_values": _search_space_count(group, "C"),
                 "alpha_values": _search_space_count(group, "alpha"),
                 "gamma_values": _search_space_count(group, "gamma"),
+                "gamma_multiplier_values": _search_space_count(group, "gamma_multiplier"),
                 "n_neighbors_values": _search_space_count(group, "n_neighbors"),
             }
         )
@@ -287,6 +288,7 @@ def _search_space_table(frame: pd.DataFrame, *, evaluated_columns: list[str]) ->
             "c_values",
             "alpha_values",
             "gamma_values",
+            "gamma_multiplier_values",
             "n_neighbors_values",
         ],
     )
@@ -324,7 +326,7 @@ def _tuned_search_space_table(benchmark_tuned_search: pd.DataFrame) -> list[str]
     """Summarize tuned benchmark nested-search breadth by selector/classifier/mode."""
     return _search_space_table(
         benchmark_tuned_search,
-        evaluated_columns=["fold", "k", "alpha", "gamma", "C", "n_neighbors"],
+        evaluated_columns=["fold", "k", "alpha", "gamma_multiplier", "C", "n_neighbors"],
     )
 
 
@@ -364,6 +366,7 @@ def _tuned_best_config_table(benchmark_tuned_best: pd.DataFrame) -> list[str]:
             "C",
             "alpha",
             "gamma",
+            "gamma_multiplier",
             "n_neighbors",
             "selection_count",
             "mean_inner_ROC_AUC",
@@ -377,6 +380,7 @@ def _tuned_best_config_table(benchmark_tuned_best: pd.DataFrame) -> list[str]:
             "C",
             "alpha",
             "gamma",
+            "gamma_multiplier",
             "n_neighbors",
             "selected_count",
             "mean_inner_ROC_AUC",
@@ -400,14 +404,14 @@ def _best_row_feature_table(
     if rows.empty:
         return ["- No feature rows available for the leading benchmark configuration."]
     rows = rows.sort_values(
-        ["expected_contribution", "selection_frequency", "feature_name_or_source_col"],
+        ["stability_weighted_coefficient", "selection_frequency", "feature_name_or_source_col"],
         ascending=[False, False, True],
     ).head(10)
     claim_note = f"- {_feature_interpretation_claim_note()}"
-    if rows["conditional_effect_magnitude"].isna().all():
+    if rows["absolute_scaled_coefficient"].isna().all():
         lines = [
             claim_note,
-            "- Effect magnitudes are unavailable for the leading classifier, so this table is shown as a stability-first view.",
+            "- Scaled coefficient magnitudes are unavailable for this exploratory family; the table shows stability.",
             "",
             "| feature | type | selection_frequency | cluster_id |",
             "|---|---|---:|---:|",
@@ -422,13 +426,13 @@ def _best_row_feature_table(
     lines = [
         claim_note,
         "",
-        "| feature | type | selection_frequency | effect_magnitude | expected_contribution | cluster_id |",
+        "| feature | type | selection_frequency | absolute_scaled_coefficient | stability_weighted_coefficient | cluster_id |",
         "|---|---|---:|---:|---:|---:|",
     ]
     for row in rows.itertuples(index=False):
         lines.append(
             f"| {row.feature_name_or_source_col} | {row.feature_type} | {_format_float(row.selection_frequency)} |"
-            f" {_format_float(row.conditional_effect_magnitude)} | {_format_float(row.expected_contribution)} |"
+            f" {_format_float(row.absolute_scaled_coefficient)} | {_format_float(row.stability_weighted_coefficient)} |"
             f" {_format_float(row.cluster_id)} |"
         )
     return lines
@@ -560,7 +564,10 @@ def _load_report_context(output_dir: Path) -> ReportContext:
         else None,
     )
 
-    drift_row = _first_row(temporal_drift)
+    drift_row = _first_row(
+        temporal_drift,
+        temporal_drift["model_scope"] == "primary" if temporal_drift is not None else None,
+    )
     mspc_lockbox_row = _first_row(
         temporal_mspc,
         temporal_mspc["eval_scope"] == "lockbox" if temporal_mspc is not None else None,
@@ -599,6 +606,8 @@ def _append_industrialization_section(lines: list[str], manifest: dict[str, obje
     lines.append("## Industrialization Gaps")
     lines.append("")
     _append_bullet_list(lines, _INDUSTRIALIZATION_GAPS)
+    lines.extend(["", "### Next Data Requirements", ""])
+    _append_bullet_list(lines, _INDUSTRIALIZATION_NEXT_DATA)
 
     notes = _manifest_industrialization_notes(manifest)
     if notes:
@@ -646,19 +655,21 @@ def _append_figure(lines: list[str], alt_text: str, relative_path: str, caption:
     lines.append("")
 
 
-def _write_final_report_figures(ctx: ReportContext) -> None:
+def _write_final_report_figures(ctx: ReportContext, reports_destination: Path | None = None) -> None:
     """Write all figures referenced by the canonical final report."""
-    figures_dir = ctx.reports_dir / "figures"
+    figures_dir = (reports_destination or ctx.reports_dir) / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
+    original_procedures = read_csv_if_exists(ctx.reports_dir / ArtifactName.BENCHMARK_PROCEDURE_SUMMARY)
+    tuned_procedures = read_csv_if_exists(ctx.reports_dir / ArtifactName.BENCHMARK_TUNED_PROCEDURE_SUMMARY)
     write_benchmark_comparison_figure(
-        ctx.benchmark_summary,
-        ctx.benchmark_tuned_summary,
+        original_procedures,
+        tuned_procedures,
         figures_dir / "benchmark_comparison.png",
     )
     write_tuned_delta_figure(
-        ctx.benchmark_summary,
-        ctx.benchmark_tuned_summary,
+        original_procedures,
+        tuned_procedures,
         figures_dir / "tuned_vs_original_delta.png",
     )
     write_feature_stability_figure(
@@ -722,575 +733,6 @@ def _write_markdown_with_optional_pdf(final_path: Path, lines: list[str], *, exp
     final_path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def write_report_skeleton(output_dir: Path) -> Path:
-    """Write a long-form report skeleton from whatever artifacts are currently present."""
-    ctx = _load_report_context(output_dir)
-    reports = ctx.reports_dir
-    manifest = ctx.manifest
-    benchmark_sweep = ctx.benchmark_sweep
-    benchmark_best = ctx.benchmark_best
-    benchmark_summary = ctx.benchmark_summary
-    benchmark_ablation = ctx.benchmark_ablation
-    feature_report = ctx.feature_report
-    benchmark_tuned_search = ctx.benchmark_tuned_search
-    benchmark_tuned_best = ctx.benchmark_tuned_best
-    benchmark_tuned_summary = ctx.benchmark_tuned_summary
-    benchmark_tuned_ablation = ctx.benchmark_tuned_ablation
-    benchmark_tuned_feature_report = ctx.benchmark_tuned_feature_report
-    temporal_selection = ctx.temporal_selection
-    temporal_lockbox = ctx.temporal_lockbox
-    temporal_drift = ctx.temporal_drift
-    temporal_mspc = ctx.temporal_mspc
-    temporal_manager = ctx.temporal_manager
-    temporal_cost = ctx.temporal_cost
-    best_benchmark_row = ctx.best_benchmark_row
-    best_tuned_benchmark_row = ctx.best_tuned_benchmark_row
-    modal_tuned_config_row = ctx.modal_tuned_config_row
-    primary_temporal_row = ctx.primary_temporal_row
-    primary_scientific_lockbox_row = ctx.primary_scientific_lockbox_row
-    drift_row = ctx.drift_row
-    mspc_lockbox_row = ctx.mspc_lockbox_row
-
-    # Skeleton text intentionally keeps prompts and placeholder guidance for human completion.
-    lines: list[str] = []
-    lines.append("# Final Report Skeleton")
-    lines.append("")
-    lines.append("## Executive Summary")
-    lines.append("")
-    restrictions = manifest.get("temporal_claim_restrictions", [])
-    lines.append(
-        "- The benchmark studies support a credible yield-prediction signal in the SECOM sensor/process measurements."
-    )
-    lines.append(f"- Temporal claim restrictions: `{len(restrictions)}`")
-    if best_benchmark_row is not None:
-        lines.append(
-            "- Leading original replication configuration:"
-            f" `{best_benchmark_row['selector']}` / `{best_benchmark_row['classifier']}` /"
-            f" `{best_benchmark_row['replication_mode']}` with mean BER `{_format_float(best_benchmark_row['mean_BER'])}`"
-        )
-    if best_tuned_benchmark_row is not None:
-        lines.append(
-            "- Leading tuned benchmark configuration:"
-            f" `{best_tuned_benchmark_row['selector']}` / `{best_tuned_benchmark_row['classifier']}` /"
-            f" `{best_tuned_benchmark_row['replication_mode']}` with mean BER `{_format_float(best_tuned_benchmark_row['mean_BER'])}`"
-            f" and mean ROC_AUC `{_format_float(best_tuned_benchmark_row['mean_ROC_AUC'])}`"
-        )
-        lines.append(
-            "- The tuned benchmark uses nested CV, so it should be read as the stricter and more conservative estimate of tuned-model performance."
-        )
-    if modal_tuned_config_row is not None:
-        lines.append(
-            "- Most frequently selected tuned configuration:"
-            f" `{modal_tuned_config_row['selector']}` / `{modal_tuned_config_row['classifier']}` /"
-            f" `{modal_tuned_config_row['replication_mode']}` with `k={int(modal_tuned_config_row['k'])}`"
-            f" and selection_count `{int(modal_tuned_config_row['selection_count'])}`"
-        )
-    if primary_temporal_row is not None:
-        lines.append(
-            "- Temporal primary selector:"
-            f" `{primary_temporal_row['selector']}` with mean BER `{_format_float(primary_temporal_row['mean_BER'])}`"
-        )
-        lines.append(
-            "- Temporal robustness should be treated as a stress test of stability under chronological shift, not as the primary source of project success."
-        )
-    lines.append(f"- Primary study status: `{manifest.get('primary_study_status', StudyStatus.NOT_RUN)}`")
-    lines.append(f"- Original replication status: `{manifest.get('benchmark_original_status', StudyStatus.NOT_RUN)}`")
-    lines.append(f"- Tuned benchmark status: `{manifest.get('benchmark_tuned_status', StudyStatus.NOT_RUN)}`")
-    lines.append(f"- Temporal robustness status: `{manifest.get('temporal_robustness_status', StudyStatus.NOT_RUN)}`")
-    lines.append("")
-    lines.append("## Dataset and Study Scope")
-    lines.append("")
-    lines.append(
-        "Summarize the SECOM benchmark context, the primary replication objective, and the role of temporal robustness as secondary evidence."
-    )
-    lines.append("")
-    lines.append("## Benchmark Replication Design")
-    lines.append("")
-    lines.append(
-        "Describe the full-dataset replication protocol, in-fold preprocessing, in-fold feature selection, and missing-indicator ablation."
-    )
-    lines.append("")
-    lines.append("## Benchmark Replication Results")
-    lines.append("")
-    lines.append("### Original Replication")
-    lines.append("")
-    lines.append("#### Original Replication Design")
-    lines.append("")
-    lines.append("- Use a fixed feature budget with the literature-style selector/classifier comparison.")
-    lines.append("- Perform preprocessing and feature selection inside each training fold only.")
-    lines.append(
-        "- Select original classifier configurations from the non-nested replication sweep; use the tuned benchmark for the stricter nested-CV estimate."
-    )
-    lines.append("- Treat the missing-indicator comparison as a paired benchmark condition.")
-    lines.append(
-        "- Report final thresholded results through `BER`, `TPR`, and `TNR`, with supporting metrics shown separately."
-    )
-    lines.append("")
-    lines.append("#### Original Replication Search Summary")
-    lines.append("")
-    if benchmark_sweep is not None and not benchmark_sweep.empty:
-        lines.append("##### Search Space")
-        lines.append("")
-        lines.extend(_original_search_space_table(benchmark_sweep))
-        lines.append("")
-    else:
-        lines.append("- Benchmark sweep artifact missing or empty.")
-        lines.append("")
-    if benchmark_best is not None and not benchmark_best.empty:
-        lines.append("##### Selected Configurations")
-        lines.append("")
-        lines.extend(_original_best_config_table(benchmark_best))
-        lines.append("")
-    else:
-        lines.append("- Benchmark best-config artifact missing or empty.")
-        lines.append("")
-    lines.append("#### Original Replication Results")
-    lines.append("")
-    if best_benchmark_row is not None:
-        lines.append("##### Primary Evidence Table")
-        lines.append("")
-        lines.extend(_top_benchmark_table(benchmark_summary))
-        lines.append("")
-        lines.append("##### UCI Original Benchmark Reference")
-        lines.append("")
-        lines.append(
-            "The [UCI dataset page](https://archive.ics.uci.edu/dataset/179/secom) describes these 40-feature, 10-fold results as kernel ridge regression, while Table 1 in the [original paper](https://proceedings.mlr.press/v6/mccann10a/mccann10a.pdf) labels the classifier Naive Bayes. Local columns use strict KRR rows. These numbers are reference context, not proof of an exact reproduction of the original classifier protocol."
-        )
-        lines.append("")
-        lines.extend(_uci_original_baseline_table(benchmark_summary))
-        lines.append("")
-        lines.append(_uci_selector_definition_note())
-        lines.append("")
-        lines.append("##### Supporting Benchmark Metrics")
-        lines.append("")
-        lines.extend(_supporting_benchmark_table(benchmark_summary))
-        lines.append("")
-        lines.append("##### Lead Configuration")
-        lines.append("")
-        lines.append(
-            f"- Selector: `{best_benchmark_row['selector']}`\n"
-            f"- Classifier: `{best_benchmark_row['classifier']}`\n"
-            f"- Replication mode: `{best_benchmark_row['replication_mode']}`\n"
-            f"- Mean BER: `{_format_float(best_benchmark_row['mean_BER'])}`\n"
-            f"- 95% fold-bootstrap CI: `{_format_float(best_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_benchmark_row['CI_upper_BER'])}`\n"
-            f"- Mean ROC_AUC: `{_format_float(best_benchmark_row['mean_ROC_AUC'])}`\n"
-            f"- Mean PR_AUC: `{_format_float(best_benchmark_row['mean_PR_AUC'])}`\n"
-            f"- Mean MCC: `{_format_float(best_benchmark_row['mean_MCC'])}`\n"
-            f"- Mean F2: `{_format_float(best_benchmark_row['mean_F2'])}`"
-        )
-    else:
-        lines.append("- Benchmark summary artifact missing or empty.")
-    if benchmark_ablation is not None and not benchmark_ablation.empty:
-        lines.append("")
-        lines.append("- Original missing-indicator ablation summary:")
-        lines.extend(
-            f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}"
-            for row in benchmark_ablation.itertuples(index=False)
-        )
-    lines.append("")
-    lines.append("### Tuned Benchmark")
-    lines.append("")
-    lines.append("#### Tuned Benchmark Design")
-    lines.append("")
-    lines.append("- Use nested cross-validation inside each outer replication fold.")
-    lines.append(
-        "- Tune selector parameters, including feature budget `k` and `ReliefF` neighbor count where applicable."
-    )
-    lines.append("- Tune classifier parameters within the same nested search.")
-    lines.append(
-        "- Use `ROC_AUC` as the threshold-free inner selection objective, with `BER` as the secondary tie-break metric."
-    )
-    lines.append(
-        "- Report final tuned benchmark performance with thresholded `BER`, `TPR`, and `TNR` plus supporting metrics."
-    )
-    lines.append("")
-    lines.append("#### Tuned Benchmark Search Summary")
-    lines.append("")
-    if benchmark_tuned_search is not None and not benchmark_tuned_search.empty:
-        lines.append("##### Search Space")
-        lines.append("")
-        lines.extend(_tuned_search_space_table(benchmark_tuned_search))
-        lines.append("")
-    else:
-        lines.append("- Tuned search artifact missing or empty.")
-        lines.append("")
-    if benchmark_tuned_best is not None and not benchmark_tuned_best.empty:
-        lines.append("##### Modal Selected Configurations")
-        lines.append("")
-        lines.extend(_tuned_best_config_table(benchmark_tuned_best))
-        lines.append("")
-    else:
-        lines.append("- Tuned best-config artifact missing or empty.")
-        lines.append("")
-    lines.append("#### Tuned Benchmark Results")
-    lines.append("")
-    if best_tuned_benchmark_row is not None:
-        lines.append("##### Primary Evidence Table")
-        lines.append("")
-        lines.extend(_top_benchmark_table(benchmark_tuned_summary))
-        lines.append("")
-        lines.append("##### Supporting Benchmark Metrics")
-        lines.append("")
-        lines.extend(_supporting_benchmark_table(benchmark_tuned_summary))
-        lines.append("")
-        lines.append("##### Lead Configuration")
-        lines.append("")
-        lines.append(
-            f"- Selector: `{best_tuned_benchmark_row['selector']}`\n"
-            f"- Classifier: `{best_tuned_benchmark_row['classifier']}`\n"
-            f"- Replication mode: `{best_tuned_benchmark_row['replication_mode']}`\n"
-            f"- Mean BER: `{_format_float(best_tuned_benchmark_row['mean_BER'])}`\n"
-            f"- 95% fold-bootstrap CI: `{_format_float(best_tuned_benchmark_row['CI_lower_BER'])}` to `{_format_float(best_tuned_benchmark_row['CI_upper_BER'])}`\n"
-            f"- Mean ROC_AUC: `{_format_float(best_tuned_benchmark_row['mean_ROC_AUC'])}`\n"
-            f"- Mean PR_AUC: `{_format_float(best_tuned_benchmark_row['mean_PR_AUC'])}`\n"
-            f"- Mean MCC: `{_format_float(best_tuned_benchmark_row['mean_MCC'])}`\n"
-            f"- Mean F2: `{_format_float(best_tuned_benchmark_row['mean_F2'])}`"
-        )
-    else:
-        lines.append("- Tuned benchmark summary artifact missing or empty.")
-    if benchmark_tuned_ablation is not None and not benchmark_tuned_ablation.empty:
-        lines.append("")
-        lines.append("##### Missing-Indicator Ablation Summary")
-        lines.extend(
-            f"  - {row.selector} / {row.classifier}: delta_BER={_format_float(row.delta_BER)}"
-            for row in benchmark_tuned_ablation.itertuples(index=False)
-        )
-    if best_tuned_benchmark_row is not None:
-        lines.append("")
-        lines.append("##### Interpretation")
-        lines.append(
-            "- The tuned benchmark is stricter than the original replication because hyperparameters are chosen inside nested CV rather than on the same folds used for final reporting."
-        )
-        lines.append(
-            f"- The best tuned mean-BER row is `{best_tuned_benchmark_row['selector']}` / `{best_tuned_benchmark_row['classifier']}` / `{best_tuned_benchmark_row['replication_mode']}`."
-        )
-        if modal_tuned_config_row is not None:
-            lines.append(
-                f"- The most frequently selected tuned configuration is `{modal_tuned_config_row['selector']}` / `{modal_tuned_config_row['classifier']}` / `{modal_tuned_config_row['replication_mode']}`"
-                f" with `k={int(modal_tuned_config_row['k'])}` and selection_count=`{int(modal_tuned_config_row['selection_count'])}`."
-            )
-            if (
-                str(modal_tuned_config_row["selector"]) != str(best_tuned_benchmark_row["selector"])
-                or str(modal_tuned_config_row["classifier"]) != str(best_tuned_benchmark_row["classifier"])
-                or str(modal_tuned_config_row["replication_mode"]) != str(best_tuned_benchmark_row["replication_mode"])
-            ):
-                lines.append(
-                    "- The best mean-BER tuned row and the modal tuned configuration differ, so the report should distinguish peak performance from stability of selection."
-                )
-    if best_benchmark_row is not None and best_tuned_benchmark_row is not None:
-        lines.append("")
-        lines.append("### Original vs Tuned Benchmark Comparison")
-        lines.append("")
-        comparison_df = pd.DataFrame(
-            [
-                {
-                    "study": "original",
-                    "selector": best_benchmark_row["selector"],
-                    "classifier": best_benchmark_row["classifier"],
-                    "mode": best_benchmark_row["replication_mode"],
-                    "mean_BER": best_benchmark_row["mean_BER"],
-                    "mean_ROC_AUC": best_benchmark_row["mean_ROC_AUC"],
-                    "mean_PR_AUC": best_benchmark_row["mean_PR_AUC"],
-                    "mean_MCC": best_benchmark_row["mean_MCC"],
-                    "mean_F2": best_benchmark_row["mean_F2"],
-                },
-                {
-                    "study": "tuned",
-                    "selector": best_tuned_benchmark_row["selector"],
-                    "classifier": best_tuned_benchmark_row["classifier"],
-                    "mode": best_tuned_benchmark_row["replication_mode"],
-                    "mean_BER": best_tuned_benchmark_row["mean_BER"],
-                    "mean_ROC_AUC": best_tuned_benchmark_row["mean_ROC_AUC"],
-                    "mean_PR_AUC": best_tuned_benchmark_row["mean_PR_AUC"],
-                    "mean_MCC": best_tuned_benchmark_row["mean_MCC"],
-                    "mean_F2": best_tuned_benchmark_row["mean_F2"],
-                },
-            ]
-        )
-        lines.extend(
-            _markdown_table(
-                comparison_df,
-                [
-                    "study",
-                    "selector",
-                    "classifier",
-                    "mode",
-                    "mean_BER",
-                    "mean_ROC_AUC",
-                    "mean_PR_AUC",
-                    "mean_MCC",
-                    "mean_F2",
-                ],
-            )
-        )
-        lines.append("")
-        ber_delta = float(best_tuned_benchmark_row["mean_BER"]) - float(best_benchmark_row["mean_BER"])
-        if ber_delta > 0:
-            lines.append(
-                f"- The tuned benchmark is worse by `{_format_float(ber_delta)}` BER relative to the best original replication row, which is consistent with the stricter nested-CV evaluation protocol."
-            )
-        elif ber_delta < 0:
-            lines.append(
-                f"- The tuned benchmark improves on the best original replication row by `{_format_float(abs(ber_delta))}` BER."
-            )
-        else:
-            lines.append("- The best original and tuned benchmark rows are tied on mean BER.")
-        lines.append(
-            "- Original replication should be read as the benchmark-facing result, while the tuned benchmark is the more conservative estimate of what a tuned procedure achieves on unseen folds."
-        )
-    lines.append("")
-    lines.append("## Feature Stability and Interpretation")
-    lines.append("")
-    lines.append("### Original Replication")
-    lines.append("")
-    lines.append("#### Original Feature Stability and Interpretation")
-    lines.append("")
-    if best_benchmark_row is not None and feature_report is not None and not feature_report.empty:
-        lines.extend(
-            _best_row_feature_table(
-                feature_report=feature_report,
-                selector=str(best_benchmark_row["selector"]),
-                classifier=str(best_benchmark_row["classifier"]),
-                replication_mode=str(best_benchmark_row["replication_mode"]),
-            )
-        )
-    else:
-        lines.append("- Feature report artifact missing or empty.")
-    lines.append("")
-    lines.append("### Tuned Benchmark")
-    lines.append("")
-    lines.append("#### Tuned Feature Stability and Interpretation")
-    lines.append("")
-    if (
-        best_tuned_benchmark_row is not None
-        and benchmark_tuned_feature_report is not None
-        and not benchmark_tuned_feature_report.empty
-    ):
-        lines.extend(
-            _best_row_feature_table(
-                feature_report=benchmark_tuned_feature_report,
-                selector=str(best_tuned_benchmark_row["selector"]),
-                classifier=str(best_tuned_benchmark_row["classifier"]),
-                replication_mode=str(best_tuned_benchmark_row["replication_mode"]),
-            )
-        )
-    else:
-        lines.append("- Tuned feature report artifact missing or empty.")
-    lines.append("")
-    lines.append("## Temporal Robustness Stress Test")
-    lines.append("")
-    lines.append("### Temporal Robustness Design")
-    lines.append("")
-    lines.append(
-        "- This secondary study stress-tests whether the benchmark findings remain stable under chronological validation and future-looking holdout evaluation."
-    )
-    lines.append(
-        "- Use a chronological DEV/LOCKBOX split with time-aware folds inside DEV, followed by selector screening, temporal model selection, config freeze, threshold freeze, lockbox evaluation, drift gating, and MSPC comparison."
-    )
-    lines.append(
-        "- Interpret this section as secondary robustness evidence rather than the primary basis for project success."
-    )
-    lines.append("")
-    lines.append("### Temporal Model Selection Summary")
-    lines.append("")
-    if primary_temporal_row is not None:
-        lines.append(
-            "- Primary temporal selector under the temporal protocol:"
-            f" `{primary_temporal_row['selector']}`"
-            f" with mean_BER=`{_format_float(primary_temporal_row['mean_BER'])}`"
-        )
-    if temporal_selection is not None and not temporal_selection.empty:
-        challenger_rows = temporal_selection[temporal_selection["is_challenger"].astype(bool)]
-        if not challenger_rows.empty:
-            challenger_row = challenger_rows.iloc[0]
-            lines.append(
-                "- Challenger selector retained for secondary comparison:"
-                f" `{challenger_row['selector']}`"
-                f" with mean_BER=`{_format_float(challenger_row['mean_BER'])}`"
-            )
-        else:
-            lines.append("- No challenger met the temporal eligibility rule.")
-        lines.append("")
-        lines.append("#### Selector Ranking and Modal Configurations")
-        lines.append("")
-        lines.extend(_temporal_selection_summary_table(temporal_selection))
-    else:
-        lines.append("- Temporal model selection artifact missing or empty.")
-    if temporal_lockbox is not None and not temporal_lockbox.empty:
-        lines.append("")
-        lines.append("### Temporal Lockbox Results")
-        lines.append("")
-        lines.extend(
-            _markdown_table(
-                temporal_lockbox.sort_values(["role", "threshold_policy"]),
-                [
-                    "role",
-                    "threshold_policy",
-                    "BER",
-                    "True+",
-                    "True-",
-                    "ROC_AUC",
-                    "PR_AUC",
-                    "MCC",
-                    "F2",
-                    "threshold_at_TNR90",
-                    "TNR_at_TNR90",
-                    "TPR_at_TNR90",
-                ],
-            )
-        )
-    if drift_row is not None or restrictions:
-        lines.append("")
-        lines.append("### Drift and Claim Restrictions")
-        lines.append("")
-        if drift_row is not None:
-            lines.append(
-                "- Primary drift status:"
-                f" `{drift_row['drift_gate_status']}`"
-                f" with max_PSI=`{_format_float(drift_row['max_PSI'])}`"
-            )
-            lines.append("")
-            drift_columns = [
-                col
-                for col in [
-                    "model_scope",
-                    "drift_gate_status",
-                    "lockbox_claims_allowed",
-                    "abs_prevalence_shift",
-                    "ks_pvalue_scores",
-                    "max_PSI",
-                ]
-                if col in temporal_drift.columns
-            ]
-            lines.extend(_markdown_table(temporal_drift.sort_values("model_scope"), drift_columns))
-            if primary_scientific_lockbox_row is not None and "lockbox_fails" in primary_scientific_lockbox_row.index:
-                lockbox_fails = int(primary_scientific_lockbox_row["lockbox_fails"])
-                lines.append("")
-                lines.append(
-                    f"- The lockbox contains only `{lockbox_fails}` failing samples, so recall-oriented quantities such as `TPR` are inherently unstable in this holdout."
-                )
-                if lockbox_fails > 0:
-                    lines.append(
-                        f"- With `{lockbox_fails}` failing samples, each additional captured or missed fail changes `TPR` by roughly `{(1.0 / lockbox_fails):.3f}`."
-                    )
-                lines.append(
-                    "- Even so, the primary restriction in this run is the `HIGH_SHIFT` drift result rather than sample count alone, so the temporal lockbox should be treated as descriptive stress-test evidence."
-                )
-        if restrictions:
-            lines.append("")
-            lines.append("- Temporal claim restrictions:")
-            lines.extend(f"  - `{restriction}`" for restriction in restrictions)
-            lines.append(
-                "- Lockbox evidence remains reportable, but restricted claims should be treated as descriptive rather than confirmatory."
-            )
-        else:
-            lines.append("- Temporal claim restrictions: `none`")
-            lines.append(
-                "- Temporal lockbox evidence can be interpreted directly within the limits of this secondary study."
-            )
-    if mspc_lockbox_row is not None:
-        lines.append("")
-        lines.append("### MSPC Comparison")
-        lines.append("")
-        lines.extend(
-            _markdown_table(
-                temporal_mspc[temporal_mspc["eval_scope"] == "lockbox"],
-                [
-                    "eval_scope",
-                    "best_MSPC_source",
-                    "best_MSPC_TPR_at_TNR90",
-                    "T2_AUC",
-                    "Q_AUC",
-                    "alarm_rate",
-                    "empirical_ARL0",
-                ],
-                headers=[
-                    "scope",
-                    "best_source",
-                    "best_TPR_at_TNR90",
-                    "T2_AUC",
-                    "Q_AUC",
-                    "alarm_rate",
-                    "empirical_ARL0",
-                ],
-            )
-        )
-        if primary_scientific_lockbox_row is not None:
-            lines.append("")
-            lines.append(
-                f"- The supervised primary model reaches `TPR_at_TNR90={_format_float(primary_scientific_lockbox_row['TPR_at_TNR90'])}`, versus `best_MSPC_TPR_at_TNR90={_format_float(mspc_lockbox_row['best_MSPC_TPR_at_TNR90'])}` for MSPC."
-            )
-            if restrictions:
-                lines.append(
-                    "- That numerical advantage remains descriptive only because the drift gate restricts lockbox superiority claims in this run."
-                )
-    if (temporal_manager is not None and not temporal_manager.empty) or (
-        temporal_cost is not None and not temporal_cost.empty
-    ):
-        lines.append("")
-        lines.append("### Illustrative Operational Framing")
-        lines.append("")
-        lines.append(
-            "- These workload and cost summaries are illustrative consequences of the temporal thresholds, not production-validated operating recommendations."
-        )
-    if temporal_manager is not None and not temporal_manager.empty:
-        lines.append("#### Workload Metrics")
-        lines.append("")
-        lines.extend(
-            _markdown_table(
-                temporal_manager.sort_values(["role", "threshold_policy"]),
-                [
-                    "role",
-                    "threshold_policy",
-                    "predicted_flag_fraction",
-                    "mean_weekly_flagged_samples",
-                    "mean_weekly_fail_captures",
-                    "mean_weekly_fail_misses",
-                ],
-            )
-        )
-    if temporal_cost is not None and not temporal_cost.empty:
-        lines.append("")
-        lines.append("#### Cost Curves")
-        lines.append("")
-        cost_columns = [col for col in temporal_cost.columns if not temporal_cost[col].isna().all()]
-        lines.extend(
-            _markdown_table(
-                temporal_cost.sort_values("cost_ratio"),
-                cost_columns,
-            )
-        )
-    lines.append("")
-    lines.append("Interpret this section as robustness evidence, not as the primary basis for project success.")
-    lines.append("")
-    _append_industrialization_section(lines, manifest)
-    lines.append("")
-    lines.append("## Conclusions and Next Data Requirements")
-    lines.append("")
-    if best_benchmark_row is not None:
-        lines.append(
-            f"- The original replication study shows that upstream process measurements contain useful signal for downstream fail detection, with the best original row at mean BER `{_format_float(best_benchmark_row['mean_BER'])}`."
-        )
-    if best_tuned_benchmark_row is not None:
-        lines.append(
-            f"- The tuned benchmark provides a stricter nested-CV estimate, with the best tuned row at mean BER `{_format_float(best_tuned_benchmark_row['mean_BER'])}`."
-        )
-    if restrictions:
-        lines.append(
-            "- The temporal stress test remains informative, but the current run is limited by both a small lockbox fail count and a `HIGH_SHIFT` drift result, so lockbox superiority claims should remain descriptive only."
-        )
-    else:
-        lines.append(
-            "- The temporal stress test provides secondary robustness evidence without active claim restrictions in this run."
-        )
-    _append_bullet_list(lines, _INDUSTRIALIZATION_NEXT_DATA)
-    lines.append("")
-
-    out_path = reports / ArtifactName.REPORT_SKELETON
-    out_path.write_text("\n".join(lines), encoding="utf-8")
-    return out_path
-
-
 def _dataset_scope_lines(manifest: dict) -> list[str]:
     """Report actual input observations and the public-source metadata discrepancy."""
     data = manifest.get("dataset", {})
@@ -1298,7 +740,7 @@ def _dataset_scope_lines(manifest: dict) -> list[str]:
         return ["Dataset profile is unavailable for this artifact set."]
     prevalence = data["n_fails"] / data["n_samples"]
     return [
-        f"The input files contain **{data['n_samples']:,} samples × {data['n_features']} measurement columns**, "
+        f"The input files contain **{data['n_samples']:,} samples Ã— {data['n_features']} measurement columns**, "
         f"with {data['n_passes']:,} passes and {data['n_fails']} failures ({prevalence:.2%}). "
         f"There are {data['missing_cells']:,} missing measurement cells ({data['missing_fraction']:.2%}). "
         f"Valid test timestamps span {data['timestamp_min']} to {data['timestamp_max']}; no rows were dropped.",
@@ -1358,514 +800,986 @@ def _missingness_context_lines(
     return lines
 
 
-def write_final_report(output_dir: Path, *, export_pdf: bool = False) -> Path:
-    """Write the final Markdown report and optionally export it through pandoc."""
+def _benchmark_models(ctx: ReportContext) -> list[str]:
+    """Use execution settings when present, otherwise the saved candidate families."""
+    settings = ctx.manifest.get("execution", {}).get("settings", {})
+    if settings.get("classifiers"):
+        return list(settings["classifiers"])
+    frames = [f for f in (ctx.benchmark_sweep, ctx.benchmark_tuned_search) if f is not None and not f.empty]
+    return sorted({str(value) for frame in frames for value in frame.classifier.dropna()})
+
+
+def _benchmark_protocol(ctx: ReportContext) -> str:
+    settings = ctx.manifest.get("execution", {}).get("settings", {})
+    scope = f"Recorded outer fold counts: reference {fold_count_label(ctx.benchmark_summary)}; tuned {fold_count_label(ctx.benchmark_tuned_summary)}. "
+    scope += "The protocol uses shuffled stratified outer folds and stratified inner cross-validation. "
+    if settings.get("benchmark_inner_folds") is not None:
+        scope += f"Recorded inner folds: {settings['benchmark_inner_folds']}. "
+    if settings.get("benchmark_seed") is not None:
+        scope += f"Recorded seed: {settings['benchmark_seed']}. "
+    return scope
+
+
+def _benchmark_search_description(ctx: ReportContext, *, tuned: bool) -> str:
+    """Describe grids from recorded execution or candidate columns, including KRR-only runs."""
+    settings = ctx.manifest.get("execution", {}).get("settings", {})
+    search = ctx.benchmark_tuned_search if tuned else ctx.benchmark_sweep
+
+    def values(key, column):
+        if key in settings:
+            value = settings[key]
+            return value if isinstance(value, list) else [value]
+        if search is None or search.empty or column not in search:
+            return None
+        return sorted(search[column].dropna().unique().tolist())
+
+    def describe(items):
+        return "/".join("automatic" if item is None else str(item) for item in items) if items else "unavailable"
+
+    budgets = values("tuned_feature_budgets" if tuned else "original_feature_budget", "k")
+    neighbors = values("relief_neighbors_tuned" if tuned else "relief_neighbors_original", "n_neighbors")
+    parts = [f"Recorded feature budgets: {describe(budgets)}. Recorded ReliefF neighbor counts: {describe(neighbors)}."]
+    prefix = "tuned" if tuned else "original"
+    if "krr" in _benchmark_models(ctx):
+        alpha = values(f"{prefix}_krr_alpha_grid", "alpha")
+        gamma = values(
+            "tuned_krr_gamma_multipliers" if tuned else "original_krr_gamma_grid",
+            "gamma_multiplier" if tuned else "gamma",
+        )
+        parts.append(
+            f"Recorded KRR regularization strengths: {describe(alpha)}; {'dimension-relative kernel-width multipliers' if tuned else 'kernel-width settings'}: {describe(gamma)}."
+        )
+        if (
+            f"{prefix}_krr_alpha_grid" in settings
+            and ("tuned_krr_gamma_multipliers" if tuned else "original_krr_gamma_grid") in settings
+        ):
+            parts.append(f"Declared KRR configurations per selector budget: {len(alpha) * len(gamma)}.")
+    if "logreg" in _benchmark_models(ctx):
+        parts.append(f"Recorded logistic-regression regularization settings: {describe(values('logreg_C_grid', 'C'))}.")
+    parts.append(
+        "BER is the primary inner objective; AUC is supporting. Exact ties prefer fewer features, then stronger regularization (larger KRR alpha, smaller logistic C), followed by deterministic remaining order."
+    )
+    return " ".join(parts)
+
+
+def _calibration_story_table(diagnostics: pd.DataFrame) -> list[str]:
+    """Compact selected LR/KRR main-window diagnostics; full procedures stay in the appendix."""
+    selected = diagnostics[diagnostics.procedure.isin(["temporal_joint", "krr_cal20_joint"]) & (diagnostics.fold > 0)]
+    rows = []
+    for fold, group in selected.groupby("fold", sort=True):
+        row = {"Later test period": int(fold)}
+        counts = []
+        for procedure, label in (("temporal_joint", "Logistic regression"), ("krr_cal20_joint", "Kernel ridge (20%)")):
+            match = group[group.procedure == procedure]
+            if match.empty:
+                row[label + " flagged range"] = "unavailable"
+                continue
+            item = match.iloc[0]
+            counts.append(
+                (label, f"{int(item.calibration_n)} / {int(item.calibration_fails)} / {int(item.calibration_passes)}")
+            )
+            row[label + " flagged range"] = (
+                f"{item.lofo_flagged_fraction_min:.1%}–{item.lofo_flagged_fraction_max:.1%}"
+                if item.lofo_available
+                else "undefined"
+            )
+        row["Calibration samples / failures / passes"] = (
+            counts[0][1]
+            if counts and len({value for _, value in counts}) == 1
+            else "; ".join(label + ": " + value for label, value in counts)
+        )
+        rows.append(row)
+    if not rows:
+        return ["Selected earlier-period calibration diagnostics are unavailable."]
+    frame = pd.DataFrame(rows)
+    return _markdown_table(
+        frame,
+        [
+            "Later test period",
+            "Calibration samples / failures / passes",
+            "Logistic regression flagged range",
+            "Kernel ridge (20%) flagged range",
+        ],
+    )
+
+
+def _period_error_mean(frame: pd.DataFrame) -> str:
+    """Do not turn guarded class-absent values into a claimed aggregate error."""
+    if frame.empty or ("BER_available" in frame and not frame.BER_available.astype(bool).all()):
+        return "unavailable"
+    return f"{frame.BER.mean():.2%}"
+
+
+def _render_technical_details(ctx: ReportContext) -> list[str]:
+    """Render each evidence tier with joint held-out procedures as benchmark headlines."""
+    lines = [
+        "## Technical Appendix",
+        "",
+        "Machine field names and search tables below support reproducibility. They do not define additional headline results.",
+        "",
+    ]
+    procedure_frames = []
+    for tuned in (False, True):
+        label = "Tuned Benchmark" if tuned else "Original Replication"
+        prefix = "benchmark_tuned" if tuned else "benchmark"
+        summary = ctx.benchmark_tuned_summary if tuned else ctx.benchmark_summary
+        search = ctx.benchmark_tuned_search if tuned else ctx.benchmark_sweep
+        best = ctx.benchmark_tuned_best if tuned else ctx.benchmark_best
+        ablation = ctx.benchmark_tuned_ablation if tuned else ctx.benchmark_ablation
+        procedures = read_csv_if_exists(ctx.reports_dir / f"{prefix}_procedure_summary.csv")
+        procedure_frames.append(procedures)
+        lines.extend(
+            [
+                f"## {label} Design",
+                "",
+                _benchmark_protocol(ctx)
+                + "Imputation, scaling, and selection are fitted within each inner training split. "
+                "Pooled inner out-of-fold scores jointly select parameters and a BER threshold; ties use deterministic simplicity/order. "
+                "The threshold is frozen before the chosen pipeline is refitted on outer training data and evaluated once on outer test data. "
+                "The inner-OOF to outer-refit score-distribution difference remains a calibration limitation; no third nesting is claimed.",
+                "",
+                _benchmark_search_description(ctx, tuned=tuned),
+                "",
+                f"## {label} Search Summary",
+                "",
+                "### Tuned Search Space" if tuned else "### Original Search Space",
+                "",
+            ]
+        )
+        if search is not None:
+            lines.extend(_tuned_search_space_table(search) if tuned else _original_search_space_table(search))
+        lines.extend(
+            [
+                "",
+                "### Modal Selected Configurations" if tuned else "### Original Selected Configurations",
+                "",
+                "Modal configurations describe inner selections across folds and full-data interpretation fits, not a new performance estimate.",
+                "",
+            ]
+        )
+        if best is not None:
+            lines.extend(_tuned_best_config_table(best))
+        lines.extend(
+            [
+                "",
+                f"## {label} Results",
+                "",
+                "### Joint Held-out Procedure and Baselines",
+                "",
+                f"Headline source: `{prefix}_procedure_summary.csv`, recomputed from `{prefix}_predictions.csv`. "
+                "Fold mean, standard deviation, and range are descriptive because training samples overlap. They are not algorithm-performance confidence intervals.",
+                "",
+            ]
+        )
+        if procedures is not None:
+            lines.extend(
+                _markdown_table(
+                    procedures,
+                    [
+                        "procedure",
+                        "mean_BER",
+                        "std_BER",
+                        "min_BER",
+                        "max_BER",
+                        "mean_True+",
+                        "mean_True-",
+                        "pooled_TP",
+                        "pooled_FP",
+                        "pooled_TN",
+                        "pooled_FN",
+                    ],
+                )
+            )
+        else:
+            lines.append("Joint held-out procedure artifacts unavailable.")
+        lines.extend(["", "### Exploratory Nested Family Comparisons", ""])
+        if summary is not None:
+            lines.extend(_top_benchmark_table(summary))
+            lines.extend(["", "### Supporting Benchmark Metrics", ""])
+            lines.extend(_supporting_benchmark_table(summary))
+        if ablation is not None:
+            lines.extend(
+                [
+                    "",
+                    "### Paired Missing-indicator Ablation",
+                    "",
+                    "Positive delta_BER means values-only BER minus values-plus-indicators BER. Paired fold deltas are descriptive.",
+                    "",
+                ]
+            )
+            lines.extend(_markdown_table(ablation, list(ablation.columns)))
+        if not tuned:
+            lines.extend(
+                [
+                    "",
+                    "### UCI Original Benchmark Reference",
+                    "",
+                    "[UCI SECOM](https://archive.ics.uci.edu/dataset/179/secom) describes KRR; "
+                    "[McCann and Johnston (2010), Table 2](https://proceedings.mlr.press/v6/mccann10a/mccann10a.pdf) labels its baseline Naive Bayes. "
+                    "These are reference context, not an exact classifier/protocol replication claim.",
+                    "",
+                ]
+            )
+            lines.extend(_uci_original_baseline_table(summary))
+            lines.extend(["", _uci_selector_definition_note(), ""])
+    lines.extend(
+        [
+            "## Original vs Tuned Benchmark Comparison",
+            "",
+            "The procedures use identical held-out sample IDs/folds. Positive paired delta below is original BER minus tuned BER; "
+            "the spread is descriptive, not a significance test.",
+            "",
+        ]
+    )
+    from secom.metrics import safe_std
+
+    original = read_csv_if_exists(ctx.reports_dir / ArtifactName.BENCHMARK_PROCEDURE_FOLD_METRICS)
+    tuned = read_csv_if_exists(ctx.reports_dir / ArtifactName.BENCHMARK_TUNED_PROCEDURE_FOLD_METRICS)
+    if original is not None and tuned is not None:
+        paired = original[original.procedure == "joint"].merge(
+            tuned[tuned.procedure == "joint"], on=["procedure", "fold"], suffixes=("_original", "_tuned")
+        )
+        delta = paired.BER_original - paired.BER_tuned
+        lines.append(
+            f"Joint paired delta_BER mean={_format_float(delta.mean())}, std={_format_float(safe_std(delta))}, range={_format_float(delta.min())} to {_format_float(delta.max())}."
+        )
+    lines.extend(
+        [
+            "## Feature Stability and Interpretation",
+            "",
+            _feature_interpretation_claim_note(),
+            "",
+            "Selection frequency across overlapping outer training folds is descriptive. Full-data coefficients are in-sample associations. "
+            "absolute_scaled_coefficient is the absolute full-fit scaled logistic coefficient; stability_weighted_coefficient is frequency times that coefficient. "
+            "Neither is an expected economic contribution or causal effect. KRR coefficient fields remain unavailable.",
+            "",
+        ]
+    )
+    for label, frame, anchor in (
+        ("Original", ctx.feature_report, ctx.best_benchmark_row),
+        ("Tuned", ctx.benchmark_tuned_feature_report, ctx.best_tuned_benchmark_row),
+    ):
+        lines.extend([f"### {label} Exploratory Family Feature Interpretation", ""])
+        if frame is not None and anchor is not None:
+            lines.extend(
+                _best_row_feature_table(
+                    frame,
+                    selector=str(anchor.selector),
+                    classifier=str(anchor.classifier),
+                    replication_mode=str(anchor.replication_mode),
+                )
+            )
+    lines.extend(_missingness_context_lines(ctx.manifest, ctx.feature_report, ctx.best_benchmark_row))
+    lines.extend(
+        [
+            "## Temporal Robustness Stress Test",
+            "",
+            f"Temporal robustness status: `{ctx.manifest.get('temporal_robustness_status')}`",
+            "",
+            "### Temporal Robustness Design",
+            "",
+            "The retained logistic-regression role study and a bounded DEV-only KRR comparator are separate secondary stress studies. The last chronological 15% is a retrospective later evaluation block "
+            "already exposed through the full-dataset benchmark and earlier reports; it is not a fresh confirmatory lockbox. "
+            "DEV uses fixed nonoverlapping calendar test blocks and expanding training prefixes. Inner tuning uses deterministic chronological splits. "
+            "The last chronological 20% of each training region is held-out calibration. Tuning/model fitting use the earlier fit prefix; "
+            "thresholds use calibration scores from that retained model, with no refit on calibration after freezing.",
+            "",
+        ]
+    )
+    temporal_joint = read_csv_if_exists(ctx.reports_dir / ArtifactName.TEMPORAL_PROCEDURE_METRICS)
+    if ctx.temporal_selection is not None:
+        lines.extend(
+            [
+                "### DEV-only KRR and Calibration Sensitivity",
+                "",
+                "KRR uses the shared tuned alpha grid and dimension-relative gamma multipliers with StandardScaler. "
+                "Joint input mode and configuration are chosen by earlier FIT chronological inner BER. Values-only and combined procedures "
+                "use the same fixed evaluation periods. The predeclared 30% calibration sensitivity tunes independently within its earlier 70% FIT. "
+                "It is descriptive and cannot promote an outer-period winner or a later-block KRR champion.",
+                "",
+            ]
+        )
+        comparator = read_csv_if_exists(ctx.reports_dir / ArtifactName.TEMPORAL_KRR_METRICS)
+        if comparator is not None:
+            keep = [
+                c
+                for c in (
+                    "fold",
+                    "procedure",
+                    "available",
+                    "unavailable_reason",
+                    "BER",
+                    "ROC_AUC",
+                    "n_inner_timestamp_ties",
+                    "True+",
+                    "True-",
+                    "TP",
+                    "TN",
+                    "FP",
+                    "FN",
+                )
+                if c in comparator
+            ]
+            lines.extend(_markdown_table(comparator, keep))
+        lines.extend(
+            [
+                "",
+                "### Calibration Counts and Threshold Fragility",
+                "",
+                "Fewer than ten calibration failures is a fragility warning, not a reason to move a chronological boundary. "
+                "BER steps are 1/(2 failures) and 1/(2 passes). Leave-one-failure-out recalibration keeps fitted scores fixed; "
+                "flagged-fraction ranges use the same full calibration score set. LOFO ranges are undefined with fewer than two failures or no passes; class-specific BER steps are undefined when that class is absent. These ranges describe calibration instability only, "
+                "not confidence intervals, future uncertainty or algorithm uncertainty. Per-period AUC distinguishes ranking weakness from threshold weakness. Inner rows follow stable (timestamp, raw_row_id) order; equal-timestamp boundaries are flagged in search/calibration receipts. Disjoint IDs and nondecreasing timestamps preserve the fixed splits. Raw row ID does not establish physical event order or independence within tied timestamps. Outer calendar tests remain strictly later.",
+                "",
+            ]
+        )
+        diagnostics = read_csv_if_exists(ctx.reports_dir / ArtifactName.TEMPORAL_CALIBRATION_DIAGNOSTICS)
+        if diagnostics is not None:
+            keep = [
+                c
+                for c in (
+                    "fold",
+                    "procedure",
+                    "calibration_n",
+                    "calibration_fails",
+                    "calibration_passes",
+                    "BER_step_failure",
+                    "BER_step_pass",
+                    "threshold",
+                    "fragile_calibration",
+                    "fit_calibration_timestamp_tie",
+                    "lofo_available",
+                    "lofo_threshold_min",
+                    "lofo_threshold_max",
+                    "lofo_flagged_fraction_min",
+                    "lofo_flagged_fraction_max",
+                )
+                if c in diagnostics
+            ]
+            display_diagnostics = diagnostics[keep].astype(object).where(diagnostics[keep].notna(), "undefined")
+            lines.extend(_markdown_table(display_diagnostics, keep))
+        lines.extend(["", "### Temporal Joint Held-out Procedure", ""])
+        if temporal_joint is not None:
+            lines.extend(_markdown_table(temporal_joint, list(temporal_joint.columns)))
+        lines.extend(
+            [
+                "",
+                "### Temporal Model Selection Summary",
+                "",
+                "Roles are chosen from chronological inner selection on the final fit prefix. Outer family ranking remains exploratory.",
+                "",
+                "#### Selector Ranking and Modal Configurations",
+                "",
+            ]
+        )
+        lines.extend(_temporal_selection_summary_table(ctx.temporal_selection))
+        lines.extend(
+            [
+                "",
+                "### Lockbox Metrics",
+                "",
+                "Frozen-threshold confusion counts accompany rates and exact binomial TPR/TNR intervals where available. "
+                "When a class is absent, guarded numerical rate placeholders are marked unavailable; they are not evidence of that class recall. Intervals are conditional on a fixed model and independent Bernoulli trials; temporal dependence and model-selection uncertainty are excluded. "
+                "TNR90 thresholds selected from evaluation labels remain retrospective ROC diagnostics.",
+                "",
+            ]
+        )
+        lines.extend(_markdown_table(ctx.temporal_lockbox, list(ctx.temporal_lockbox.columns)))
+        lines.extend(
+            [
+                "",
+                "### Drift and Claim Restrictions",
+                "",
+                "KS compares held-out calibration scores from the same retained model with future scores. Raw-feature PSI uses the fit reference descriptively. "
+                "Missingness-rate changes indicate collection-regime association, not causes. Heuristic gates cannot authorize superiority or confirmatory claims.",
+                "",
+            ]
+        )
+        lines.extend(_markdown_table(ctx.temporal_drift, list(ctx.temporal_drift.columns)))
+        _append_bullet_list(lines, list(ctx.manifest.get("temporal_claim_restrictions", [])))
+        lines.extend(
+            [
+                "",
+                "### Supervised vs MSPC",
+                "",
+                "MSPC fits PCA on pass-only fit samples. Calibration freezes T2/Q source and thresholds before evaluation. "
+                "Frozen confusion counts and retrospective TNR90 diagnostics are separate. Observed mean inter-alarm spacing across all samples is not in-control ARL0.",
+                "",
+            ]
+        )
+        lines.extend(_markdown_table(ctx.temporal_mspc, list(ctx.temporal_mspc.columns)))
+        lines.extend(
+            [
+                "",
+                "### Illustrative Operational Framing",
+                "",
+                "Workload comes from held-out DEV calibration predictions. The operational policy constrains unweighted mean weekly flagged fraction to 10%, not every week's hard cap. "
+                "Calibration workload is used to select that policy; future operating cost and production capacity remain unvalidated.",
+                "",
+            ]
+        )
+        lines.extend(_markdown_table(ctx.temporal_manager, list(ctx.temporal_manager.columns)))
+        lines.extend(["", "#### Cost Curves", ""])
+        lines.extend(_markdown_table(ctx.temporal_cost, list(ctx.temporal_cost.columns)))
+    else:
+        lines.append("Temporal model selection artifact missing or empty.")
+    # Keep full machine tables accessible without making them the default reading path.
+    grouped = lines[:4]
+    opened = False
+    for line in lines[4:]:
+        if line.startswith("## "):
+            if opened:
+                grouped.extend(["", "</details>", ""])
+            title = line.removeprefix("## ")
+            if title == "Temporal Robustness Stress Test":
+                grouped.extend(["### Chronological diagnostics", ""])
+            grouped.extend(["<details>", f"<summary>{title}</summary>", "", f"### Appendix: {title}"])
+            opened = True
+        elif line.startswith("### "):
+            grouped.append("#" + line)
+        elif line.startswith("#### "):
+            grouped.append("#" + line)
+        else:
+            grouped.append(line)
+    if opened:
+        grouped.extend(["", "</details>", ""])
+    return grouped
+
+
+def _reader_metric_table(frame: pd.DataFrame, *, benchmark: bool = False) -> list[str]:
+    """Show existing rates and counts with external names and explicit percentage units."""
+    display = pd.DataFrame()
+    display["Procedure"] = frame["procedure"].map(procedure_label)
+    if "fold" in frame:
+        display.insert(0, "Later test period", frame["fold"])
+        display["Test samples / failures"] = frame.apply(
+            lambda row: f"{int(row.n_test)} / {int(row.n_test_fails)}", axis=1
+        )
+    prefix = "mean_" if benchmark else ""
+    for key, heading in (("BER", "Balanced error"), ("True+", "Failure recall"), ("True-", "Pass specificity")):
+        display[heading] = frame[prefix + key].map(lambda value: f"{value:.2%}")
+        availability = {"BER": "BER_available", "True+": "TPR_available", "True-": "TNR_available"}[key]
+        if not benchmark and availability in frame:
+            display.loc[~frame[availability].astype(bool), heading] = "unavailable"
+    if benchmark:
+        display["Fold spread (SD)"] = frame["std_BER"].map(lambda value: f"{100 * value:.2f} pp")
+        display["Fold range"] = frame.apply(lambda row: f"{row.min_BER:.2%}–{row.max_BER:.2%}", axis=1)
+    elif "ROC_AUC" in frame:
+        display["Ranking AUC"] = frame["ROC_AUC"].map(lambda value: f"{value:.3f}")
+    count_prefix = "pooled_" if benchmark else ""
+    display["Failures caught"] = frame[count_prefix + "TP"]
+    display["False alerts on passes"] = frame[count_prefix + "FP"]
+    n = (
+        frame[count_prefix + "TP"]
+        + frame[count_prefix + "FP"]
+        + frame[count_prefix + "TN"]
+        + frame[count_prefix + "FN"]
+    )
+    display["Samples flagged"] = ((frame[count_prefix + "TP"] + frame[count_prefix + "FP"]) / n).map(
+        lambda value: f"{value:.1%}"
+    )
+    return _markdown_table(display, list(display.columns))
+
+
+def _render_study(ctx: ReportContext) -> list[str]:
+    """Lead with the manufacturing question; keep internal keys in technical appendices."""
+    dataset = ctx.manifest.get("dataset", {})
+    original = read_csv_if_exists(ctx.reports_dir / ArtifactName.BENCHMARK_PROCEDURE_SUMMARY)
+    tuned = read_csv_if_exists(ctx.reports_dir / ArtifactName.BENCHMARK_TUNED_PROCEDURE_SUMMARY)
+    original_joint = _first_row(original, original.procedure.eq("joint") if original is not None else None)
+    tuned_joint = _first_row(tuned, tuned.procedure.eq("joint") if tuned is not None else None)
+    models = _benchmark_models(ctx)
+    settings = ctx.manifest.get("execution", {}).get("settings", {})
+    selectors = settings.get("original_selectors")
+    if selectors is None and ctx.benchmark_sweep is not None and not ctx.benchmark_sweep.empty:
+        selectors = ctx.benchmark_sweep.selector.unique().tolist()
+    method_scope = (
+        f"{len(selectors)} column-selection {'method' if len(selectors) == 1 else 'methods'}"
+        if selectors is not None
+        else "column-selection methods whose count is unavailable"
+    )
+    search_scope = (
+        f"We compared {method_scope} using {' and '.join(CLASSIFIERS.get(model, model) for model in models)}. "
+        if models
+        else "The saved evidence does not identify the model families compared. "
+    )
+    reference_folds, tuned_folds = fold_count_label(original), fold_count_label(tuned)
+    if reference_folds == tuned_folds and reference_folds != "unavailable":
+        fold_scope = f"Both benchmarks used {reference_folds} held-out test folds. "
+    elif "unavailable" not in (reference_folds, tuned_folds):
+        fold_scope = f"The reference used {reference_folds} held-out test folds; tuning used {tuned_folds}. "
+    else:
+        fold_scope = "Test-fold counts are unavailable for one or both benchmarks. "
+    budgets = []
+    for key, search in (
+        ("original_feature_budget", ctx.benchmark_sweep),
+        ("tuned_feature_budgets", ctx.benchmark_tuned_search),
+    ):
+        values = settings.get(key)
+        if values is None and search is not None and not search.empty and "k" in search:
+            values = sorted(search.k.dropna().unique().tolist())
+        values = values if isinstance(values, list) else [values] if values is not None else []
+        names = [str(int(value)) for value in values]
+        budgets.append(", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0] if names else None)
+    budget_scope = (
+        f"The reference allows up to {budgets[0]} selected inputs; tuning compares budgets of {budgets[1]} inputs. "
+        if all(budgets)
+        else "Input-budget details are unavailable for one or both benchmarks. "
+    )
+    findings = []
+    if original_joint is not None and tuned_joint is not None:
+        findings.append(
+            f"- **Benchmark:** mean balanced error {original_joint.mean_BER:.2%} → {tuned_joint.mean_BER:.2%}; "
+            f"failures caught {int(original_joint.pooled_TP)} → {int(tuned_joint.pooled_TP)}; "
+            f"false alerts {int(original_joint.pooled_FP)} → {int(tuned_joint.pooled_FP)}. "
+            "Rates average held-out folds; counts pool their predictions."
+        )
+    else:
+        findings.append("- **Benchmark:** complete-procedure results are unavailable.")
+    comparator = read_csv_if_exists(ctx.reports_dir / ArtifactName.TEMPORAL_KRR_METRICS)
+    if comparator is not None and not comparator.empty:
+        main = comparator[comparator.available.astype(bool) & comparator.procedure.eq("krr_cal20_joint")]
+        if not main.empty:
+            findings.append(
+                f"- **Chronological stress:** kernel ridge averages {_period_error_mean(main)} balanced error and flags "
+                f"{(main.TP.sum() + main.FP.sum()) / main.n_test.sum():.1%} of {int(main.n_test.sum()):,} later samples. "
+                "This separate procedure tests transfer; the final later block is retrospective."
+            )
+    lines = [
+        "# Can anonymous manufacturing measurements identify recorded failures?",
+        "",
+        "## Executive Summary",
+        "",
+        "This SECOM study asks whether recorded manufacturing measurements distinguish a failed test from a passed test. "
+        "When failures are rare, predicting pass for everyone can look accurate while catching no failures. "
+        "The useful comparison gives failures and passes equal weight, then examines the tradeoff between catching failures and raising false alerts.",
+        "",
+        *findings,
+        "",
+        "**Read:** [Scope](#dataset-and-study-scope) · [Reference](#original-replication-design) · "
+        "[Tuning](#tuned-benchmark-design) · [Tradeoff](#original-vs-tuned-benchmark-comparison) · "
+        "[Inputs](#feature-stability-and-interpretation) · [Later samples](#temporal-robustness-stress-test) · "
+        "[Gaps](#industrialization-gaps) · [Conclusions](#conclusions-and-next-data-requirements) · "
+        "[Technical tables](#technical-appendix) · [Provenance](#provenance-appendix)",
+        "",
+        "## What I Built",
+        "",
+        "A reproducible Python study that compares a literature-inspired reference benchmark with bounded tuning, "
+        "checks the complete selection procedure on unseen test samples, and then tests transfer to later samples. "
+        "Training-only transformations, saved predictions and independent artifact checks make the results traceable.",
+        "",
+        "## Dataset and Study Scope",
+        "",
+    ]
+    if dataset:
+        lines += [
+            f"The files contain **{dataset['n_samples']:,} samples, {dataset['n_features']} anonymous measurement columns, "
+            f"{dataset['n_fails']} failures and {dataset['n_passes']:,} passes**. Predicting pass for everyone would give "
+            f"{dataset['n_passes'] / dataset['n_samples']:.2%} accuracy and catch zero failures. "
+            f"{dataset['missing_fraction']:.2%} of measurement cells are missing.",
+            "",
+        ]
+    lines += [
+        "**Failure recall** is the fraction of failures caught. **Pass specificity** is the fraction of passes correctly left unflagged. "
+        "**Balanced error** is the average of the missed-failure rate and the false-alert rate on passes: "
+        "½ × [(1 − recall) + (1 − specificity)]. Lower is better; an always-pass rule has 50% balanced error.",
+        "",
+        "A row represents a production entity whose physical unit is undocumented. Measurements are anonymous, "
+        "and their availability before the outcome is not established. This study predicts recorded test labels; "
+        "it does not demonstrate early warning or intervention benefit. Public metadata describe 591 features, while the reference SECOM measurement file contains 590.",
+        "",
+        "## Original Replication Design",
+        "",
+        "The reference is a literature-inspired fixed-feature-budget benchmark, not an exact replication of the published classifier and protocol. "
+        + search_scope
+        + "**Kernel ridge regression (KRR)** learns a nonlinear score using "
+        "similarity between samples; **logistic regression (LR)** learns a weighted combination of inputs with a logistic link.",
+        "",
+        "**Cross-validation** rotates which samples are held aside. Shuffled, class-stratified outer splits preserve class proportions and evaluate unseen samples. "
+        + fold_scope
+        + "Inside each outer training portion, inner splits choose the selector, model, input mode, settings and alert threshold. "
+        "Median imputation, scaling and feature selection see training data only. The chosen procedure is refitted on outer training data, "
+        "then evaluated once on its untouched outer test samples. The test labels never choose the model or threshold.",
+        "",
+        "**Calibration** means choosing the score threshold that triggers an alert. The benchmark chooses it from pooled inner held-out scores "
+        "and freezes it before the outer refit. Scores can shift after refitting; that is a remaining calibration limitation. "
+        "The evaluation covers the complete selection procedure, rather than a model picked retrospectively for its best test result.",
+        "",
+    ]
+    lines += [
+        "## Original Replication Results",
+        "",
+        "Rates below are fold means. Counts sum the once-held-out predictions. "
+        "Standard deviation (SD) and ranges describe fold variation, not algorithm-performance confidence intervals.",
+        "",
+    ]
+    if original is not None and not original.empty:
+        lines += _reader_metric_table(original, benchmark=True)
+    else:
+        lines += ["Reference benchmark results are unavailable."]
+    lines += [
+        "",
+        "## Tuned Benchmark Design",
+        "",
+        "The paired benchmark protocol keeps test samples, folds and seeds fixed while comparing declared input budgets and model settings. "
+        + budget_scope
+        + "Full grids and candidate counts are in the technical appendix. For dimension-relative kernel-ridge candidates, kernel width scales "
+        "with the actual selected input count. Stronger regularization wins exact balanced-error ties after fewer features.",
+        "",
+        "This is bounded parameter coverage, not global optimization. Model settings, input mode and threshold remain selected entirely "
+        "inside training data. Separately predefined measurements-only and measurements-plus-missing-flags procedures provide contrasts; "
+        "their test results do not replace the complete selected procedure as the headline.",
+        "",
+        "## Tuned Benchmark Results",
+        "",
+    ]
+    if tuned is not None and not tuned.empty:
+        lines += _reader_metric_table(tuned, benchmark=True)
+    else:
+        lines += ["Tuned benchmark results are unavailable."]
+    lines += ["", "## Original vs Tuned Benchmark Comparison", ""]
+    if original_joint is not None and tuned_joint is not None:
+        a, b = original_joint, tuned_joint
+        caught_direction = (
+            "more" if b.pooled_TP > a.pooled_TP else "fewer" if b.pooled_TP < a.pooled_TP else "the same number of"
+        )
+        alert_direction = (
+            "more" if b.pooled_FP > a.pooled_FP else "fewer" if b.pooled_FP < a.pooled_FP else "the same number of"
+        )
+        lines += [
+            f"The complete selected procedure changes balanced error from **{a.mean_BER:.2%} to {b.mean_BER:.2%}**, "
+            f"failure recall from **{a['mean_True+']:.2%} to {b['mean_True+']:.2%}**, and pass specificity from "
+            f"**{a['mean_True-']:.2%} to {b['mean_True-']:.2%}**. "
+            f"The pooled counts change from {int(a.pooled_TP)} failures caught / {int(a.pooled_FP)} false alerts "
+            f"to {int(b.pooled_TP)} caught / {int(b.pooled_FP)} false alerts. "
+            f"Tuning produces {caught_direction} failures caught and {alert_direction} false alerts. "
+            "Read both rates and counts together; a balanced-error change alone does not establish uniform improvement.",
+            "",
+        ]
+        af = read_csv_if_exists(ctx.reports_dir / ArtifactName.BENCHMARK_PROCEDURE_FOLD_METRICS)
+        bf = read_csv_if_exists(ctx.reports_dir / ArtifactName.BENCHMARK_TUNED_PROCEDURE_FOLD_METRICS)
+        if af is not None and bf is not None and not af.empty and not bf.empty:
+            pair = af[af.procedure == "joint"].merge(
+                bf[bf.procedure == "joint"], on="fold", suffixes=("_reference", "_tuned")
+            )
+            delta = pair.BER_reference - pair.BER_tuned
+            if not pair.empty:
+                lines += [
+                    f"On the paired test folds, tuning lowers balanced error in {int((delta > 1e-12).sum())}, "
+                    f"raises it in {int((delta < -1e-12).sum())}, and ties in {int((delta.abs() <= 1e-12).sum())}. "
+                    f"Mean reduction: {100 * delta.mean():.2f} percentage points. This is descriptive, not a significance test.",
+                    "",
+                ]
+    else:
+        lines += [
+            "The complete selected-procedure comparison is unavailable; both saved benchmark summaries are required.",
+            "",
+        ]
+    _append_figure(
+        lines,
+        "Complete reference and tuned procedures: balanced error and pooled alert counts",
+        "figures/benchmark_comparison.png",
+        fold_scope
+        + "Complete procedures evaluated on unseen samples. Error bars show fold means and ranges; count panels pool held-out predictions. Fold spread is descriptive.",
+    )
+    lines += ["<details>", "<summary>Supporting input-mode contrasts</summary>", ""]
+    _append_figure(
+        lines,
+        "Balanced-error reduction after tuning",
+        "figures/tuned_vs_original_delta.png",
+        "Positive values mean lower balanced error after tuning. The same folds and held-out samples support each contrast; no significance claim is made.",
+    )
+    lines += ["</details>", ""]
+    lines += [
+        "## Feature Stability and Interpretation",
+        "",
+        "Most of the search selects existing columns. Imputation fills missing measurements and scaling puts inputs on comparable scales; "
+        "the explicit feature-engineering contrast adds a flag recording whether each measurement was missing. "
+        "Ratios, interactions, trends and process-informed features were not systematically explored. The engineering space is not exhausted.",
+        "",
+        "The chart shows how often anonymous inputs were selected across overlapping training folds, for each study's exploratory "
+        "lowest-error family. A family is a selector/model/input combination. This family was identified from test summaries for description and is not an independently validated champion. "
+        "Column numbers are zero-based file positions, not named sensors. Missing flags can encode measurement-collection changes as well as process state.",
+        "",
+        _feature_interpretation_claim_note(),
+        "",
+    ]
+    groups = dataset.get("shared_missingness_patterns", [])
+    if groups:
+        group = groups[0]
+        names = ", ".join(name.removeprefix("M") for name in group["features"][:12])
+        monthly = "; ".join(f"{month}: {rate:.1%}" for month, rate in group["monthly_missing_rates"].items())
+        lines += [
+            f"For example, missing flags for columns {names} have identical missingness patterns. "
+            f"Their full-sample missing rate by month is {monthly}. These descriptive associations do not identify root causes "
+            "or prove independent sensor effects.",
+            "",
+        ]
+    _append_figure(
+        lines,
+        "Anonymous-input selection frequency",
+        "figures/feature_stability.png",
+        "Exploratory family stability and scaled-coefficient heuristics. Bars use selection frequency only; fitted coefficients remain in the technical appendix.",
+    )
+    lines += [
+        "## Temporal Robustness Stress Test",
+        "",
+        "The shuffled benchmark asks about other samples from this dataset. The chronological stress test asks whether earlier "
+        "measurements and labels transfer to later calendar periods. It is secondary evidence and does not replace the benchmark result.",
+        "",
+        "Fixed nonoverlapping calendar test blocks follow expanding earlier training regions. Model selection uses deterministic "
+        "chronological splits inside the earlier fitting portion. A held-out portion of each training region supplies calibration "
+        "scores for a retained model; the model is never refitted after its threshold is frozen. Ranking AUC is a supporting measure "
+        "of how well scores order failures above passes; 0.5 is chance ordering, and AUC does not set the alert threshold.",
+        "",
+    ]
+    lr, krr, diagnostics = None, None, None
+    if ctx.temporal_selection is not None:
+        lr = read_csv_if_exists(ctx.reports_dir / ArtifactName.TEMPORAL_PROCEDURE_METRICS)
+        krr = read_csv_if_exists(ctx.reports_dir / ArtifactName.TEMPORAL_KRR_METRICS)
+        lines += ["### Later-period logistic-regression results", ""]
+        if lr is not None and not lr.empty:
+            human = lr.copy()
+            human["procedure"] = "Complete selected logistic-regression procedure"
+            lines += _reader_metric_table(human)
+            lines += [
+                "",
+                f"Mean per-period balanced error: {_period_error_mean(lr)}. "
+                "Per-period results matter: pooling samples can conceal weak transfer when failure prevalence and alert rates differ between periods.",
+                "",
+            ]
+        lines += [
+            "### Kernel-ridge comparison and calibration-window sensitivity",
+            "",
+            "Kernel ridge uses the same fixed later test samples, a standard scaler and the shared bounded tuning grid. "
+            "Each declared calibration-window sensitivity is independently selected using only its own earlier fitting portion. "
+            "It changes both training size and calibration size; it is a compound sensitivity comparison, not an isolated threshold experiment. "
+            "The two models also differ in grids and preprocessing, so this is no clean single-factor algorithm comparison.",
+            "",
+        ]
+        if krr is not None and not krr.empty:
+            available = krr[krr.available.astype(bool)]
+            rows = []
+            for name, group in available.groupby("procedure", sort=False):
+                row = {"Procedure": procedure_label(name), "Mean period balanced error": _period_error_mean(group)}
+                for _, r in group.iterrows():
+                    row[f"Period {int(r.fold)}: error / AUC / flagged"] = (
+                        f"{f'{r.BER:.2%}' if r.BER_available else 'unavailable'} / {r.ROC_AUC:.3f} / {(r.TP + r.FP) / r.n_test:.1%}"
+                    )
+                rows.append(row)
+            frame = pd.DataFrame(rows)
+            if rows:
+                lines += _markdown_table(frame, list(frame.columns))
+            else:
+                lines += ["Available kernel-ridge period metrics are not recorded."]
+            main = available[available.procedure == "krr_cal20_joint"]
+            if not main.empty:
+                fraction = (main.TP.sum() + main.FP.sum()) / main.n_test.sum()
+                failures = main.TP.sum() + main.FN.sum()
+                passes = main.FP.sum() + main.TN.sum()
+                pooled = (
+                    f"{0.5 * (main.FN.sum() / failures + main.FP.sum() / passes):.2%}"
+                    if failures and passes
+                    else "unavailable"
+                )
+                lines += [
+                    "",
+                    f"The main kernel-ridge procedure flags {fraction:.1%} of the {int(main.n_test.sum())} later samples. "
+                    f"Its mean period balanced error is {_period_error_mean(main)}; its differently weighted pooled balanced error is {pooled}. "
+                    "Flagged fraction measures alert volume alongside recall. Per-period AUC separates score-ordering weakness from threshold weakness. "
+                    "Compare declared window paths descriptively; no sensitivity arm is promoted as a winner.",
+                    "",
+                ]
+        lines += [
+            "### Calibration counts and threshold sensitivity",
+            "",
+            "Removing one failed calibration example and recalibrating the same fixed scores checks threshold fragility. "
+            "The resulting flagged-fraction range is evaluated on the full original calibration score set. "
+            "It describes calibration instability only, not future uncertainty or a confidence interval. "
+            "Fewer than ten calibration failures triggers a warning; it does not move a split boundary.",
+            "",
+        ]
+        diagnostics = read_csv_if_exists(ctx.reports_dir / ArtifactName.TEMPORAL_CALIBRATION_DIAGNOSTICS)
+        if diagnostics is not None and not diagnostics.empty:
+            lines += _calibration_story_table(diagnostics)
+        else:
+            lines += ["Selected calibration diagnostics are unavailable."]
+        lines += [
+            "",
+            "The compact table shows selected logistic-regression and main-window kernel-ridge thresholds on matching later periods. "
+            "[Full calibration diagnostics](#chronological-diagnostics) are in the **Temporal Robustness Stress Test** appendix section; expand it to see every predefined window/input procedure and final model. "
+            "A single failure changes balanced error by 1/(2 × calibration failures). For illustration, three failures give a 16.7-percentage-point step. "
+            "More calibration data also leaves less data for fitting. Calibration sensitivity and score ordering must be read together; "
+            "a different threshold alone cannot establish stable transfer.",
+            "",
+            "### The final later block: retrospective, frozen thresholds",
+            "",
+            "The final 15% of samples was already exposed in full-dataset benchmarking and earlier reports. It is a retrospective check, "
+            "not independent confirmation. Only logistic-regression roles and a multivariate statistical process control (MSPC) baseline "
+            "are evaluated here. MSPC uses principal components fitted on earlier passing samples; its score and alert threshold are chosen "
+            "on calibration data. No later-block kernel-ridge result is implied.",
+            "",
+        ]
+        if ctx.temporal_lockbox is not None:
+            frame = ctx.temporal_lockbox.copy()
+            display = pd.DataFrame(
+                {
+                    "Frozen rule": frame.apply(lambda r: role_label(r.role, r.threshold_policy), axis=1),
+                    "Failures caught": frame.TP,
+                    "Failures missed": frame.FN,
+                    "False alerts on passes": frame.FP,
+                    "Passes left unflagged": frame.TN,
+                }
+            )
+            lines += _markdown_table(display, list(display.columns))
+        lines += [
+            "",
+            later_sample_scope(ctx.temporal_lockbox)
+            + " Exact intervals in the appendix are conditional on a fixed model and "
+            "independent Bernoulli trials; they exclude temporal dependence and model-selection uncertainty. Retrospective thresholds "
+            "chosen from evaluation labels to reach 90% pass specificity remain a separate ranking diagnostic, not frozen operating performance.",
+            "",
+        ]
+        _append_figure(
+            lines,
+            "Later-block frozen alerts",
+            "figures/lockbox_vs_mspc.png",
+            later_sample_scope(ctx.temporal_lockbox)
+            + " Existing frozen rules; class counts determine rate precision. No superiority or production claim follows.",
+        )
+        lines += [
+            "### Measurement and score distribution checks",
+            "",
+            "Raw-measurement distribution comparisons use the earlier model-fitting samples as their reference. Score comparisons use "
+            "held-out calibration scores from the same retained model. Missing-rate and prevalence changes are descriptive. "
+            "These references answer different questions; their heuristic warnings cannot establish causes or authorize superiority.",
+            "",
+        ]
+        _append_figure(
+            lines,
+            "Later measurement and score shifts",
+            "figures/temporal_drift.png",
+            "Primary logistic-regression model: raw-feature stability index versus earlier fitting measurements; score-distribution test versus held-out calibration. Secondary descriptive evidence.",
+        )
+        lines += [
+            "### Hypothetical workload and cost",
+            "",
+            "The workload-limited threshold constrains the unweighted mean weekly flagged fraction on calibration data to 10%. "
+            "It does not cap each week, or establish future workload. Cost ratios compare the assumed cost of missing a failure "
+            "with the assumed cost of a false alert on a pass. Costs and capacity are hypothetical, not measured production outcomes.",
+            "",
+        ]
+        _append_figure(
+            lines,
+            "Calibration workload and hypothetical costs",
+            "figures/workload_cost_framing.png",
+            "Calibration-only summaries used to choose operating thresholds. The mean-weekly policy is not an individual-week hard cap; hypothetical costs do not validate deployment value.",
+        )
+    else:
+        lines += [
+            f"Temporal robustness status: `{ctx.manifest.get('temporal_robustness_status')}`",
+            "",
+            "Temporal model selection artifact missing or empty.",
+            "",
+        ]
+    _append_industrialization_section(lines, ctx.manifest)
+    if original_joint is not None and tuned_joint is not None:
+        reduction = 100 * (a.mean_BER - b.mean_BER)
+        error_change = (
+            f"{'lowers' if reduction > 0 else 'raises'} mean balanced error by {abs(reduction):.2f} percentage points "
+            f"({a.mean_BER:.2%} to {b.mean_BER:.2%})"
+            if abs(reduction) > 1e-12
+            else f"leaves mean balanced error unchanged at {b.mean_BER:.2%}"
+        )
+        conclusion = (
+            f"Bounded tuning {error_change}, with {caught_direction} failures caught "
+            f"({int(a.pooled_TP)} to {int(b.pooled_TP)}) and {alert_direction} false alerts "
+            f"({int(a.pooled_FP)} to {int(b.pooled_FP)}). "
+            "These results describe the complete selection procedure under shuffled sampling; they do not establish uniform improvement. "
+        )
+    else:
+        conclusion = (
+            "Benchmark comparison conclusions are unavailable until both complete procedure summaries are recorded. "
+        )
+    later_errors = []
+    if lr is not None and _period_error_mean(lr) != "unavailable":
+        conclusion += f"Later-period logistic-regression balanced error averages {_period_error_mean(lr)}. "
+        later_errors.append(lr.BER.mean())
+    if krr is not None and not krr.empty:
+        main = krr[krr.available.astype(bool) & krr.procedure.eq("krr_cal20_joint")]
+        if not main.empty:
+            if _period_error_mean(main) != "unavailable":
+                conclusion += f"The main kernel-ridge stress test averages {_period_error_mean(main)} balanced error. "
+                later_errors.append(main.BER.mean())
+            fraction = (main.TP.sum() + main.FP.sum()) / main.n_test.sum()
+            conclusion += (
+                f"It flags {'most later samples' if fraction > 0.5 else 'later samples'} ({fraction:.1%}), "
+                "which describes the alert burden alongside failure recall. "
+            )
+    if later_errors and tuned_joint is not None and all(value > tuned_joint.mean_BER for value in later_errors):
+        conclusion += (
+            "The available later-period error means exceed the shuffled tuned benchmark: these stress tests do not reproduce "
+            "its class-balanced performance. Their different training and calibration procedures limit direct algorithm comparisons. "
+        )
+    if diagnostics is not None and not diagnostics.empty:
+        selected = diagnostics[
+            diagnostics.procedure.isin(["temporal_joint", "krr_cal20_joint"]) & (diagnostics.fold > 0)
+        ]
+        if not selected.empty:
+            low, high = int(selected.calibration_fails.min()), int(selected.calibration_fails.max())
+            count = str(low) if low == high else f"{low}–{high}"
+            conclusion += f"The selected main-window procedures have {count} failed calibration examples per period. "
+            if low < 10:
+                conclusion += "Sparse calibration failures trigger threshold-fragility warnings; the recalibration ranges describe instability, not future uncertainty. "
+    lines += [
+        "",
+        "## Conclusions and Next Data Requirements",
+        "",
+        conclusion.rstrip()
+        + "\n\n"
+        + "Named measurements, pre-outcome timing, device/tool context, intervention records and independent later data are needed before "
+        "claims about stable operational benefit. There is no production-readiness, causal, early-warning or fresh confirmatory superiority claim.",
+        "",
+    ]
+    lines += _render_technical_details(ctx)
+    lines += [
+        "",
+        "## Provenance Appendix",
+        "",
+        f"Executed modeling source: `{ctx.manifest.get('source_tree', {}).get('sha256', 'unavailable')}`. "
+        f"Executed study-spec identity: `{ctx.manifest.get('study_spec_sha256')}`. Git dirty state: `{ctx.manifest.get('git_dirty')}`.",
+        "",
+        "The execution manifest describes model training. A presentation-only export records its current rendering source separately "
+        "in the publication audit record; it does not relabel the executed source. Tables and figures read unchanged audited CSVs. "
+        "No model fitting occurs during rendering.",
+        "",
+        "Method references: [selection bias](https://jmlr.org/papers/v11/cawley10a.html), "
+        "[threshold tuning](https://scikit-learn.org/stable/modules/classification_threshold.html), "
+        "[cross-validation variance limits](https://www.jmlr.org/papers/volume5/grandvalet04a/grandvalet04a.pdf).",
+        "",
+    ]
+    return lines
+
+
+def write_final_report(output_dir: Path, *, export_pdf: bool = False, reports_destination: Path | None = None) -> Path:
+    """Audit before rendering the canonical report and six existing figures."""
     _raise_for_failed_report_audit(output_dir)
     ctx = _load_report_context(output_dir)
-    restrictions = list(ctx.manifest.get("temporal_claim_restrictions", []))
-    _write_final_report_figures(ctx)
+    target = reports_destination or ctx.reports_dir
+    target.mkdir(parents=True, exist_ok=True)
+    _write_final_report_figures(ctx, target)
+    path = target / ArtifactName.FINAL_REPORT
+    _write_markdown_with_optional_pdf(path, _render_study(ctx), export_pdf=export_pdf)
+    return path
 
-    # Final report text is artifact-driven and avoids asking readers to inspect raw CSVs first.
-    lines: list[str] = []
-    lines.append("# SECOM Benchmark-First Yield Monitoring Study")
-    lines.append("")
-    lines.append(f"_Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}_")
-    lines.append(f"_Source run: `{output_dir}`_")
-    lines.append("")
-    lines.append(
-        "This report summarizes the benchmark replication, tuned benchmark, and temporal robustness outputs "
-        "from the active SECOM study artifacts. The benchmark results are the primary evidence; the temporal "
-        "study is a stricter stress test of robustness under chronological shift."
-    )
-    lines.append("")
-    lines.append("## Executive Summary")
-    lines.append("")
-    _append_bullet_list(
-        lines,
-        [
-            "The benchmark studies evaluate association between SECOM measurements and recorded pass/fail labels; they do not establish early warning, causal drivers, or production readiness.",
-            (
-                f"The strongest original replication row is `{ctx.best_benchmark_row['selector']}` / "
-                f"`{ctx.best_benchmark_row['classifier']}` / `{ctx.best_benchmark_row['replication_mode']}` "
-                f"with mean BER `{_format_float(ctx.best_benchmark_row['mean_BER'])}`."
-                if ctx.best_benchmark_row is not None
-                else "Original replication evidence is unavailable."
-            ),
-            (
-                f"The strongest tuned benchmark row is `{ctx.best_tuned_benchmark_row['selector']}` / "
-                f"`{ctx.best_tuned_benchmark_row['classifier']}` / `{ctx.best_tuned_benchmark_row['replication_mode']}` "
-                f"with mean BER `{_format_float(ctx.best_tuned_benchmark_row['mean_BER'])}`."
-                if ctx.best_tuned_benchmark_row is not None
-                else "Tuned benchmark evidence is unavailable."
-            ),
-            "The tuned benchmark should be read as the more conservative estimate because hyperparameters are selected inside nested cross-validation.",
-            (
-                f"The temporal study selected `{ctx.primary_temporal_row['selector']}` as the primary chronological candidate."
-                if ctx.primary_temporal_row is not None
-                else "The temporal study did not identify a primary chronological candidate."
-            ),
-            (
-                f"There are `{len(restrictions)}` active temporal claim restriction(s); temporal lockbox findings remain descriptive rather than confirmatory."
-                if restrictions
-                else "There are no active temporal claim restrictions in this run."
-            ),
-        ],
-    )
-    lines.append("")
-    lines.append("## What I Built")
-    lines.append("")
-    _append_bullet_list(
-        lines,
-        [
-            "A reproducible original benchmark replication workflow that keeps preprocessing and feature selection strictly inside the training folds.",
-            "A tuned benchmark workflow that preserves the selector family while adding nested hyperparameter search and threshold-free inner selection.",
-            "A temporal robustness workflow with chronological DEV/LOCKBOX evaluation, drift gating, and explicit claim restrictions.",
-            "Artifact-driven audit and reporting outputs so results can be traced back to versioned manifests, metrics tables, and study statuses.",
-        ],
-    )
-    lines.append("")
-    lines.append("## Dataset and Study Scope")
-    lines.append("")
-    lines.append(
-        "The active study is intentionally benchmark-first. It asks whether SECOM process measurements contain usable "
-        "signal for downstream fail detection under a faithful literature-style protocol, then whether a stricter tuned "
-        "benchmark changes that conclusion, and finally how those findings behave under future-looking temporal stress. "
-        "This ordering matters: the benchmark studies support the core claim, while the temporal study tests robustness "
-        "without being allowed to erase valid benchmark evidence by default."
-    )
-    lines.append("")
-    lines.extend(_dataset_scope_lines(ctx.manifest))
-    lines.append("")
-    lines.append("## Original Replication Design")
-    lines.append("")
-    lines.append(
-        "The original replication keeps a fixed feature budget, compares the literature-style selector and classifier families, "
-        "and treats missing-indicator features as a paired ablation. The key result is not just the best row, but the fact "
-        "that multiple selector/classifier combinations remain materially better than trivial failure detection."
-    )
-    lines.append(
-        "Original classifier configurations are selected from the same non-nested replication sweep used for reporting, so tuned benchmark results remain the stricter estimate."
-    )
-    lines.append("")
-    lines.append("## Original Replication Search Summary")
-    lines.append("")
-    if ctx.benchmark_sweep is not None and not ctx.benchmark_sweep.empty:
-        lines.append("### Original Search Space")
-        lines.append("")
-        lines.extend(_original_search_space_table(ctx.benchmark_sweep))
-        lines.append("")
-    else:
-        lines.append("- Benchmark sweep artifact missing or empty.")
-        lines.append("")
-    if ctx.benchmark_best is not None and not ctx.benchmark_best.empty:
-        lines.append("### Original Selected Configurations")
-        lines.append("")
-        lines.extend(_original_best_config_table(ctx.benchmark_best))
-        lines.append("")
-    else:
-        lines.append("- Benchmark best-config artifact missing or empty.")
-        lines.append("")
-    lines.append("## Original Replication Results")
-    lines.append("")
-    _append_benchmark_summary_table(lines, "### Primary Benchmark Evidence", ctx.benchmark_summary)
-    lines.append("### UCI Original Benchmark Reference")
-    lines.append("")
-    lines.append(
-        "The [UCI dataset page](https://archive.ics.uci.edu/dataset/179/secom) describes these 40-feature, 10-fold results as kernel ridge regression, while Table 1 in the [original paper](https://proceedings.mlr.press/v6/mccann10a/mccann10a.pdf) labels the classifier Naive Bayes. Local columns use strict KRR rows. These numbers are reference context, not proof of an exact reproduction of the original classifier protocol."
-    )
-    lines.append("")
-    lines.extend(_uci_original_baseline_table(ctx.benchmark_summary))
-    lines.append("")
-    lines.append(_uci_selector_definition_note())
-    lines.append("")
-    _append_supporting_metrics_table(lines, "### Supporting Benchmark Metrics", ctx.benchmark_summary)
-    _append_figure(
-        lines,
-        "Benchmark comparison",
-        "figures/benchmark_comparison.png",
-        "Figure 1 shows the leading rows including replication mode. Bars are descriptive 95% fold-bootstrap confidence intervals over ten fold metrics; overlapping training sets and post-hoc family selection prevent treating them as independent confirmation of superiority.",
-    )
-    if ctx.benchmark_ablation is not None and not ctx.benchmark_ablation.empty:
-        lines.append("### Missing-Indicator Ablation")
-        lines.append("")
-        lines.extend(
-            f"- `{row.selector}` / `{row.classifier}` changes mean BER by `{_format_float(row.delta_BER)}` "
-            "(strict minus missing-indicator BER; positive means improvement)."
-            for row in ctx.benchmark_ablation.itertuples(index=False)
-        )
-        lines.append("")
-    lines.append("## Tuned Benchmark Design")
-    lines.append("")
-    lines.append(
-        "The tuned benchmark selects hyperparameters inside nested cross-validation separately for each selector/classifier/mode family. The leading family is selected retrospectively from the outer-fold results, so its minimum BER is descriptive rather than an independently validated champion estimate. "
-        "That makes the tuned results a better estimate of what a disciplined tuning process achieves on unseen folds, "
-        "even when the headline BER ends up slightly worse than the best original replication row."
-    )
-    lines.append("")
-    lines.append("## Tuned Benchmark Search Summary")
-    lines.append("")
-    if ctx.benchmark_tuned_search is not None and not ctx.benchmark_tuned_search.empty:
-        lines.append("### Tuned Search Space")
-        lines.append("")
-        lines.extend(_tuned_search_space_table(ctx.benchmark_tuned_search))
-        lines.append("")
-    else:
-        lines.append("- Tuned search artifact missing or empty.")
-        lines.append("")
-    if ctx.benchmark_tuned_best is not None and not ctx.benchmark_tuned_best.empty:
-        lines.append("### Modal Selected Configurations")
-        lines.append("")
-        lines.extend(_tuned_best_config_table(ctx.benchmark_tuned_best))
-        lines.append("")
-    else:
-        lines.append("- Tuned best-config artifact missing or empty.")
-        lines.append("")
-    lines.append("## Tuned Benchmark Results")
-    lines.append("")
-    _append_benchmark_summary_table(lines, "### Primary Tuned Evidence", ctx.benchmark_tuned_summary)
-    _append_supporting_metrics_table(lines, "### Supporting Tuned Metrics", ctx.benchmark_tuned_summary)
-    if ctx.benchmark_tuned_ablation is not None and not ctx.benchmark_tuned_ablation.empty:
-        lines.append("### Tuned Missing-Indicator Ablation")
-        lines.append("")
-        lines.extend(
-            _markdown_table(
-                ctx.benchmark_tuned_ablation,
-                ["selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"],
-            )
-        )
-        lines.append(
-            "Positive delta is strict minus missing-indicator BER: a BER reduction. "
-            "Deltas compare paired outer-fold means; no independent industrial benefit is established."
-        )
-        lines.append("")
-    if ctx.modal_tuned_config_row is not None:
-        lines.append("### Tuned Selection Stability")
-        lines.append("")
-        lines.append(
-            f"- The most frequently selected tuned configuration is `{ctx.modal_tuned_config_row['selector']}` / "
-            f"`{ctx.modal_tuned_config_row['classifier']}` / `{ctx.modal_tuned_config_row['replication_mode']}` "
-            f"with `k={int(ctx.modal_tuned_config_row['k'])}` and selection count `{int(ctx.modal_tuned_config_row['selection_count'])}`."
-        )
-        lines.append("")
-    lines.append("## Original vs Tuned Comparison")
-    lines.append("")
-    if ctx.best_benchmark_row is not None and ctx.best_tuned_benchmark_row is not None:
-        comparison_df = pd.DataFrame(
-            [
-                {
-                    "study": "original",
-                    "selector": ctx.best_benchmark_row["selector"],
-                    "classifier": ctx.best_benchmark_row["classifier"],
-                    "mode": ctx.best_benchmark_row["replication_mode"],
-                    "mean_BER": ctx.best_benchmark_row["mean_BER"],
-                    "mean_ROC_AUC": ctx.best_benchmark_row["mean_ROC_AUC"],
-                },
-                {
-                    "study": "tuned",
-                    "selector": ctx.best_tuned_benchmark_row["selector"],
-                    "classifier": ctx.best_tuned_benchmark_row["classifier"],
-                    "mode": ctx.best_tuned_benchmark_row["replication_mode"],
-                    "mean_BER": ctx.best_tuned_benchmark_row["mean_BER"],
-                    "mean_ROC_AUC": ctx.best_tuned_benchmark_row["mean_ROC_AUC"],
-                },
-            ]
-        )
-        lines.extend(
-            _markdown_table(
-                comparison_df,
-                ["study", "selector", "classifier", "mode", "mean_BER", "mean_ROC_AUC"],
-            )
-        )
-        lines.append("")
-        ber_delta = float(ctx.best_tuned_benchmark_row["mean_BER"]) - float(ctx.best_benchmark_row["mean_BER"])
-        if ber_delta > 0:
-            lines.append(
-                f"- Relative to the best original replication row, the tuned benchmark is worse by `{_format_float(ber_delta)}` BER. "
-                "That is consistent with the stricter nested-CV evaluation protocol."
-            )
-        elif ber_delta < 0:
-            lines.append(
-                f"- Relative to the best original replication row, the tuned benchmark improves BER by `{_format_float(abs(ber_delta))}`."
-            )
-        else:
-            lines.append("- The best original and tuned benchmark rows are tied on mean BER.")
-    else:
-        lines.append("- Benchmark comparison is unavailable because one of the benchmark summaries is missing.")
-    lines.append("")
-    _append_figure(
-        lines,
-        "Tuned vs original BER delta",
-        "figures/tuned_vs_original_delta.png",
-        "Figure 2 highlights how much stricter nested cross-validation changes BER for matched selector/classifier/mode configurations.",
-    )
-    lines.append("## Feature Stability and Interpretation")
-    lines.append("")
-    lines.append(_feature_interpretation_claim_note())
-    lines.append("")
-    lines.append("### Original Replication")
-    lines.append("")
-    if ctx.best_benchmark_row is not None and ctx.feature_report is not None and not ctx.feature_report.empty:
-        lines.extend(
-            _best_row_feature_table(
-                feature_report=ctx.feature_report,
-                selector=str(ctx.best_benchmark_row["selector"]),
-                classifier=str(ctx.best_benchmark_row["classifier"]),
-                replication_mode=str(ctx.best_benchmark_row["replication_mode"]),
-            )
-        )
-    else:
-        lines.append("- Original feature report artifact missing or empty.")
-    lines.append("")
-    lines.append("### Tuned Benchmark")
-    lines.append("")
-    if (
-        ctx.best_tuned_benchmark_row is not None
-        and ctx.benchmark_tuned_feature_report is not None
-        and not ctx.benchmark_tuned_feature_report.empty
-    ):
-        lines.extend(
-            _best_row_feature_table(
-                feature_report=ctx.benchmark_tuned_feature_report,
-                selector=str(ctx.best_tuned_benchmark_row["selector"]),
-                classifier=str(ctx.best_tuned_benchmark_row["classifier"]),
-                replication_mode=str(ctx.best_tuned_benchmark_row["replication_mode"]),
-            )
-        )
-    else:
-        lines.append("- Tuned feature report artifact missing or empty.")
-    lines.append("")
-    lines.extend(_missingness_context_lines(ctx.manifest, ctx.feature_report, ctx.best_benchmark_row))
-    lines.append("")
-    lines.append("### Logistic Regression Association Diagnostics")
-    lines.append("")
-    lines.append(
-        "For logistic regression, effect magnitude is the absolute coefficient from a full-data fit "
-        "after the chosen preprocessing. Expected contribution is selection frequency × that magnitude, "
-        "a prioritization heuristic. These are in-sample associations conditional on the selected features; "
-        "they are not causal effects or validated failure probabilities. RBF KRR has no comparable coefficient, "
-        "so its effect and contribution fields remain unavailable."
-    )
-    for study, summary, report in (
-        ("Original", ctx.benchmark_summary, ctx.feature_report),
-        ("Tuned", ctx.benchmark_tuned_summary, ctx.benchmark_tuned_feature_report),
-    ):
-        if summary is not None and report is not None:
-            logreg = summary[summary["classifier"] == BenchmarkClassifier.LOGREG].sort_values("mean_BER")
-            if not logreg.empty:
-                row = logreg.iloc[0]
-                lines.append("")
-                lines.append(f"#### {study}: {row['selector']} / logreg / {row['replication_mode']}")
-                lines.append("")
-                lines.extend(
-                    _best_row_feature_table(report, str(row["selector"]), "logreg", str(row["replication_mode"]))
-                )
-    lines.append("")
-    _append_figure(
-        lines,
-        "Feature stability",
-        "figures/feature_stability.png",
-        "Figure 3 shows outer-fold selection frequency for one leading configuration per study in separate panels. Coefficient magnitudes are not combined with frequencies; blue denotes value features and orange denotes missing indicators.",
-    )
-    lines.append("## Temporal Robustness Stress Test")
-    lines.append("")
-    lines.append(
-        "The temporal study is a chronological robustness stress test using balanced logistic regression, separate from the KRR benchmark anchor. "
-        "It uses a chronological DEV/LOCKBOX split, time-aware model selection, threshold freeze, drift checks, and an MSPC comparison."
-    )
-    lines.append("")
-    lines.append("### Temporal Model Selection Summary")
-    lines.append("")
-    if ctx.primary_temporal_row is not None:
-        lines.append(
-            "- Primary temporal selector under the temporal protocol:"
-            f" `{ctx.primary_temporal_row['selector']}` with mean_BER=`{_format_float(ctx.primary_temporal_row['mean_BER'])}`."
-        )
-    if ctx.temporal_selection is not None and not ctx.temporal_selection.empty:
-        challenger_rows = ctx.temporal_selection[ctx.temporal_selection["is_challenger"].astype(bool)]
-        if not challenger_rows.empty:
-            challenger_row = challenger_rows.iloc[0]
-            lines.append(
-                "- Challenger selector retained for secondary comparison:"
-                f" `{challenger_row['selector']}` with mean_BER=`{_format_float(challenger_row['mean_BER'])}`."
-            )
-        else:
-            lines.append("- No challenger met the temporal eligibility rule.")
-        lines.append("")
-        lines.append("#### Selector Ranking and Modal Configurations")
-        lines.append("")
-        lines.extend(_temporal_selection_summary_table(ctx.temporal_selection))
-        lines.append("")
-    else:
-        lines.append("- Temporal model selection artifact missing or empty.")
-        lines.append("")
-    if str(ctx.manifest.get("temporal_robustness_status", StudyStatus.NOT_RUN)) not in {
-        StudyStatus.PASSED,
-        StudyStatus.WARNING,
-    }:
-        lines.append(
-            f"- Temporal robustness status is `{ctx.manifest.get('temporal_robustness_status', StudyStatus.NOT_RUN)}`, so temporal result tables are treated as unavailable for canonical report claims."
-        )
-        lines.append("")
-    if ctx.drift_row is not None or restrictions:
-        lines.append("### Drift and Claim Restrictions")
-        lines.append("")
-        if ctx.drift_row is not None and ctx.temporal_drift is not None and not ctx.temporal_drift.empty:
-            lines.append(
-                f"- The current temporal run is drift-gated as `{ctx.drift_row['drift_gate_status']}` with max PSI `{_format_float(ctx.drift_row['max_PSI'])}`."
-            )
-            lines.append("")
-            drift_columns = [
-                col
-                for col in [
-                    "model_scope",
-                    "drift_gate_status",
-                    "lockbox_claims_allowed",
-                    "abs_prevalence_shift",
-                    "ks_pvalue_scores",
-                    "max_PSI",
-                    "median_PSI",
-                ]
-                if col in ctx.temporal_drift.columns
-            ]
-            lines.extend(_markdown_table(ctx.temporal_drift.sort_values("model_scope"), drift_columns))
-            lines.append("")
-        if restrictions:
-            lines.append("- Active temporal claim restrictions:")
-            lines.extend(f"  - `{restriction}`" for restriction in restrictions)
-            lines.append(
-                "- Lockbox evidence remains reportable, but restricted claims should be treated as descriptive rather than confirmatory."
-            )
-        else:
-            lines.append("- No temporal claim restrictions are active in this run.")
-        lines.append("")
-    if ctx.temporal_lockbox is not None and not ctx.temporal_lockbox.empty:
-        lockbox_table = ctx.temporal_lockbox.copy()
-        if {"lockbox_fails", "lockbox_n", "FN", "FP"}.issubset(lockbox_table.columns):
-            lockbox_table["TP"] = lockbox_table["lockbox_fails"] - lockbox_table["FN"]
-            lockbox_table["TN"] = lockbox_table["lockbox_n"] - lockbox_table["lockbox_fails"] - lockbox_table["FP"]
-        lines.append("### Lockbox Metrics")
-        lines.append("")
-        lines.extend(
-            _markdown_table(
-                lockbox_table.sort_values(["role", "threshold_policy"]),
-                [
-                    column
-                    for column in [
-                        "role",
-                        "threshold_policy",
-                        "BER",
-                        "True+",
-                        "True-",
-                        "ROC_AUC",
-                        "PR_AUC",
-                        "MCC",
-                        "F2",
-                        "TP",
-                        "FP",
-                        "TN",
-                        "FN",
-                        "lockbox_n",
-                        "lockbox_fails",
-                    ]
-                    if column in lockbox_table.columns
-                ],
-            )
-        )
-        lines.append("")
-    if ctx.mspc_lockbox_row is not None:
-        lines.append("### Supervised vs MSPC")
-        lines.append("")
-        lines.extend(
-            _markdown_table(
-                ctx.temporal_mspc[ctx.temporal_mspc["eval_scope"] == "lockbox"],
-                ["eval_scope", "best_MSPC_source", "best_MSPC_TPR_at_TNR90", "T2_AUC", "Q_AUC"],
-                headers=["scope", "best_source", "best_TPR_at_TNR90", "T2_AUC", "Q_AUC"],
-            )
-        )
-        lines.append("")
-    _append_figure(
-        lines,
-        "Temporal drift summary",
-        "figures/temporal_drift.png",
-        "Figure 4 condenses the temporal drift gate into a small set of quantities that make the claim restriction visible without reading the full CSV.",
-    )
-    _append_figure(
-        lines,
-        "Lockbox supervised vs MSPC",
-        "figures/lockbox_vs_mspc.png",
-        "Figure 5 compares retrospective lockbox ROC operating points at TNR ≥ 90%. These thresholds are chosen using lockbox labels and are diagnostic only; scientific and operational results use DEV-fitted frozen thresholds. Active restrictions prevent superiority claims.",
-    )
-    _append_figure(
-        lines,
-        "Workload and cost framing",
-        "figures/workload_cost_framing.png",
-        "Figure 6 combines weekly workload framing with illustrative cost curves so operational impact can be discussed without overstating production readiness.",
-    )
-    _append_industrialization_section(lines, ctx.manifest)
-    lines.append("")
-    lines.append("## Conclusions and Next Data Requirements")
-    lines.append("")
-    _append_bullet_list(
-        lines,
-        [
-            (
-                f"The benchmark layer reproduces meaningful supervised signal, with the best original row at mean BER `{_format_float(ctx.best_benchmark_row['mean_BER'])}`."
-                if ctx.best_benchmark_row is not None
-                else "The benchmark layer is incomplete in the current artifact set."
-            ),
-            (
-                f"The tuned benchmark gives a stricter nested-CV estimate, with the best tuned row at mean BER `{_format_float(ctx.best_tuned_benchmark_row['mean_BER'])}`."
-                if ctx.best_tuned_benchmark_row is not None
-                else "The tuned benchmark layer is incomplete in the current artifact set."
-            ),
-            (
-                "The temporal study is informative but remains descriptive-only in this run because claim restrictions are active."
-                if restrictions
-                else "The temporal study adds secondary robustness evidence without active claim restrictions in this run."
-            ),
-            *_INDUSTRIALIZATION_NEXT_DATA,
-        ],
-    )
-    lines.append("")
-    lines.append("## Provenance Appendix")
-    lines.append("")
-    lines.append(f"- Generated artifact: `{ArtifactName.FINAL_REPORT}`")
-    lines.append(f"- Source run directory: `{output_dir}`")
-    lines.append(f"- Git commit: `{ctx.manifest.get('git_commit', 'unknown')}`")
-    lines.append(f"- Git dirty: `{ctx.manifest.get('git_dirty', 'unknown')}`")
-    lines.append(f"- Python executable: `{ctx.manifest.get('python_executable', 'unknown')}`")
-    lines.append(f"- Study spec path: `{ctx.manifest.get('study_spec_path', 'unknown')}`")
-    lines.append(f"- Study spec hash: `{ctx.manifest.get('study_spec_sha256', 'unknown')}`")
-    lines.append(f"- Primary study status: `{ctx.manifest.get('primary_study_status', StudyStatus.NOT_RUN)}`")
-    lines.append(
-        f"- Original replication status: `{ctx.manifest.get('benchmark_original_status', StudyStatus.NOT_RUN)}`"
-    )
-    lines.append(f"- Tuned benchmark status: `{ctx.manifest.get('benchmark_tuned_status', StudyStatus.NOT_RUN)}`")
-    lines.append(
-        f"- Temporal robustness status: `{ctx.manifest.get('temporal_robustness_status', StudyStatus.NOT_RUN)}`"
-    )
-    if "source_tree" in ctx.manifest:
-        lines.append(f"- Source tree content hash (LF normalized): `{ctx.manifest['source_tree']['sha256']}`")
-        lines.append(
-            "- A dirty run identifies the base Git commit plus exact source-file hashes; it does not claim the base commit contains the edits."
-        )
-    if "execution" in ctx.manifest:
-        execution = ctx.manifest["execution"]
-        lines.append(f"- Run started (UTC): `{execution.get('started_at_utc', 'unknown')}`")
-        lines.append(f"- Modeling duration (seconds): `{execution.get('duration_seconds', {})}`")
-        lines.append(
-            "- Input file SHA-256, resolved dependency versions, seeds, search grids and thread settings are recorded in `run_manifest.json`."
-        )
-    lines.append("- Library versions:")
-    for name, version in sorted(dict(ctx.manifest.get("library_versions", {})).items(), key=lambda item: item[0]):
-        lines.append(f"  - `{name}`: `{version}`")
-    if restrictions:
-        lines.append("- Temporal claim restrictions:")
-        lines.extend(f"  - `{restriction}`" for restriction in restrictions)
-    else:
-        lines.append("- Temporal claim restrictions: `none`")
-    lines.append("")
 
-    final_path = ctx.reports_dir / ArtifactName.FINAL_REPORT
-    _write_markdown_with_optional_pdf(final_path, lines, export_pdf=export_pdf)
-    return final_path
+def write_report_skeleton(output_dir: Path, *, reports_destination: Path | None = None) -> Path:
+    """Render the shared narrative as a debugging scaffold without audit/publication."""
+    ctx = _load_report_context(output_dir)
+    lines = _render_study(ctx)
+    lines[0] = "# Final Report Skeleton"
+    target = reports_destination or ctx.reports_dir
+    target.mkdir(parents=True, exist_ok=True)
+    path = target / ArtifactName.REPORT_SKELETON
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path

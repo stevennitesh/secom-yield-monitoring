@@ -10,6 +10,14 @@ from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import LogisticRegression
 
 
+def validated_model_scores(scores: np.ndarray) -> np.ndarray:
+    """Reject invalid fitted predictions before threshold search, metrics, or caching."""
+    values = np.asarray(scores, dtype=float)
+    if values.ndim != 1 or not np.all(np.isfinite(values)):
+        raise ValueError("Model scores must be a one-dimensional finite array")
+    return values
+
+
 def make_benchmark_krr_model(alpha: float = 1.0, gamma: float | None = None) -> KernelRidge:
     """Create the benchmark RBF Kernel Ridge classifier surrogate."""
     return KernelRidge(kernel="rbf", alpha=float(alpha), gamma=gamma)

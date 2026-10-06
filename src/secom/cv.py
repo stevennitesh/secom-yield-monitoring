@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from secom.config import FoldPlanName, INNER_MIN_CLASS, LOCKBOX_FRAC, MIN_TEST_FAILS
+from secom.config import FoldPlanName, INNER_MIN_CLASS, LOCKBOX_FRAC
 
 
 @dataclass(frozen=True)
@@ -114,57 +114,52 @@ def _make_outer_fold(
     )
 
 
-def _plan_windows(last_week: int) -> dict[str, list[tuple[tuple[int, int], tuple[int, int]]]]:
-    """Return preferred and fallback expanding-window definitions."""
-    return {
-        FoldPlanName.PRIMARY_3FOLD: [
-            ((1, 5), (6, last_week)),
-            ((1, 7), (8, last_week)),
-            ((1, 9), (10, last_week)),
-        ],
-        FoldPlanName.FALLBACK_3FOLD: [
-            ((1, 4), (5, last_week)),
-            ((1, 6), (7, last_week)),
-            ((1, 8), (9, last_week)),
-        ],
-        FoldPlanName.FALLBACK_2FOLD: [
-            ((1, 6), (7, last_week)),
-            ((1, 8), (9, last_week)),
-        ],
-    }
+def choose_outer_fold_plan(dev_with_weeks: pd.DataFrame) -> OuterFoldPlanResult | None:
+    """Fixed calendar-fraction blocks; never redesign periods using test labels."""
+    if dev_with_weeks.empty:
+        return None
+    last_week = int(dev_with_weeks.week_label.max())
+    boundaries = [int(np.floor(last_week * f)) for f in (0.5, 2 / 3, 5 / 6)] + [last_week]
+    if boundaries[0] < 1 or len(set(boundaries)) != 4:
+        return None
+    try:
+        folds = [
+            _make_outer_fold(dev_with_weeks, i, (1, start), (start + 1, end))
+            for i, (start, end) in enumerate(zip(boundaries[:-1], boundaries[1:]), start=1)
+        ]
+    except ValueError:
+        return None
+    return OuterFoldPlanResult(FoldPlanName.PRIMARY_3FOLD, folds, last_week)
 
 
-def _build_plan(dev: pd.DataFrame, plan_name: str, windows) -> list[OuterFold]:
-    """Materialize outer fold windows into indexed fold objects."""
-    folds: list[OuterFold] = []
-    for i, (train_w, test_w) in enumerate(windows, start=1):
-        folds.append(
-            _make_outer_fold(
-                dev=dev,
-                outer_fold=i,
-                train_weeks=train_w,
-                test_weeks=test_w,
-            )
-        )
-    return folds
+def fit_calibration_indices(n: int, calibration_fraction: float = 0.20) -> tuple[np.ndarray, np.ndarray]:
+    """Reserve the last chronological 20% for calibration; no label-based boundary."""
+    if not 0 < calibration_fraction < 1:
+        raise ValueError("calibration fraction must be between zero and one")
+    cut = int(np.floor((1 - calibration_fraction) * n))
+    if cut < 2 or n - cut < 2:
+        raise ValueError("insufficient chronological fit/calibration samples")
+    return np.arange(cut), np.arange(cut, n)
 
 
-def choose_outer_fold_plan(
-    dev_with_weeks: pd.DataFrame,
-    min_test_fails: int = MIN_TEST_FAILS,
-) -> OuterFoldPlanResult | None:
-    """Choose the first temporal fold plan satisfying minimum test fails."""
-    last_week = int(dev_with_weeks["week_label"].max())
-    plans = _plan_windows(last_week)
-    for plan_name in [
-        FoldPlanName.PRIMARY_3FOLD,
-        FoldPlanName.FALLBACK_3FOLD,
-        FoldPlanName.FALLBACK_2FOLD,
-    ]:
-        folds = _build_plan(dev_with_weeks, plan_name, plans[plan_name])
-        if all(f.test_fails >= min_test_fails for f in folds):
-            return OuterFoldPlanResult(plan_name=plan_name, folds=folds, last_week=last_week)
-    return None
+def chronological_inner_splits(
+    y: np.ndarray, calibration_fraction: float = 0.20
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Three disjoint chronological validation blocks with expanding train prefixes."""
+    n = len(y)
+    boundaries = [int(np.floor(n * f)) for f in (0.5, 2 / 3, 5 / 6)] + [n]
+    splits = []
+    for start, end in zip(boundaries[:-1], boundaries[1:]):
+        if start < 4 or end <= start:
+            continue
+        fit, calibration = fit_calibration_indices(start, calibration_fraction)
+        # These are validation labels inside the outer-training prefix, never outer evaluation labels.
+        # Keep the fixed periods; omit an undefined BER objective rather than invent its absent-class rate.
+        if all(len(np.unique(y[index])) == 2 for index in (fit, calibration, np.arange(start, end))):
+            splits.append((np.arange(start), np.arange(start, end)))
+    if len(splits) < 2:
+        raise ValueError("fewer than two feasible chronological inner splits")
+    return splits
 
 
 def check_inner_cv_feasible(
@@ -185,13 +180,17 @@ def temporal_feasibility_gate(
 ) -> tuple[bool, str | None]:
     """Return temporal workflow feasibility and a manifest-safe reason when blocked."""
     if plan is None:
-        return (False, "min_test_fails_lt_20_after_fallbacks")
-    for fold in plan.folds:
-        y_train = dev.loc[fold.train_index, "y_bin"].to_numpy()
-        if not check_inner_cv_feasible(y_train, min_class_count=min_class_count):
-            return (False, "min_class_count_lt_5_for_inner_cv")
-    if not check_inner_cv_feasible(dev["y_bin"].to_numpy(), min_class_count=min_class_count):
-        return (False, "min_class_count_lt_5_for_inner_cv")
+        return (False, "insufficient_nonempty_calendar_blocks")
+    try:
+        training_sets = [dev.loc[fold.train_index, "y_bin"].to_numpy() for fold in plan.folds]
+        training_sets.append(dev["y_bin"].to_numpy())
+        for labels in training_sets:
+            fit, calibration = fit_calibration_indices(len(labels))
+            if min(np.bincount(labels[fit], minlength=2)) < min_class_count or len(np.unique(labels[calibration])) < 2:
+                return False, "insufficient_classes_in_fit_or_calibration"
+            chronological_inner_splits(labels[fit])
+    except ValueError as exc:
+        return False, str(exc)
     return (True, None)
 
 

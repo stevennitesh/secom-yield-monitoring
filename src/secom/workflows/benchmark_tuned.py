@@ -25,12 +25,14 @@ from secom.config import (
 )
 from secom.metrics import (
     binary_metrics_at_threshold,
+    core_binary_metrics_at_threshold,
     find_ber_optimal_threshold,
+    roc_auc_or_default,
 )
 from secom.preprocess import local_to_global_feature_indices
 from secom.qa import validate_tuned_benchmark_artifacts
 from secom.selection.engine import fit_selector_pipeline
-from secom.selection.tuning import select_near_best_auc_config
+from secom.selection.tuning import select_ber_config
 from secom.workflows.benchmark_common import (
     BENCHMARK_REPLICATION_MODES,
     add_indicator_for_replication_mode,
@@ -43,6 +45,8 @@ from secom.workflows.benchmark_common import (
     build_primary_feature_universe,
     build_benchmark_summary_df,
     classifier_param_grid,
+    tuned_classifier_param_grid,
+    effective_classifier_config,
     classifier_config_from_row,
     config_fields,
     config_tie_break_key,
@@ -53,6 +57,7 @@ from secom.workflows.benchmark_common import (
     prepare_benchmark_dataset,
     prepare_full_selector_view,
     selector_config_from_row,
+    selector_param_grid,
 )
 from secom.workflows.manifest import write_benchmark_failure, write_benchmark_status
 
@@ -103,8 +108,8 @@ def _tuned_selector_param_grid(selector: str) -> list[dict[str, Any]]:
 
 
 def _select_best_tuned_config(config_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Select a tuned config by near-best AUC, BER, then deterministic config key."""
-    return select_near_best_auc_config(
+    """Select a tuned config by inner BER, then deterministic simplicity/order."""
+    return select_ber_config(
         config_rows,
         empty_message="No tuned benchmark configs to select",
         simplicity_key=lambda row: config_tie_break_key(
@@ -114,6 +119,7 @@ def _select_best_tuned_config(config_rows: list[dict[str, Any]]) -> dict[str, An
             classifier_config={
                 "alpha": row.get("alpha"),
                 "gamma": row.get("gamma"),
+                "gamma_multiplier": row.get("gamma_multiplier"),
                 "C": row.get("C"),
             },
         ),
@@ -127,23 +133,29 @@ def _inner_cv_summary_for_config(
     prepared_inner_views: list[_InnerSelectorView],
 ) -> dict[str, Any]:
     """Score one classifier config over prepared inner selector views."""
-    aucs: list[float] = []
-    bers: list[float] = []
+    labels, scores = [], []
     for prepared in prepared_inner_views:
-        train_scores, val_scores = fit_classifier_scores(
+        _, val_scores = fit_classifier_scores(
             classifier=classifier,
             x_train_sel=prepared.x_train_sel,
             y_train=prepared.y_train,
             x_eval_sel=prepared.x_eval_sel,
             classifier_config=classifier_config,
+            include_train_scores=False,
         )
-        threshold, _ = find_ber_optimal_threshold(prepared.y_train, train_scores)
-        metrics = binary_metrics_at_threshold(prepared.y_eval, val_scores, threshold=float(threshold))
-        aucs.append(float(metrics["ROC_AUC"]) if np.isfinite(metrics["ROC_AUC"]) else 0.5)
-        bers.append(float(metrics["BER"]))
+        labels.append(prepared.y_eval)
+        scores.append(val_scores)
+    y_oof, scores_oof = np.concatenate(labels), np.concatenate(scores)
+    threshold, _ = find_ber_optimal_threshold(y_oof, scores_oof)
+    metrics = core_binary_metrics_at_threshold(y_oof, scores_oof, threshold)
     return {
-        "mean_inner_ROC_AUC": float(np.mean(np.asarray(aucs, dtype=float))),
-        "mean_inner_BER": float(np.mean(np.asarray(bers, dtype=float))),
+        "gamma": effective_classifier_config(classifier_config, prepared_inner_views[0].x_train_sel.shape[1]).get(
+            "gamma", np.nan
+        ),
+        "inner_selected_widths": ",".join(str(view.x_train_sel.shape[1]) for view in prepared_inner_views),
+        "mean_inner_ROC_AUC": roc_auc_or_default(y_oof, scores_oof),
+        "mean_inner_BER": float(metrics["BER"]),
+        "threshold_inner_oof": float(threshold),
     }
 
 
@@ -163,18 +175,7 @@ def _prepare_inner_selector_views(
     n_pass = int(np.sum(y_outer_train == 0))
     n_splits = min(int(BENCHMARK_INNER_SPLITS), min(n_fail, n_pass))
     if n_splits < 2:
-        return [
-            _prepare_inner_selector_view(
-                x_train_raw=x_outer_train_raw,
-                y_train=y_outer_train,
-                x_eval_raw=x_outer_train_raw,
-                y_eval=y_outer_train,
-                selector=selector,
-                add_indicator=add_indicator,
-                k=k,
-                n_neighbors=n_neighbors,
-            )
-        ]
+        raise ValueError("Tuned inner CV requires at least two samples of each class in outer training data")
 
     inner_cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     prepared: list[_InnerSelectorView] = []
@@ -239,16 +240,29 @@ def _cached_inner_selector_views(
     add_indicator: bool,
     selector_config: dict[str, Any],
 ) -> list[_InnerSelectorView]:
-    """Return inner selector views, preparing each selector config once per outer fold."""
+    """Reuse train-fitted ranking prefixes across budgets within this outer fold."""
     key = _selector_config_cache_key(selector_config)
     if key not in cache:
-        cache[key] = _prepare_inner_selector_views(
-            x_outer_train_raw=x_outer_train_raw,
-            y_outer_train=y_outer_train,
-            selector=selector,
-            add_indicator=add_indicator,
-            selector_config=selector_config,
-        )
+        max_k = max(key[0], max(int(cfg["k"]) for cfg in _tuned_selector_param_grid(selector)))
+        ranking_key = (max_k, key[1])
+        if ranking_key not in cache:
+            cache[ranking_key] = _prepare_inner_selector_views(
+                x_outer_train_raw=x_outer_train_raw,
+                y_outer_train=y_outer_train,
+                selector=selector,
+                add_indicator=add_indicator,
+                selector_config={**selector_config, "k": max_k},
+            )
+        if key != ranking_key:
+            cache[key] = [
+                _InnerSelectorView(
+                    x_train_sel=view.x_train_sel[:, : key[0]],
+                    y_train=view.y_train,
+                    x_eval_sel=view.x_eval_sel[:, : key[0]],
+                    y_eval=view.y_eval,
+                )
+                for view in cache[ranking_key]
+            ]
     return cache[key]
 
 
@@ -328,16 +342,16 @@ def _evaluate_outer_prepared_view(
     classifier_config: dict[str, Any],
     raw_feature_count: int,
     fold: int,
+    threshold: float,
 ) -> tuple[dict[str, Any], pd.DataFrame]:
     """Evaluate one cached outer-fold selector view with a classifier config."""
-    train_scores, test_scores = fit_classifier_scores(
+    _train_scores, test_scores = fit_classifier_scores(
         classifier=classifier,
         x_train_sel=prepared.x_train_sel,
         y_train=prepared.y_train,
         x_eval_sel=prepared.x_test_sel,
         classifier_config=classifier_config,
     )
-    threshold, _ = find_ber_optimal_threshold(prepared.y_train, train_scores)
     metrics = binary_metrics_at_threshold(prepared.y_test, test_scores, threshold=float(threshold))
     selected_global = set(local_to_global_feature_indices(prepared.selected_local, prepared.feature_meta))
     feature_stability_df = build_feature_stability_frame(
@@ -352,14 +366,19 @@ def _evaluate_outer_prepared_view(
         selected_global=selected_global,
     )
 
+    receipt_config = {
+        **classifier_config,
+        **effective_classifier_config(classifier_config, prepared.x_train_sel.shape[1]),
+    }
     row = {
         "selector": selector,
         "classifier": classifier,
         "replication_mode": replication_mode,
         "fold": int(fold),
-        **config_fields(selector_config=selector_config, classifier_config=classifier_config),
+        **config_fields(selector_config=selector_config, classifier_config=receipt_config),
         **benchmark_metric_fields(metrics),
-        "threshold_outer_train": float(threshold),
+        "threshold_inner_oof": float(threshold),
+        "_test_scores": test_scores,
         "n_train": int(len(prepared.y_train)),
         "n_test": int(len(prepared.y_test)),
         "n_test_fails": int(np.sum(np.asarray(prepared.y_test, dtype=int) == 1)),
@@ -374,10 +393,12 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
     for (selector, classifier, mode), frame in selected_configs.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
     ):
+        frame = frame.assign(_candidate_gamma=frame.gamma.where(frame.gamma_multiplier.isna()))
         grouped = (
-            frame.groupby(["k", "alpha", "gamma", "C", "n_neighbors"], dropna=False)
+            frame.groupby(["k", "alpha", "_candidate_gamma", "gamma_multiplier", "C", "n_neighbors"], dropna=False)
             .agg(
                 selection_count=("fold", "count"),
+                gamma=("gamma", "first"),
                 mean_inner_ROC_AUC=("mean_inner_ROC_AUC", "mean"),
                 mean_inner_BER=("mean_inner_BER", "mean"),
                 mean_BER=("BER", "mean"),
@@ -390,20 +411,18 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
             )
             .reset_index()
         )
-        grouped["_gamma_sort"] = grouped["gamma"].map(gamma_sort_key)
+        grouped["_gamma_sort"] = grouped["gamma_multiplier"].fillna(grouped["gamma"].map(gamma_sort_key))
         grouped = grouped.sort_values(
             [
                 "selection_count",
-                "mean_inner_ROC_AUC",
                 "mean_inner_BER",
-                "mean_BER",
                 "k",
                 "C",
                 "alpha",
                 "_gamma_sort",
                 "n_neighbors",
             ],
-            ascending=[False, False, True, True, True, True, True, True, True],
+            ascending=[False, True, True, True, False, True, True],
             na_position="last",
         )
         best = grouped.iloc[0]
@@ -415,6 +434,7 @@ def _modal_selected_config(selected_configs: pd.DataFrame) -> pd.DataFrame:
                 "k": int(best["k"]),
                 "alpha": best["alpha"],
                 "gamma": best["gamma"],
+                "gamma_multiplier": best["gamma_multiplier"],
                 "C": best["C"],
                 "n_neighbors": best["n_neighbors"],
                 "selection_count": int(best["selection_count"]),
@@ -473,6 +493,7 @@ def _run_tuned_benchmark_replication(
     progress: Callable[[str], None] | None = None,
     _prepared_data: dict[str, Any] | None = None,
     _cluster_id_map: dict[int, int] | None = None,
+    _original: bool = False,
 ) -> dict[str, Any]:
     """Run nested tuned benchmark replication and write tuned benchmark artifacts."""
     reports = ensure_reports_dir(output_dir)
@@ -487,6 +508,7 @@ def _run_tuned_benchmark_replication(
         classifiers_run=classifiers_run,
         selectors_run=selectors_run,
         default_classifiers=BenchmarkClassifier.TUNED_DEFAULT,
+        default_selectors=SelectorName.ORIGINAL_BENCHMARK,
     )
     _emit_progress(
         progress,
@@ -498,8 +520,9 @@ def _run_tuned_benchmark_replication(
     fold_rows: list[dict[str, Any]] = []
     feature_stability_frames: list[pd.DataFrame] = []
 
+    candidates_by_fold = {}
     for selector in selectors_run:
-        selector_grid = _tuned_selector_param_grid(selector)
+        selector_grid = selector_param_grid(selector) if _original else _tuned_selector_param_grid(selector)
         _emit_progress(progress, f"tuned selector={selector} selector_configs={len(selector_grid)}")
         for replication_mode in BENCHMARK_REPLICATION_MODES:
             add_indicator = add_indicator_for_replication_mode(replication_mode)
@@ -518,7 +541,9 @@ def _run_tuned_benchmark_replication(
                         f"tuned selector={selector} mode={replication_mode} classifier={classifier} fold={fold_i}/{len(folds)}",
                     )
                     config_rows: list[dict[str, Any]] = []
-                    classifier_grid = classifier_param_grid(classifier)
+                    classifier_grid = (
+                        classifier_param_grid(classifier) if _original else tuned_classifier_param_grid(classifier)
+                    )
                     for selector_config in selector_grid:
                         prepared_inner_views = _cached_inner_selector_views(
                             inner_view_cache,
@@ -539,6 +564,7 @@ def _run_tuned_benchmark_replication(
                                 "classifier": classifier,
                                 "replication_mode": replication_mode,
                                 "fold": int(fold_i),
+                                "scaler": ScalerName.STANDARD,
                                 **config_fields(selector_config=selector_config, classifier_config=classifier_config),
                                 **inner_payload,
                             }
@@ -570,7 +596,11 @@ def _run_tuned_benchmark_replication(
                         classifier_config=classifier_config,
                         raw_feature_count=len(feature_columns),
                         fold=fold_i,
+                        threshold=float(best["threshold_inner_oof"]),
                     )
+                    scores = fold_row.pop("_test_scores")
+                    emitted_best = {**best, "gamma": fold_row["gamma"]}
+                    candidates_by_fold.setdefault(fold_i, []).append((emitted_best, fold_row.copy(), scores))
                     fold_rows.append(fold_row)
                     feature_stability_frames.append(feature_stability_df)
                     selected_rows.append(
@@ -579,13 +609,30 @@ def _run_tuned_benchmark_replication(
                             "classifier": classifier,
                             "replication_mode": replication_mode,
                             "fold": int(fold_i),
-                            **config_fields(selector_config=selector_config, classifier_config=classifier_config),
+                            **config_fields(
+                                selector_config=selector_config,
+                                classifier_config={**classifier_config, "gamma": fold_row["gamma"]},
+                            ),
                             "mean_inner_ROC_AUC": float(best["mean_inner_ROC_AUC"]),
                             "mean_inner_BER": float(best["mean_inner_BER"]),
                             **benchmark_metric_fields(fold_row),
                         }
                     )
 
+    from secom.workflows.benchmark_procedures import build_procedure_artifacts
+
+    prediction_df, procedure_df, procedure_summary = build_procedure_artifacts(
+        x=x,
+        y=y,
+        folds=folds,
+        sample_ids=prepared_data.get("sample_ids", np.arange(len(y))),
+        candidates_by_fold=candidates_by_fold,
+        study="original" if _original else "tuned",
+    )
+    prefix = "benchmark" if _original else "benchmark_tuned"
+    write_csv(prediction_df, reports / f"{prefix}_predictions.csv")
+    write_csv(procedure_df, reports / f"{prefix}_procedure_fold_metrics.csv")
+    write_csv(procedure_summary, reports / f"{prefix}_procedure_summary.csv")
     search_df = pd.DataFrame(search_rows)
     selected_df = pd.DataFrame(selected_rows)
     fold_metrics_df = pd.DataFrame(fold_rows)
@@ -598,7 +645,7 @@ def _run_tuned_benchmark_replication(
 
     coefficient_maps: dict[tuple[str, str, str], dict[int, float]] = {}
     full_fit_rows: list[dict[str, Any]] = []
-    for row in best_df.itertuples(index=False):
+    for row_index, row in enumerate(best_df.itertuples(index=False)):
         selector_config = selector_config_from_row(row)
         classifier_config = classifier_config_from_row(row)
         prepared_full = prepare_full_selector_view(
@@ -610,6 +657,9 @@ def _run_tuned_benchmark_replication(
             raw_feature_count=len(feature_columns),
             k=int(row.k),
         )
+        best_df.at[row_index, "gamma"] = effective_classifier_config(
+            classifier_config, prepared_full["x_sel"].shape[1]
+        ).get("gamma", np.nan)
         full_fit_payload = fit_full_dataset(
             classifier=str(row.classifier),
             prepared_full=prepared_full,
@@ -626,7 +676,10 @@ def _run_tuned_benchmark_replication(
                 "replication_mode": str(row.replication_mode),
                 "k": int(row.k),
                 "alpha": row.alpha,
-                "gamma": row.gamma,
+                "gamma": effective_classifier_config(classifier_config, prepared_full["x_sel"].shape[1]).get(
+                    "gamma", np.nan
+                ),
+                "gamma_multiplier": getattr(row, "gamma_multiplier", np.nan),
                 "C": row.C,
                 "n_neighbors": row.n_neighbors,
                 **benchmark_full_dataset_fields(full_fit_payload),
@@ -642,14 +695,43 @@ def _run_tuned_benchmark_replication(
         cluster_id_map=cluster_id_map,
     )
 
-    write_csv(search_df, reports / ArtifactName.BENCHMARK_TUNED_SEARCH)
-    write_csv(best_df, reports / ArtifactName.BENCHMARK_TUNED_BEST_CONFIG)
-    write_csv(fold_metrics_df, reports / ArtifactName.BENCHMARK_TUNED_FOLD_METRICS)
-    write_csv(summary_df, reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
-    write_csv(ablation_df, reports / ArtifactName.BENCHMARK_TUNED_ABLATION)
-    write_csv(full_fit_df, reports / ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY)
-    write_csv(feature_stability_df, reports / ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY)
-    write_csv(feature_report_df, reports / ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT)
+    names = (
+        [
+            ArtifactName.BENCHMARK_SWEEP,
+            ArtifactName.BENCHMARK_BEST_CONFIG,
+            ArtifactName.BENCHMARK_FOLD_METRICS,
+            ArtifactName.BENCHMARK_SUMMARY,
+            ArtifactName.BENCHMARK_ABLATION,
+            ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+            ArtifactName.FEATURE_STABILITY,
+            ArtifactName.FEATURE_REPORT,
+        ]
+        if _original
+        else [
+            ArtifactName.BENCHMARK_TUNED_SEARCH,
+            ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+            ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+            ArtifactName.BENCHMARK_TUNED_SUMMARY,
+            ArtifactName.BENCHMARK_TUNED_ABLATION,
+            ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+            ArtifactName.BENCHMARK_TUNED_FEATURE_STABILITY,
+            ArtifactName.BENCHMARK_TUNED_FEATURE_REPORT,
+        ]
+    )
+    for frame, name in zip(
+        (
+            search_df,
+            best_df,
+            fold_metrics_df,
+            summary_df,
+            ablation_df,
+            full_fit_df,
+            feature_stability_df,
+            feature_report_df,
+        ),
+        names,
+    ):
+        write_csv(frame, reports / name)
     _emit_progress(progress, "tuned benchmark artifacts written")
 
     validate_tuned_benchmark_artifacts(
@@ -664,11 +746,11 @@ def _run_tuned_benchmark_replication(
     manifest = write_benchmark_status(
         manifest_path=reports / ArtifactName.MANIFEST,
         project_root=project_root,
-        tuned_status=StudyStatus.PASSED,
+        **({"original_status": StudyStatus.PASSED} if _original else {"tuned_status": StudyStatus.PASSED}),
     )
     _emit_progress(progress, "tuned benchmark passed")
     return {
-        "benchmark_tuned_status": StudyStatus.PASSED,
+        ("benchmark_original_status" if _original else "benchmark_tuned_status"): StudyStatus.PASSED,
         "primary_study_status": manifest["primary_study_status"],
         "selectors_run": selectors_run,
         "classifiers_run": classifiers_run,

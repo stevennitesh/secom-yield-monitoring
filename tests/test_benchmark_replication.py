@@ -21,7 +21,6 @@ from secom.workflows.benchmark_common import (
     validate_raw_feature_count,
 )
 from secom.workflows.benchmark_replication import (
-    _evaluate_config_over_folds,
     run_benchmark_replication,
     run_original_benchmark_replication,
 )
@@ -104,8 +103,8 @@ def test_benchmark_replication_emits_primary_artifacts_and_passes_audit(
             "feature_index",
             "feature_type",
             "selection_frequency",
-            "conditional_effect_magnitude",
-            "expected_contribution",
+            "absolute_scaled_coefficient",
+            "stability_weighted_coefficient",
         ],
     )
     tuned_summary_df = pd.read_csv(reports / ArtifactName.BENCHMARK_TUNED_SUMMARY)
@@ -143,7 +142,7 @@ def test_original_failure_overwrites_stale_pass_manifest(workspace_tmp_dir: Path
         """Simulate a workflow failure after run context is available."""
         raise RuntimeError("forced original failure")
 
-    monkeypatch.setattr(benchmark_replication, "prepare_selector_views", fail_selector_views)
+    monkeypatch.setattr(benchmark_replication, "_run_original_benchmark_replication", fail_selector_views)
 
     with pytest.raises(RuntimeError, match="forced original failure"):
         run_original_benchmark_replication(
@@ -301,10 +300,10 @@ def test_feature_report_keeps_classifier_specific_stability_when_available() -> 
 
     by_classifier = report.set_index("classifier")
     assert by_classifier.loc[BenchmarkClassifier.KRR, "selection_frequency"] == 1.0
-    assert np.isnan(by_classifier.loc[BenchmarkClassifier.KRR, "conditional_effect_magnitude"])
+    assert np.isnan(by_classifier.loc[BenchmarkClassifier.KRR, "absolute_scaled_coefficient"])
     assert by_classifier.loc[BenchmarkClassifier.LOGREG, "selection_frequency"] == 0.0
-    assert by_classifier.loc[BenchmarkClassifier.LOGREG, "conditional_effect_magnitude"] == 0.75
-    assert by_classifier.loc[BenchmarkClassifier.LOGREG, "expected_contribution"] == 0.0
+    assert by_classifier.loc[BenchmarkClassifier.LOGREG, "absolute_scaled_coefficient"] == 0.75
+    assert by_classifier.loc[BenchmarkClassifier.LOGREG, "stability_weighted_coefficient"] == 0.0
     assert by_classifier["cluster_id"].tolist() == [7, 7]
 
 
@@ -382,10 +381,10 @@ def test_feature_report_expands_selector_scoped_stability_to_requested_classifie
     krr_rows = report[report["classifier"] == BenchmarkClassifier.KRR].sort_values("feature_index")
     logreg_rows = report[report["classifier"] == BenchmarkClassifier.LOGREG].sort_values("feature_index")
     assert krr_rows["selection_frequency"].tolist() == [0.5, 1.0]
-    assert krr_rows["conditional_effect_magnitude"].isna().all()
+    assert krr_rows["absolute_scaled_coefficient"].isna().all()
     assert logreg_rows["selection_frequency"].tolist() == [0.5, 1.0]
-    assert logreg_rows["conditional_effect_magnitude"].tolist() == [0.5, 0.25]
-    assert logreg_rows["expected_contribution"].tolist() == [0.25, 0.25]
+    assert logreg_rows["absolute_scaled_coefficient"].tolist() == [0.5, 0.25]
+    assert logreg_rows["stability_weighted_coefficient"].tolist() == [0.25, 0.25]
     assert logreg_rows["cluster_id"].tolist()[0] == 4
     assert np.isnan(logreg_rows["cluster_id"].tolist()[1])
 
@@ -494,13 +493,13 @@ def test_benchmark_bundle_defaults_run_uci_selectors_and_krr_only_in_original(
     )
 
     assert captured["original"] == SelectorName.ORIGINAL_BENCHMARK
-    assert captured["tuned"] == SelectorName.ACTIVE
+    assert captured["tuned"] == SelectorName.ORIGINAL_BENCHMARK
     assert captured["original_classifiers"] == [BenchmarkClassifier.KRR]
     assert captured["tuned_classifiers"] == [BenchmarkClassifier.KRR]
     assert SelectorName.TTEST in result["original_selectors_run"]
     assert SelectorName.WELCH_T not in result["original_selectors_run"]
     assert SelectorName.PEARSON in result["original_selectors_run"]
-    assert SelectorName.PEARSON not in result["tuned_selectors_run"]
+    assert SelectorName.PEARSON in result["tuned_selectors_run"]
     assert result["original_classifiers_run"] == [BenchmarkClassifier.KRR]
     assert result["tuned_classifiers_run"] == [BenchmarkClassifier.KRR]
     assert progress_messages == ["tuned progress marker"]
@@ -532,61 +531,6 @@ def test_benchmark_selector_grids_match_study_scope_and_reject_unknowns() -> Non
         benchmark_common.selector_param_grid("Bogus")
     with pytest.raises(ValueError, match="Unknown selector"):
         benchmark_tuned._tuned_selector_param_grid("Bogus")
-
-
-def test_original_benchmark_fold_metrics_use_train_thresholds(monkeypatch) -> None:
-    """Original benchmark folds should score test splits with train-derived thresholds."""
-    prepared_views = {
-        "fold_views": [
-            {
-                "fold": 1,
-                "x_train_sel": np.zeros((2, 1), dtype=float),
-                "y_train": np.asarray([0, 1], dtype=int),
-                "x_test_sel": np.zeros((2, 1), dtype=float),
-                "y_test": np.asarray([0, 1], dtype=int),
-                "n_train": 2,
-                "n_test": 2,
-                "n_test_fails": 1,
-                "n_selected_features": 1,
-            },
-            {
-                "fold": 2,
-                "x_train_sel": np.zeros((2, 1), dtype=float),
-                "y_train": np.asarray([0, 1], dtype=int),
-                "x_test_sel": np.zeros((2, 1), dtype=float),
-                "y_test": np.asarray([0, 1], dtype=int),
-                "n_train": 2,
-                "n_test": 2,
-                "n_test_fails": 1,
-                "n_selected_features": 1,
-            },
-        ]
-    }
-    fold_score_pairs = [
-        (np.asarray([0.1, 0.9], dtype=float), np.asarray([0.2, 0.9], dtype=float)),
-        (np.asarray([0.9, 0.1], dtype=float), np.asarray([0.8, 0.2], dtype=float)),
-    ]
-
-    def fake_fit_classifier_scores(**kwargs) -> tuple[np.ndarray, np.ndarray]:
-        """Return deterministic train/eval scores and require train-score requests."""
-        assert kwargs["include_train_scores"] is True
-        return fold_score_pairs.pop(0)
-
-    monkeypatch.setattr("secom.workflows.benchmark_replication.fit_classifier_scores", fake_fit_classifier_scores)
-
-    payload = _evaluate_config_over_folds(
-        prepared_views=prepared_views,
-        selector=SelectorName.TTEST,
-        classifier=BenchmarkClassifier.KRR,
-        replication_mode="strict",
-        classifier_config={"alpha": 1.0, "gamma": None},
-    )
-
-    fold_rows = payload["fold_rows"]
-    assert [row["threshold_outer_train"] for row in fold_rows] == [0.9, -np.inf]
-    assert [row["BER"] for row in fold_rows] == [0.0, 0.5]
-    assert payload["mean_BER"] == 0.25
-    assert "threshold_oof_global" in payload
 
 
 def test_benchmark_bundle_explicit_classifier_override_reaches_original_and_tuned(
@@ -687,8 +631,20 @@ def test_tuned_inner_selector_views_reuse_selector_prep_across_classifier_config
     )
 
     assert calls["count"] == prep_calls
-    assert set(payload_a) == {"mean_inner_ROC_AUC", "mean_inner_BER"}
-    assert set(payload_b) == {"mean_inner_ROC_AUC", "mean_inner_BER"}
+    assert set(payload_a) == {
+        "mean_inner_ROC_AUC",
+        "mean_inner_BER",
+        "threshold_inner_oof",
+        "gamma",
+        "inner_selected_widths",
+    }
+    assert set(payload_b) == {
+        "mean_inner_ROC_AUC",
+        "mean_inner_BER",
+        "threshold_inner_oof",
+        "gamma",
+        "inner_selected_widths",
+    }
 
 
 def test_tuned_selector_view_caches_reuse_preparation_across_classifiers(monkeypatch) -> None:
@@ -882,6 +838,7 @@ def test_tuned_missing_indicator_stability_uses_full_feature_universe(monkeypatc
         classifier_config={"alpha": 1.0, "gamma": None},
         raw_feature_count=2,
         fold=1,
+        threshold=0.5,
     )
 
     indicator_rows = feature_stability_df[
@@ -919,7 +876,7 @@ def test_original_full_fit_summary_does_not_drive_fold_performance(
     monkeypatch,
 ) -> None:
     """Full-dataset fit metrics should stay separate from fold-derived benchmark summary metrics."""
-    import secom.workflows.benchmark_replication as benchmark
+    import secom.workflows.benchmark_tuned as benchmark
 
     monkeypatch.setattr(benchmark, "selector_param_grid", lambda _selector: [{"k": 2, "n_neighbors": None}])
     monkeypatch.setattr(benchmark, "classifier_param_grid", lambda _classifier: [{"alpha": 1.0, "gamma": None}])
@@ -977,7 +934,7 @@ def test_config_row_denormalization_converts_nan_to_none() -> None:
     classifier_config = classifier_config_from_row(row)
 
     assert selector_config == {"k": 20, "n_neighbors": None}
-    assert classifier_config == {"alpha": 1.0, "gamma": None, "C": None}
+    assert classifier_config == {"alpha": 1.0, "gamma": None, "C": None, "gamma_multiplier": None}
 
 
 def test_tuned_modal_selected_config_sorts_null_gamma_as_simplest() -> None:
@@ -1027,6 +984,7 @@ def test_tuned_modal_selected_config_sorts_null_gamma_as_simplest() -> None:
         ]
     )
 
+    selected_configs["gamma_multiplier"] = np.nan
     modal = benchmark_tuned._modal_selected_config(selected_configs)
 
     assert pd.isna(modal.iloc[0]["gamma"])
@@ -1058,37 +1016,19 @@ def test_validate_raw_feature_count_rejects_metadata_width_mismatch() -> None:
         validate_raw_feature_count(np.zeros((3, 4), dtype=float), raw_feature_count=5)
 
 
-def test_benchmark_summary_reuses_bootstrap_draws_for_equal_fold_counts(monkeypatch) -> None:
-    """Benchmark summaries should cache bootstrap draws by fold count."""
-    calls: list[int] = []
-    original = benchmark_common.bootstrap_resample_indices
-
-    def counted_bootstrap_resample_indices(*, n_values: int, n_boot: int = 1000, seed: int = 42) -> np.ndarray:
-        """Record bootstrap requests while delegating to the real sampler."""
-        calls.append(n_values)
-        return original(n_values=n_values, n_boot=n_boot, seed=seed)
-
+def test_benchmark_summary_is_descriptive_fold_spread() -> None:
     rows = [
         {
-            "selector": selector,
+            "selector": "F-test",
             "classifier": "krr",
             "replication_mode": "strict",
             "fold": fold,
-            "BER": 0.2 + fold / 100,
-            "True+": 0.6,
-            "True-": 0.8,
-            "ROC_AUC": 0.7,
-            "PR_AUC": 0.4,
-            "MCC": 0.3,
-            "F2": 0.5,
+            **{metric: 0.2 + fold / 100 for metric in benchmark_common.BENCHMARK_METRICS},
         }
-        for selector in ["F-test", "S2N"]
         for fold in range(1, 11)
     ]
-
-    monkeypatch.setattr(benchmark_common, "bootstrap_resample_indices", counted_bootstrap_resample_indices)
-
     summary = benchmark_common.build_benchmark_summary_df(pd.DataFrame(rows))
-
-    assert calls == [10]
-    assert summary["n_folds"].tolist() == [10, 10]
+    assert summary.n_folds.tolist() == [10]
+    assert summary.min_BER.iloc[0] == pytest.approx(0.21)
+    assert summary.max_BER.iloc[0] == pytest.approx(0.30)
+    assert not any(column.startswith("CI_") for column in summary.columns)

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from secom.config import ArtifactName, MANIFEST_REQUIRED_KEYS, ModelScope, StudyStatus, ThresholdPolicy
+from secom.qa import validate_benchmark_replication_artifacts, validate_tuned_benchmark_artifacts
 
 
 @dataclass(frozen=True)
@@ -41,10 +42,10 @@ _CSV_ARTIFACT_NAMES = sorted(
 )
 
 _BENCHMARK_TRIPLET_COLUMNS = {"selector", "classifier", "replication_mode"}
-_BENCHMARK_CONFIG_COLUMNS = {"k", "C", "alpha", "gamma", "n_neighbors"}
+_BENCHMARK_CONFIG_COLUMNS = {"k", "C", "alpha", "gamma", "gamma_multiplier", "n_neighbors"}
 _BENCHMARK_METRIC_COLUMNS = {"BER", "True+", "True-", "ROC_AUC", "PR_AUC", "MCC", "F2"}
 _BENCHMARK_MEAN_METRIC_COLUMNS = {f"mean_{metric}" for metric in _BENCHMARK_METRIC_COLUMNS}
-_BENCHMARK_CI_COLUMNS = {f"CI_{bound}_{metric}" for metric in _BENCHMARK_METRIC_COLUMNS for bound in ("lower", "upper")}
+_BENCHMARK_RANGE_COLUMNS = {f"{bound}_{metric}" for metric in _BENCHMARK_METRIC_COLUMNS for bound in ("min", "max")}
 _BENCHMARK_FULL_DATASET_METRIC_COLUMNS = {f"{metric}_full_dataset" for metric in _BENCHMARK_METRIC_COLUMNS}
 _BENCHMARK_FULL_DATASET_LINEAGE_COLUMNS = {"threshold_full_dataset"}
 _BENCHMARK_ABLATION_COLUMNS = {"selector", "classifier", "BER_reference", "BER_missing_indicator", "delta_BER"}
@@ -60,15 +61,19 @@ _BENCHMARK_FEATURE_REPORT_COLUMNS = {
     "feature_type",
     "feature_name_or_source_col",
     "selection_frequency",
-    "conditional_effect_magnitude",
-    "expected_contribution",
+    "absolute_scaled_coefficient",
+    "stability_weighted_coefficient",
 }
 
 _BENCHMARK_ORIGINAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_SWEEP: {
         *_BENCHMARK_TRIPLET_COLUMNS,
         *_BENCHMARK_CONFIG_COLUMNS,
-        *_BENCHMARK_MEAN_METRIC_COLUMNS,
+        "fold",
+        "mean_inner_BER",
+        "mean_inner_ROC_AUC",
+        "threshold_inner_oof",
+        "is_selected_config",
     },
     ArtifactName.BENCHMARK_BEST_CONFIG: {
         *_BENCHMARK_TRIPLET_COLUMNS,
@@ -83,7 +88,7 @@ _BENCHMARK_ORIGINAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_SUMMARY: {
         *_BENCHMARK_TRIPLET_COLUMNS,
         *_BENCHMARK_MEAN_METRIC_COLUMNS,
-        *_BENCHMARK_CI_COLUMNS,
+        *_BENCHMARK_RANGE_COLUMNS,
     },
     ArtifactName.BENCHMARK_ABLATION: _BENCHMARK_ABLATION_COLUMNS,
     ArtifactName.BENCHMARK_FULL_FIT_SUMMARY: {
@@ -124,7 +129,7 @@ _BENCHMARK_TUNED_REQUIRED_COLUMNS: dict[str, set[str]] = {
     ArtifactName.BENCHMARK_TUNED_SUMMARY: {
         *_BENCHMARK_TRIPLET_COLUMNS,
         *_BENCHMARK_MEAN_METRIC_COLUMNS,
-        *_BENCHMARK_CI_COLUMNS,
+        *_BENCHMARK_RANGE_COLUMNS,
     },
     ArtifactName.BENCHMARK_TUNED_ABLATION: _BENCHMARK_ABLATION_COLUMNS,
     ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY: {
@@ -178,16 +183,46 @@ _TEMPORAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
         "True+",
         "True-",
         "TPR_at_TNR90",
+        "lockbox_n",
+        "lockbox_fails",
+        "TP",
+        "TN",
+        "FP",
+        "FN",
+        "TPR_exact_lower",
+        "TPR_exact_upper",
+        "TNR_exact_lower",
+        "TNR_exact_upper",
+        "interval_semantics",
+        "evaluation_semantics",
+        "TPR_available",
+        "TNR_available",
+        "BER_available",
     },
     ArtifactName.TEMPORAL_DRIFT: {
         "model_scope",
         "drift_gate_status",
-        "lockbox_claims_allowed",
+        "confirmatory_claims_allowed",
+        "score_reference",
+        "max_missingness_rate_shift",
     },
     ArtifactName.TEMPORAL_MSPC: {
         "eval_scope",
-        "best_MSPC_TPR_at_TNR90",
-        "best_MSPC_source",
+        "calibration_selected_MSPC_TPR_at_TNR90",
+        "calibration_selected_MSPC_source",
+        "T2_calibration_TPR_at_TNR90",
+        "Q_calibration_TPR_at_TNR90",
+        "frozen_threshold",
+        "T2_frozen_threshold",
+        "Q_frozen_threshold",
+        "source_selection_region",
+        "frozen_BER",
+        "frozen_TPR",
+        "frozen_TNR",
+        "TP",
+        "TN",
+        "FP",
+        "FN",
     },
     ArtifactName.TEMPORAL_COST_CURVES: {
         "cost_ratio",
@@ -199,8 +234,60 @@ _TEMPORAL_REQUIRED_COLUMNS: dict[str, set[str]] = {
         "threshold_policy",
         "predicted_flag_fraction",
         "mean_weekly_flagged_samples",
+        "mean_weekly_flag_fraction",
+        "evaluation_region",
+        "workload_semantics",
     },
 }
+
+_PROCEDURE_PREDICTION_COLUMNS = {
+    "sample_id",
+    "fold",
+    "y_true",
+    "score",
+    "threshold",
+    "prediction",
+    "procedure",
+    "config_id",
+}
+_PROCEDURE_FOLD_COLUMNS = {
+    "procedure",
+    "fold",
+    "BER",
+    "True+",
+    "True-",
+    "TP",
+    "TN",
+    "FP",
+    "FN",
+    "n_test",
+    "n_test_fails",
+}
+for _prefix, _family in (
+    ("benchmark", _BENCHMARK_ORIGINAL_REQUIRED_COLUMNS),
+    ("benchmark_tuned", _BENCHMARK_TUNED_REQUIRED_COLUMNS),
+):
+    _family[f"{_prefix}_predictions.csv"] = _PROCEDURE_PREDICTION_COLUMNS
+    _family[f"{_prefix}_procedure_fold_metrics.csv"] = _PROCEDURE_FOLD_COLUMNS
+    _family[f"{_prefix}_procedure_summary.csv"] = {
+        "procedure",
+        "mean_BER",
+        "std_BER",
+        "min_BER",
+        "max_BER",
+        "pooled_TP",
+        "pooled_TN",
+        "pooled_FP",
+        "pooled_FN",
+    }
+_TEMPORAL_REQUIRED_COLUMNS[ArtifactName.TEMPORAL_PREDICTIONS] = _PROCEDURE_PREDICTION_COLUMNS | {
+    "timestamp",
+    "fit_end_timestamp",
+    "calibration_start_timestamp",
+    "calibration_end_timestamp",
+    "scaler",
+}
+_TEMPORAL_REQUIRED_COLUMNS[ArtifactName.TEMPORAL_PROCEDURE_METRICS] = _PROCEDURE_FOLD_COLUMNS
 
 _BENCHMARK_ORIGINAL_ARTIFACTS = tuple(_BENCHMARK_ORIGINAL_REQUIRED_COLUMNS)
 _BENCHMARK_TUNED_ARTIFACTS = tuple(_BENCHMARK_TUNED_REQUIRED_COLUMNS)
@@ -210,7 +297,7 @@ _TEMPORAL_THRESHOLD_POLICIES = {ThresholdPolicy.SCIENTIFIC, ThresholdPolicy.OPER
 _TEMPORAL_MODEL_SELECTION_STATUSES = {"primary", "challenger", "supporting"}
 _TEMPORAL_DRIFT_GATE_STATUSES = {"PASS", "CAUTION", "HIGH_SHIFT"}
 _TEMPORAL_MSPC_SOURCES = {"T2", "Q"}
-_MANIFEST_VERSION = "2.0"
+_MANIFEST_VERSION = "3.0"
 _STUDY_SPEC_PATH = "docs/spec"
 _MISSING_SPEC_HASH = "MISSING"
 
@@ -276,7 +363,10 @@ def write_manifest(manifest: dict[str, Any], path: Path) -> None:
 
 def read_manifest(path: Path) -> dict[str, Any]:
     """Read a run manifest JSON document from disk."""
-    return json.loads(path.read_text(encoding="utf-8"))
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("Manifest must be a JSON object")
+    return manifest
 
 
 def _required_artifacts_by_study(
@@ -318,12 +408,18 @@ def validate_required_artifacts(
     return [f"missing artifact: {name}" for name in required if not (reports / name).exists()]
 
 
-def load_artifact_frames(output_dir: Path) -> dict[str, pd.DataFrame]:
+def load_artifact_frames(output_dir: Path, *, errors: list[str] | None = None) -> dict[str, pd.DataFrame]:
     """Load all present CSV report artifacts by artifact filename."""
     reports = output_dir / "reports"
     frames: dict[str, pd.DataFrame] = {}
     for name in _CSV_ARTIFACT_NAMES:
-        df = read_csv_if_exists(reports / name)
+        try:
+            df = read_csv_if_exists(reports / name)
+        except (OSError, ValueError, UnicodeError) as exc:
+            if errors is None:
+                raise
+            errors.append(f"{name}: cannot read CSV: {exc}")
+            continue
         if df is not None:
             frames[name] = df
     return frames
@@ -429,6 +525,18 @@ def _validate_artifact_family(
         df = _artifact_frame(name=name, reports=reports, artifact_frames=artifact_frames)
         if df is not None:
             _validate_required_columns(df, required, errors, name)
+            if active and df.empty:
+                errors.append(f"{name}: active artifact has no rows")
+            if active and name.startswith("benchmark_"):
+                for metric in ("BER", "True+", "True-"):
+                    for column in (
+                        metric,
+                        f"mean_{metric}",
+                        f"min_{metric}",
+                        f"max_{metric}",
+                        f"{metric}_full_dataset",
+                    ):
+                        _validate_probability_column(name, df, column, errors)
         elif active:
             errors.append(f"missing artifact: {name}")
 
@@ -808,7 +916,23 @@ def _validate_selector_config_lineage(
     errors: list[str],
 ) -> None:
     """Validate selected selector/classifier config lineage across benchmark artifacts."""
-    config_cols = ["selector", "classifier", "replication_mode", "k", "C", "alpha", "gamma", "n_neighbors"]
+    config_cols = [
+        "selector",
+        "classifier",
+        "replication_mode",
+        "k",
+        "C",
+        "alpha",
+        "gamma",
+        "gamma_multiplier",
+        "n_neighbors",
+    ]
+
+    def candidate_view(frame):
+        if frame is None or not {"gamma", "gamma_multiplier"}.issubset(frame):
+            return frame
+        return frame.assign(gamma=frame.gamma.where(frame.gamma_multiplier.isna()))
+
     fold_config_cols = [*config_cols, "fold"]
 
     if active_original:
@@ -827,6 +951,7 @@ def _validate_selector_config_lineage(
             reports=reports,
             artifact_frames=artifact_frames,
         )
+        _validate_duplicate_fold_rows(ArtifactName.BENCHMARK_FOLD_METRICS, fold_df, errors)
         full_fit_df = _artifact_frame(
             name=ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
             reports=reports,
@@ -834,25 +959,26 @@ def _validate_selector_config_lineage(
         )
         _validate_config_subset(
             subset_name=ArtifactName.BENCHMARK_BEST_CONFIG,
-            subset_df=best_df,
+            subset_df=candidate_view(best_df),
             superset_name=ArtifactName.BENCHMARK_SWEEP,
-            superset_df=sweep_df,
+            superset_df=candidate_view(sweep_df),
             columns=config_cols,
             errors=errors,
         )
+        selected = _validate_tuned_selected_config_cardinality(search_df=sweep_df, errors=errors)
         _validate_config_set_equal(
-            left_name=ArtifactName.BENCHMARK_BEST_CONFIG,
-            left_df=best_df,
+            left_name=ArtifactName.BENCHMARK_SWEEP,
+            left_df=candidate_view(selected),
             right_name=ArtifactName.BENCHMARK_FOLD_METRICS,
-            right_df=fold_df,
-            columns=config_cols,
+            right_df=candidate_view(fold_df),
+            columns=fold_config_cols,
             errors=errors,
         )
         _validate_config_set_equal(
             left_name=ArtifactName.BENCHMARK_BEST_CONFIG,
-            left_df=best_df,
+            left_df=candidate_view(best_df),
             right_name=ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
-            right_df=full_fit_df,
+            right_df=candidate_view(full_fit_df),
             columns=config_cols,
             errors=errors,
         )
@@ -873,6 +999,7 @@ def _validate_selector_config_lineage(
             reports=reports,
             artifact_frames=artifact_frames,
         )
+        _validate_duplicate_fold_rows(ArtifactName.BENCHMARK_TUNED_FOLD_METRICS, fold_df, errors)
         full_fit_df = _artifact_frame(
             name=ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
             reports=reports,
@@ -884,20 +1011,27 @@ def _validate_selector_config_lineage(
         )
         _validate_config_set_equal(
             left_name=ArtifactName.BENCHMARK_TUNED_SEARCH,
-            left_df=selected_search_df,
+            left_df=candidate_view(selected_search_df),
             right_name=ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
-            right_df=fold_df,
+            right_df=candidate_view(fold_df),
             columns=fold_config_cols,
             errors=errors,
         )
         _validate_config_set_equal(
             left_name=ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
-            left_df=best_df,
+            left_df=candidate_view(best_df),
             right_name=ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
-            right_df=full_fit_df,
+            right_df=candidate_view(full_fit_df),
             columns=config_cols,
             errors=errors,
         )
+
+
+def _validate_duplicate_fold_rows(name: str, frame: pd.DataFrame | None, errors: list[str]) -> None:
+    """Set-based config lineage must not conceal repeated fold observations."""
+    keys = ["selector", "classifier", "replication_mode", "fold"]
+    if frame is not None and set(keys).issubset(frame.columns) and frame.duplicated(keys).any():
+        errors.append(f"{name}: duplicate selector/classifier/mode/fold rows")
 
 
 def _validate_temporal_model_selection(model_selection: pd.DataFrame | None, errors: list[str]) -> None:
@@ -940,6 +1074,36 @@ def _validate_temporal_enums(
             _TEMPORAL_THRESHOLD_POLICIES,
             errors,
         )
+    if lockbox is not None:
+        from scipy.stats import binomtest
+
+        for row in lockbox.to_dict("records"):
+            try:
+                positive, negative = row["TP"] + row["FN"], row["TN"] + row["FP"]
+                tpr, tnr = (row["TP"] / positive if positive else 0), (row["TN"] / negative if negative else 0)
+                if (
+                    row["lockbox_n"] != positive + negative
+                    or row["lockbox_fails"] != positive
+                    or not np.isclose(row["True+"], tpr)
+                    or not np.isclose(row["True-"], tnr)
+                    or not np.isclose(row["BER"], 1 - 0.5 * (tpr + tnr))
+                ):
+                    errors.append("temporal_lockbox.csv: frozen confusion count/rate mismatch")
+                if (
+                    row["interval_semantics"] != "conditional_fixed_model_independent_trials_only"
+                    or row["evaluation_semantics"] != "retrospective_later_block"
+                ):
+                    errors.append("temporal_lockbox.csv: invalid uncertainty/evaluation semantics")
+                for label, successes, n in (("TPR", row["TP"], positive), ("TNR", row["TN"], negative)):
+                    interval = binomtest(int(successes), int(n)).proportion_ci(method="exact") if n else None
+                    for bound, value in (
+                        ("lower", interval.low if interval else np.nan),
+                        ("upper", interval.high if interval else np.nan),
+                    ):
+                        if not np.isclose(row[f"{label}_exact_{bound}"], value, equal_nan=True, rtol=0, atol=1e-9):
+                            errors.append("temporal_lockbox.csv: exact binomial interval mismatch")
+            except (KeyError, ValueError, TypeError):
+                errors.append("temporal_lockbox.csv: incomplete frozen-count/interval lineage")
     if drift is not None:
         _validate_allowed_values(ArtifactName.TEMPORAL_DRIFT, drift, "model_scope", _TEMPORAL_ROLES, errors)
         _validate_allowed_values(
@@ -949,11 +1113,55 @@ def _validate_temporal_enums(
             _TEMPORAL_DRIFT_GATE_STATUSES,
             errors,
         )
-        _validate_boolean_column(ArtifactName.TEMPORAL_DRIFT, drift, "lockbox_claims_allowed", errors)
+        _validate_boolean_column(ArtifactName.TEMPORAL_DRIFT, drift, "confirmatory_claims_allowed", errors)
+        if (
+            "score_reference" in drift
+            and not drift.score_reference.eq("held_out_calibration_same_retained_model").all()
+        ):
+            errors.append(
+                "temporal_drift_summary.csv: score KS reference must be held-out calibration from same retained model"
+            )
+        if any(value is True for value in _normalized_bool_values(drift, "confirmatory_claims_allowed")):
+            errors.append("temporal_drift_summary.csv: retrospective evaluation cannot authorize confirmatory claims")
     if mspc is not None:
         _validate_allowed_values(ArtifactName.TEMPORAL_MSPC, mspc, "eval_scope", {"outer_fold", "lockbox"}, errors)
-        _validate_allowed_values(ArtifactName.TEMPORAL_MSPC, mspc, "best_MSPC_source", _TEMPORAL_MSPC_SOURCES, errors)
+        _validate_allowed_values(
+            ArtifactName.TEMPORAL_MSPC, mspc, "calibration_selected_MSPC_source", _TEMPORAL_MSPC_SOURCES, errors
+        )
+        for row in mspc.to_dict("records"):
+            try:
+                source = "T2" if row["T2_calibration_TPR_at_TNR90"] >= row["Q_calibration_TPR_at_TNR90"] else "Q"
+                if (
+                    row["calibration_selected_MSPC_source"] != source
+                    or row["source_selection_region"] != "held_out_calibration"
+                ):
+                    errors.append("temporal_mspc.csv: source must be frozen using calibration metrics")
+                if not np.isclose(row["frozen_threshold"], row[f"{source}_frozen_threshold"]):
+                    errors.append("temporal_mspc.csv: selected frozen threshold mismatch")
+                tpr = row["TP"] / (row["TP"] + row["FN"]) if row["TP"] + row["FN"] else 0
+                tnr = row["TN"] / (row["TN"] + row["FP"]) if row["TN"] + row["FP"] else 0
+                if not all(
+                    np.isclose(row[key], expected)
+                    for key, expected in (
+                        ("frozen_TPR", tpr),
+                        ("frozen_TNR", tnr),
+                        ("frozen_BER", 1 - 0.5 * (tpr + tnr)),
+                    )
+                ):
+                    errors.append("temporal_mspc.csv: frozen metrics disagree with confusion counts")
+            except (KeyError, ValueError, TypeError, ZeroDivisionError):
+                errors.append("temporal_mspc.csv: incomplete calibration source/threshold lineage")
     if manager is not None:
+        _validate_allowed_values(
+            ArtifactName.TEMPORAL_MANAGER_OUTPUTS, manager, "evaluation_region", {"held_out_DEV_calibration"}, errors
+        )
+        _validate_allowed_values(
+            ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
+            manager,
+            "workload_semantics",
+            {"illustrative_mean_weekly_policy_not_per_week_cap"},
+            errors,
+        )
         _validate_allowed_values(ArtifactName.TEMPORAL_MANAGER_OUTPUTS, manager, "role", _TEMPORAL_ROLES, errors)
         _validate_allowed_values(
             ArtifactName.TEMPORAL_MANAGER_OUTPUTS,
@@ -982,9 +1190,12 @@ def _validate_temporal_numeric_ranges(
         ArtifactName.TEMPORAL_MODEL_SELECTION: (model_selection, ["mean_BER"]),
         ArtifactName.TEMPORAL_INNER_CV: (inner_cv, ["mean_inner_BER", "mean_inner_ROC_AUC"]),
         ArtifactName.TEMPORAL_LOCKBOX: (lockbox, ["BER", "True+", "True-", "TPR_at_TNR90"]),
-        ArtifactName.TEMPORAL_DRIFT: (drift, ["abs_prevalence_shift", "ks_pvalue_scores"]),
-        ArtifactName.TEMPORAL_MSPC: (mspc, ["best_MSPC_TPR_at_TNR90", "T2_AUC", "Q_AUC", "alarm_rate"]),
-        ArtifactName.TEMPORAL_MANAGER_OUTPUTS: (manager, ["predicted_flag_fraction"]),
+        ArtifactName.TEMPORAL_DRIFT: (
+            drift,
+            ["abs_prevalence_shift", "ks_pvalue_scores", "max_missingness_rate_shift"],
+        ),
+        ArtifactName.TEMPORAL_MSPC: (mspc, ["calibration_selected_MSPC_TPR_at_TNR90", "T2_AUC", "Q_AUC", "alarm_rate"]),
+        ArtifactName.TEMPORAL_MANAGER_OUTPUTS: (manager, ["predicted_flag_fraction", "mean_weekly_flag_fraction"]),
     }
     for artifact_name, (frame, columns) in probability_columns.items():
         if frame is None:
@@ -995,7 +1206,7 @@ def _validate_temporal_numeric_ranges(
     nonnegative_columns = {
         ArtifactName.TEMPORAL_SELECTOR_SCREENING: (screening, ["std_BER"]),
         ArtifactName.TEMPORAL_DRIFT: (drift, ["max_PSI"]),
-        ArtifactName.TEMPORAL_MSPC: (mspc, ["empirical_ARL0"]),
+        ArtifactName.TEMPORAL_MSPC: (mspc, ["observed_mean_inter_alarm_spacing"]),
         ArtifactName.TEMPORAL_COST_CURVES: (
             cost,
             [column for column in (list(cost.columns) if cost is not None else []) if column != "cost_ratio"],
@@ -1123,7 +1334,7 @@ def _expected_temporal_claim_restrictions(
     """Recompute temporal claim restrictions from persisted temporal artifacts."""
     required_lockbox = {"role", "threshold_policy", "TPR_at_TNR90"}
     required_drift = {"model_scope", "drift_gate_status"}
-    required_mspc = {"eval_scope", "best_MSPC_TPR_at_TNR90"}
+    required_mspc = {"eval_scope", "calibration_selected_MSPC_TPR_at_TNR90"}
     if (
         lockbox is None
         or drift is None
@@ -1137,11 +1348,14 @@ def _expected_temporal_claim_restrictions(
     mspc_lock = mspc[mspc["eval_scope"].astype(str) == "lockbox"]
     if mspc_lock.empty:
         return []
-    mspc_tpr = pd.to_numeric(mspc_lock["best_MSPC_TPR_at_TNR90"], errors="coerce").iloc[0]
+    mspc_tpr = pd.to_numeric(mspc_lock["calibration_selected_MSPC_TPR_at_TNR90"], errors="coerce").iloc[0]
     if pd.isna(mspc_tpr):
         return []
 
-    restrictions: list[str] = []
+    restrictions: list[str] = [
+        "retrospective_later_block_not_fresh_confirmatory_lockbox",
+        "no_production_readiness_or_superiority_claim",
+    ]
     scientific = lockbox[lockbox["threshold_policy"].astype(str) == ThresholdPolicy.SCIENTIFIC].copy()
     scientific["TPR_at_TNR90"] = pd.to_numeric(scientific["TPR_at_TNR90"], errors="coerce")
     for row in scientific.itertuples(index=False):
@@ -1247,10 +1461,31 @@ def validate_schema_and_logic(
                 warnings=[],
                 claim_restrictions=[],
             )
-        manifest = read_manifest(manifest_path)
+        try:
+            manifest = read_manifest(manifest_path)
+        except (OSError, ValueError, UnicodeError) as exc:
+            return ValidationResult(
+                ok=False,
+                errors=[f"{ArtifactName.MANIFEST}: cannot read manifest: {exc}"],
+                warnings=[],
+                claim_restrictions=[],
+            )
+
+    if artifact_frames is None:
+        artifact_frames = load_artifact_frames(output_dir, errors=errors)
 
     state = _validate_manifest_fields(manifest=manifest, errors=errors, warnings=warnings)
 
+    if state.temporal_status in {StudyStatus.PASSED, StudyStatus.WARNING}:
+        for name, field in (
+            (ArtifactName.TEMPORAL_LOCKBOX, "lockbox_fails"),
+            (ArtifactName.TEMPORAL_PROCEDURE_METRICS, "n_test_fails"),
+        ):
+            frame = artifact_frames.get(name)
+            if frame is not None and field in frame and (pd.to_numeric(frame[field], errors="coerce") < 20).any():
+                warnings.append(
+                    f"{name}: sparse evaluation failures; rates and exact conditional intervals have limited precision"
+                )
     # Active layers require artifacts; inactive layers only warn if stale artifacts remain.
     active_original = state.original_status != StudyStatus.NOT_RUN
     active_tuned = state.tuned_status != StudyStatus.NOT_RUN or (
@@ -1293,6 +1528,165 @@ def validate_schema_and_logic(
         active_tuned=active_tuned,
         errors=errors,
     )
+    for status, validator, families in (
+        (
+            state.original_status,
+            validate_benchmark_replication_artifacts,
+            {
+                "sweep_df": ArtifactName.BENCHMARK_SWEEP,
+                "best_df": ArtifactName.BENCHMARK_BEST_CONFIG,
+                "fold_metrics_df": ArtifactName.BENCHMARK_FOLD_METRICS,
+                "summary_df": ArtifactName.BENCHMARK_SUMMARY,
+                "ablation_df": ArtifactName.BENCHMARK_ABLATION,
+                "full_fit_df": ArtifactName.BENCHMARK_FULL_FIT_SUMMARY,
+            },
+        ),
+        (
+            state.tuned_status,
+            validate_tuned_benchmark_artifacts,
+            {
+                "search_df": ArtifactName.BENCHMARK_TUNED_SEARCH,
+                "best_df": ArtifactName.BENCHMARK_TUNED_BEST_CONFIG,
+                "fold_metrics_df": ArtifactName.BENCHMARK_TUNED_FOLD_METRICS,
+                "summary_df": ArtifactName.BENCHMARK_TUNED_SUMMARY,
+                "ablation_df": ArtifactName.BENCHMARK_TUNED_ABLATION,
+                "full_fit_df": ArtifactName.BENCHMARK_TUNED_FULL_FIT_SUMMARY,
+            },
+        ),
+    ):
+        if status == StudyStatus.PASSED and all(name in artifact_frames for name in families.values()):
+            try:
+                validator(**{key: artifact_frames[name] for key, name in families.items()})
+            except (ValueError, TypeError, KeyError) as exc:
+                errors.append(str(exc))
+    from secom.workflows.benchmark_procedures import validate_prediction_lineage, procedure_summary, selected_candidate
+
+    paired_predictions = []
+    for prefix, active in (("benchmark", active_original), ("benchmark_tuned", active_tuned)):
+        if not active:
+            continue
+        try:
+            predictions = artifact_frames[f"{prefix}_predictions.csv"]
+            folds = artifact_frames[f"{prefix}_procedure_fold_metrics.csv"]
+            summary = artifact_frames[f"{prefix}_procedure_summary.csv"]
+            validate_prediction_lineage(predictions, folds)
+            profile = manifest.get("dataset", {})
+            if "n_samples" in profile:
+                joint = predictions[predictions.procedure == "joint"]
+                if set(joint.sample_id) != set(range(int(profile["n_samples"]))) or int(joint.y_true.sum()) != int(
+                    profile["n_fails"]
+                ):
+                    raise ValueError("held-out predictions do not match input sample IDs/failure counts")
+            expected = procedure_summary(folds, predictions).set_index("procedure")
+            if summary.procedure.duplicated().any() or set(summary.procedure) != set(expected.index):
+                raise ValueError("procedure summary coverage mismatch")
+            for row in summary.to_dict("records"):
+                for column in expected.columns:
+                    if column not in row or not np.isclose(
+                        float(row[column]), float(expected.loc[row["procedure"], column]), atol=1e-9, rtol=0
+                    ):
+                        raise ValueError("procedure summary mismatch with held-out predictions/folds")
+            search = artifact_frames[
+                ArtifactName.BENCHMARK_SWEEP if prefix == "benchmark" else ArtifactName.BENCHMARK_TUNED_SEARCH
+            ]
+            for name, width_column in (
+                (f"{prefix}_fold_metrics.csv", "n_selected_features"),
+                (f"{prefix}_full_fit_summary.csv", "n_selected_features_full_dataset"),
+            ):
+                configured = artifact_frames[name]
+                relative = configured[configured["gamma_multiplier"].notna()]
+                if not relative.empty and (
+                    width_column not in relative
+                    or not np.allclose(
+                        relative.gamma, relative.gamma_multiplier / relative[width_column], rtol=0, atol=1e-14
+                    )
+                ):
+                    raise ValueError("effective gamma must match actual selected matrix width")
+            relative_search = search[search["gamma_multiplier"].notna()]
+            for candidate in relative_search.to_dict("records"):
+                widths = [int(width) for width in str(candidate["inner_selected_widths"]).split(",")]
+                if min(widths) < 1 or not np.isclose(
+                    candidate["gamma"], candidate["gamma_multiplier"] / widths[0], rtol=0, atol=1e-14
+                ):
+                    raise ValueError("inner effective gamma must match selected width receipt")
+            from secom.workflows.benchmark_tuned import _select_best_tuned_config
+
+            for key, group in search.groupby(["selector", "classifier", "replication_mode", "fold"], dropna=False):
+                selected = group[group.is_selected_config.map(lambda value: _normalized_bool_cell(value) is True)]
+                if len(selected) != 1:
+                    raise ValueError("each family/fold must select exactly one inner config")
+                best = _select_best_tuned_config(group.to_dict("records"))
+                for column in ("k", "C", "alpha", "gamma", "n_neighbors", "threshold_inner_oof", "mean_inner_BER"):
+                    if _normalize_lineage_cell(selected.iloc[0][column]) != _normalize_lineage_cell(best[column]):
+                        raise ValueError("selected family config must minimize inner BER with declared tie order")
+            for fold, frame in search.groupby("fold"):
+                candidate_rows = frame[
+                    frame.is_selected_config.map(lambda value: _normalized_bool_cell(value) is True)
+                ].to_dict("records")
+                candidates = [(row, {}, np.array([])) for row in candidate_rows]
+                for procedure, mode in (
+                    ("joint", None),
+                    ("values_only", "strict"),
+                    ("values_and_indicators", "with_missing_indicators"),
+                ):
+                    best, _, _ = selected_candidate(candidates, mode)
+                    emitted = predictions[(predictions.fold == fold) & (predictions.procedure == procedure)].iloc[0]
+                    columns = [
+                        "selector",
+                        "classifier",
+                        "replication_mode",
+                        "k",
+                        "C",
+                        "alpha",
+                        "gamma_multiplier",
+                        "n_neighbors",
+                    ]
+                    if pd.isna(best.get("gamma_multiplier")):
+                        columns.append("gamma")
+                    if any(
+                        _normalize_lineage_cell(best[c]) != _normalize_lineage_cell(emitted[c]) for c in columns
+                    ) or not np.isclose(best["threshold_inner_oof"], emitted.threshold):
+                        raise ValueError("joint procedure must match inner-selected config and frozen threshold")
+            paired_predictions.append(predictions[predictions.procedure == "joint"])
+        except (ValueError, KeyError, TypeError, IndexError) as exc:
+            errors.append(f"{prefix} procedures: {exc}")
+    if len(paired_predictions) == 2:
+        identity = ["sample_id", "fold", "y_true"]
+        if _tuple_set(paired_predictions[0], identity) != _tuple_set(paired_predictions[1], identity):
+            errors.append("original/tuned joint procedures: held-out sample/fold/label pairing mismatch")
+    if active_temporal:
+        try:
+            from secom.workflows.temporal_comparator_audit import validate_temporal_comparator
+
+            validate_temporal_comparator(artifact_frames, warnings)
+        except (ValueError, KeyError, TypeError, IndexError) as exc:
+            errors.append(f"temporal comparator/calibration: {exc}")
+        try:
+            validate_prediction_lineage(
+                artifact_frames[ArtifactName.TEMPORAL_PREDICTIONS],
+                artifact_frames[ArtifactName.TEMPORAL_PROCEDURE_METRICS],
+                temporal=True,
+            )
+            from secom.selection.tuning import select_ber_config
+            from secom.workflows.temporal_robustness import _selector_config_simplicity_key
+
+            inner = artifact_frames[ArtifactName.TEMPORAL_INNER_CV]
+            for fold, frame in artifact_frames[ArtifactName.TEMPORAL_PREDICTIONS].groupby("fold"):
+                candidates = inner[
+                    (inner.resample_id == f"outer_{fold}_seed_42")
+                    & inner.is_selected_config.map(lambda value: _normalized_bool_cell(value) is True)
+                ].to_dict("records")
+                best = select_ber_config(
+                    candidates, simplicity_key=lambda row: (*_selector_config_simplicity_key(row), str(row["selector"]))
+                )
+                emitted = frame.iloc[0]
+                if any(
+                    _normalize_lineage_cell(best[c]) != _normalize_lineage_cell(emitted[c])
+                    for c in ("selector", "k", "C", "scaler", "n_neighbors")
+                ):
+                    raise ValueError("temporal joint config must be selected using chronological inner predictions")
+        except (ValueError, KeyError, TypeError) as exc:
+            errors.append(f"temporal procedures: {exc}")
     temporal_claim_restrictions = _validate_temporal_semantics(
         reports=reports,
         artifact_frames=artifact_frames,

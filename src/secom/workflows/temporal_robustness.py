@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+import json
 from collections.abc import Callable
 import math
 from itertools import product
@@ -11,23 +12,20 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy.stats import ks_2samp
+from scipy.stats import ks_2samp, binomtest
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
-from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 
 from secom.artifacts import ensure_reports_dir, write_csv
 from secom.common.drift import psi_for_feature
 from secom.common.paths import project_root_from_repo_structure
-from secom.common.thresholds import operational_threshold
+from secom.common.thresholds import operational_threshold, weekly_flag_fraction
 from secom.config import (
     ArtifactName,
     COST_RATIOS,
     ModelScope,
     PSI_MAX_FEATURES,
-    SEEDS_PHASE2,
-    SEEDS_STAGE_B,
     ScalerName,
     SelectorName,
     StudyStatus,
@@ -36,6 +34,8 @@ from secom.config import (
 )
 from secom.cv import (
     add_dev_week_bins,
+    fit_calibration_indices,
+    chronological_inner_splits,
     choose_outer_fold_plan,
     split_dev_lockbox,
     temporal_feasibility_gate,
@@ -52,10 +52,9 @@ from secom.metrics import (
     roc_auc_or_default,
     safe_std,
 )
-from secom.models import fit_temporal_logreg_model
-from secom.preprocess import make_imputer, make_scaler, transformed_feature_metadata_from_imputer
-from secom.selection.engine import fit_selector_pipeline, select_features
-from secom.selection.tuning import select_best_inner_config
+from secom.models import fit_temporal_logreg_model, validated_model_scores
+from secom.selection.engine import fit_selector_pipeline
+from secom.selection.tuning import select_best_inner_config, select_ber_config
 from secom.types import DataBundle, FittedRoleModel, RoleConfig
 from secom.workflows.manifest import write_temporal_failure, write_temporal_status
 
@@ -64,7 +63,7 @@ STAGE_B_K_VALUES = [10, 20, 40]
 STAGE_B_C_VALUES = [0.01, 0.1, 1.0, 10.0]
 STAGE_B_SCALERS = [ScalerName.STANDARD, ScalerName.ROBUST]
 RELIEFF_NEIGHBOR_VALUES = [5, 10, 20]
-INNER_CV_SPLITS = 5
+INNER_CV_SPLITS = 3
 PREVALENCE_SHIFT_CAUTION = 0.02
 SCORE_KS_PVALUE_CAUTION = 0.01
 MAX_PSI_CAUTION = 0.30
@@ -103,7 +102,9 @@ def _fit_eval_with_labels(
     c_value: float,
     scaler_name: str,
     n_neighbors: int | None,
-) -> tuple[dict[str, float], float]:
+    return_scores: bool = False,
+    return_calibration: bool = False,
+) -> tuple:
     """Fit a temporal selector/logreg view and return eval metrics plus threshold."""
     prepared = _prepare_selector_eval_view(
         x_train_raw=x_train_raw,
@@ -120,7 +121,9 @@ def _fit_eval_with_labels(
         prepared_view=prepared,
         c_value=c_value,
     )
-    return metrics, threshold
+    if return_calibration:
+        return metrics, threshold, _eval_scores, _train_scores
+    return (metrics, threshold, _eval_scores) if return_scores else (metrics, threshold)
 
 
 def _prepare_selector_eval_view(
@@ -136,11 +139,14 @@ def _prepare_selector_eval_view(
     n_neighbors: int | None,
 ) -> dict[str, Any]:
     """Prepare selected train/eval matrices while retaining transform metadata."""
+    fit, calibration = fit_calibration_indices(len(y_train))
+    x_fit, y_fit = x_train_raw[fit], np.asarray(y_train)[fit]
+    x_both = np.concatenate((x_train_raw[calibration], x_eval_raw))
     try:
         x_train_sel, x_eval_sel, feature_meta, selected_local, imputer, scaler = fit_selector_pipeline(
-            x_train_raw=x_train_raw,
-            y_train=y_train,
-            x_eval_raw=x_eval_raw,
+            x_train_raw=x_fit,
+            y_train=y_fit,
+            x_eval_raw=x_both,
             method=method,
             k=k,
             scaler_name=scaler_name,
@@ -155,8 +161,10 @@ def _prepare_selector_eval_view(
         ) from exc
     return {
         "x_train_sel": x_train_sel,
-        "y_train": np.asarray(y_train, dtype=int),
-        "x_eval_sel": x_eval_sel,
+        "y_train": np.asarray(y_fit, dtype=int),
+        "y_calibration": np.asarray(y_train, dtype=int)[calibration],
+        "x_calibration_sel": x_eval_sel[: len(calibration)],
+        "x_eval_sel": x_eval_sel[len(calibration) :],
         "y_eval": np.asarray(y_eval, dtype=int),
         "feature_meta": feature_meta,
         "selected_local": selected_local,
@@ -165,21 +173,32 @@ def _prepare_selector_eval_view(
     }
 
 
+def _fit_temporal_logreg_view_scores(
+    *,
+    prepared_view: dict[str, Any],
+    c_value: float,
+) -> tuple[float, Any, np.ndarray, np.ndarray]:
+    """Fit finite train/eval scores and freeze the training threshold."""
+    x_train_sel = prepared_view["x_train_sel"]
+    y_train = prepared_view["y_train"]
+    x_eval_sel = prepared_view["x_eval_sel"]
+    clf = fit_temporal_logreg_model(x_train_sel, y_train, c_value=c_value)
+    train_scores = validated_model_scores(clf.predict_proba(prepared_view["x_calibration_sel"])[:, 1])
+    eval_scores = validated_model_scores(clf.predict_proba(x_eval_sel)[:, 1])
+    threshold, _ = find_ber_optimal_threshold(prepared_view["y_calibration"], train_scores)
+    return float(threshold), clf, train_scores, eval_scores
+
+
 def _score_temporal_logreg_view(
     *,
     prepared_view: dict[str, Any],
     c_value: float,
 ) -> tuple[dict[str, float], float, Any, np.ndarray, np.ndarray]:
-    """Fit temporal logistic regression and score eval data at a train-frozen threshold."""
-    x_train_sel = prepared_view["x_train_sel"]
-    y_train = prepared_view["y_train"]
-    x_eval_sel = prepared_view["x_eval_sel"]
-    y_eval = prepared_view["y_eval"]
-    clf = fit_temporal_logreg_model(x_train_sel, y_train, c_value=c_value)
-    train_scores = clf.predict_proba(x_train_sel)[:, 1]
-    eval_scores = clf.predict_proba(x_eval_sel)[:, 1]
-    threshold, _ = find_ber_optimal_threshold(y_train, train_scores)
-    metrics = binary_metrics_at_threshold(y_eval, eval_scores, threshold)
+    """Return complete diagnostics where outer evaluation persists those metrics."""
+    threshold, clf, train_scores, eval_scores = _fit_temporal_logreg_view_scores(
+        prepared_view=prepared_view, c_value=c_value
+    )
+    metrics = binary_metrics_at_threshold(prepared_view["y_eval"], eval_scores, threshold)
     return metrics, float(threshold), clf, train_scores, eval_scores
 
 
@@ -279,11 +298,7 @@ def _prepare_inner_cv_views(
     seed: int,
 ) -> list[dict[str, Any]]:
     """Prepare selected inner-CV folds for one outer temporal split and seed."""
-    skf = StratifiedKFold(n_splits=INNER_CV_SPLITS, shuffle=True, random_state=seed)
-    splits_with_meta = [
-        ({}, inner_train_idx, inner_val_idx)
-        for inner_train_idx, inner_val_idx in skf.split(x_outer_train_raw, y_outer_train)
-    ]
+    splits_with_meta = [({}, train, valid) for train, valid in chronological_inner_splits(y_outer_train)]
     return _prepare_resampled_selector_views(
         x_raw=x_outer_train_raw,
         y=y_outer_train,
@@ -296,6 +311,20 @@ def _prepare_inner_cv_views(
     )
 
 
+def _selector_budget_views(prepared_views: list[dict[str, Any]], k: int) -> list[dict[str, Any]]:
+    """Keep fitted metadata and memory layout while taking an existing ranking prefix."""
+    return [
+        {
+            **view,
+            "x_train_sel": view["x_train_sel"][:, :k],
+            "x_eval_sel": view["x_eval_sel"][:, :k],
+            "x_calibration_sel": view["x_calibration_sel"][:, :k],
+            "selected_local": view["selected_local"][:k],
+        }
+        for view in prepared_views
+    ]
+
+
 def _score_prepared_inner_cv(
     prepared_views: list[dict[str, Any]],
     c_value: float,
@@ -304,12 +333,13 @@ def _score_prepared_inner_cv(
     aucs: list[float] = []
     bers: list[float] = []
     for prepared in prepared_views:
-        m, _threshold, _clf, _train_scores, _eval_scores = _score_temporal_logreg_view(
+        threshold, _clf, _train_scores, eval_scores = _fit_temporal_logreg_view_scores(
             prepared_view=prepared,
             c_value=c_value,
         )
-        aucs.append(float(m["ROC_AUC"]) if np.isfinite(m["ROC_AUC"]) else 0.5)
-        bers.append(float(m["BER"]))
+        ber, auc = _phase2_fold_metrics(prepared["y_eval"], eval_scores, threshold)
+        aucs.append(auc)
+        bers.append(ber)
     return float(np.mean(aucs)), float(np.mean(bers))
 
 
@@ -332,17 +362,10 @@ def _prepare_phase2_inner_views(
     n_neighbors: int | None,
 ) -> list[dict[str, Any]]:
     """Prepare repeated Phase-2 inner views used to freeze role configs."""
-    splits_with_meta: list[tuple[dict[str, Any], np.ndarray, np.ndarray]] = []
-    for seed in SEEDS_PHASE2:
-        skf = StratifiedKFold(n_splits=INNER_CV_SPLITS, shuffle=True, random_state=seed)
-        for inner_fold_i, (tr, va) in enumerate(skf.split(x_dev, y_dev), start=1):
-            splits_with_meta.append(
-                (
-                    {"seed": seed, "inner_fold": inner_fold_i},
-                    tr,
-                    va,
-                )
-            )
+    splits_with_meta = [
+        ({"seed": 42, "inner_fold": i}, train, valid)
+        for i, (train, valid) in enumerate(chronological_inner_splits(y_dev), start=1)
+    ]
     return _prepare_resampled_selector_views(
         x_raw=x_dev,
         y=y_dev,
@@ -365,23 +388,28 @@ def _phase2_freeze_for_role(
     """Freeze one role's selector, feature budget, C, scaler, and ReliefF neighbors."""
     configs = build_stage_b_config_grid(selector)
     per_config: dict[tuple[int, float, str, int | None], list[dict[str, Any]]] = {}
+    max_k = max(int(cfg["k"]) for cfg in configs)
+    preparation_cache: dict[tuple[str, int | None], list[dict[str, Any]]] = {}
 
     for (k, scaler_name, n_neighbors), prep_configs in _group_stage_b_configs_by_preparation(configs).items():
         if progress:
             progress(f"temporal freeze role={role} k={k} scaler={scaler_name} neighbors={n_neighbors}")
-        prepared_views = _prepare_phase2_inner_views(
-            selector=selector,
-            x_dev=x_dev,
-            y_dev=y_dev,
-            k=k,
-            scaler_name=scaler_name,
-            n_neighbors=n_neighbors,
-        )
+        preparation_key = (scaler_name, n_neighbors)
+        if preparation_key not in preparation_cache:
+            preparation_cache[preparation_key] = _prepare_phase2_inner_views(
+                selector=selector,
+                x_dev=x_dev,
+                y_dev=y_dev,
+                k=max_k,
+                scaler_name=scaler_name,
+                n_neighbors=n_neighbors,
+            )
+        prepared_views = _selector_budget_views(preparation_cache[preparation_key], k)
         for cfg in prep_configs:
             key = (k, float(cfg["C"]), scaler_name, n_neighbors)
             items: list[dict[str, Any]] = []
             for prepared in prepared_views:
-                _metrics, threshold, _clf, _tr_scores, va_scores = _score_temporal_logreg_view(
+                threshold, _clf, _tr_scores, va_scores = _fit_temporal_logreg_view_scores(
                     prepared_view=prepared,
                     c_value=float(cfg["C"]),
                 )
@@ -400,6 +428,8 @@ def _phase2_freeze_for_role(
                     }
                 )
             per_config[key] = items
+        if k == max_k:
+            del preparation_cache[preparation_key]
 
     config_rows: list[dict[str, Any]] = []
     for (k, c, scaler, nn), items in per_config.items():
@@ -443,47 +473,41 @@ def _fit_phase3_role_model(
     week_labels: np.ndarray,
     raw_feature_count: int,
 ) -> FittedRoleModel:
-    """Fit the frozen role model on all DEV data and freeze scientific/operational thresholds."""
-    imputer = make_imputer(add_indicator=True)
-    x_dev_imp = imputer.fit_transform(x_dev_raw)
-    scaler = make_scaler(role_cfg.scaler)
-    x_dev_scaled = scaler.fit_transform(x_dev_imp)
-    selected_local, _scores = select_features(
-        method=role_cfg.selector,
-        x_train=x_dev_scaled,
+    """Retain the FIT-prefix model; freeze thresholds on its held-out calibration scores."""
+    fit, calibration = fit_calibration_indices(len(y_dev))
+    prepared = _prepare_selector_eval_view(
+        x_train_raw=x_dev_raw,
         y_train=y_dev,
+        x_eval_raw=x_dev_raw[calibration],
+        y_eval=y_dev[calibration],
+        method=role_cfg.selector,
         k=role_cfg.k,
+        scaler_name=role_cfg.scaler,
+        add_indicator=True,
         n_neighbors=role_cfg.n_neighbors,
     )
-    meta = transformed_feature_metadata_from_imputer(imputer, raw_feature_count=raw_feature_count)
-    if selected_local.size <= 0:
-        raise RuntimeError(
-            "temporal role selector failure "
-            f"role={role_cfg.role} selector={role_cfg.selector} k={role_cfg.k} "
-            f"scaler={role_cfg.scaler} n_neighbors={role_cfg.n_neighbors}"
-        )
-    selected_global = [meta[int(i)].feature_index for i in selected_local.tolist()]
-    x_dev_sel = x_dev_scaled[:, selected_local]
-
-    clf = fit_temporal_logreg_model(x_dev_sel, y_dev, c_value=role_cfg.c_value)
-    dev_scores = clf.predict_proba(x_dev_sel)[:, 1]
-    sci_threshold, _ = find_ber_optimal_threshold(y_dev, dev_scores)
-    op_threshold = operational_threshold(dev_scores, y_dev, week_labels=week_labels)
-    t90, tnr90, tpr90 = extract_tpr_at_tnr(y_dev, dev_scores, target_tnr=0.90)
+    sci_threshold, clf, calibration_scores, _ = _fit_temporal_logreg_view_scores(
+        prepared_view=prepared, c_value=role_cfg.c_value
+    )
+    op_threshold = operational_threshold(calibration_scores, y_dev[calibration], week_labels=week_labels[calibration])
+    t90, tnr90, tpr90 = extract_tpr_at_tnr(y_dev[calibration], calibration_scores, target_tnr=0.90)
+    meta, selected = prepared["feature_meta"], prepared["selected_local"]
     return FittedRoleModel(
         config=role_cfg,
-        imputer=imputer,
-        scaler=scaler,
-        selected_local_idx=selected_local,
-        selected_global_idx=selected_global,
+        imputer=prepared["imputer"],
+        scaler=prepared["scaler"],
+        selected_local_idx=selected,
+        selected_global_idx=[meta[int(i)].feature_index for i in selected],
         clf=clf,
-        dev_scores=dev_scores,
+        calibration_scores=calibration_scores,
         scientific_threshold=float(sci_threshold),
         operational_threshold=float(op_threshold),
-        threshold_at_tnr90_dev=float(t90),
-        tnr_at_tnr90_dev=float(tnr90),
-        tpr_at_tnr90_dev=float(tpr90),
+        threshold_at_tnr90_calibration=float(t90),
+        tnr_at_tnr90_calibration=float(tnr90),
+        tpr_at_tnr90_calibration=float(tpr90),
         feature_meta=meta,
+        fit_n=len(fit),
+        calibration_indices=calibration,
     )
 
 
@@ -497,7 +521,7 @@ def _prepare_lockbox_eval_context(
     x_lock_imp = model.imputer.transform(x_lock_raw)
     x_lock_scaled = model.scaler.transform(x_lock_imp)
     x_lock_sel = x_lock_scaled[:, model.selected_local_idx]
-    lock_scores = model.clf.predict_proba(x_lock_sel)[:, 1]
+    lock_scores = validated_model_scores(model.clf.predict_proba(x_lock_sel)[:, 1])
     t90, tnr90, tpr90 = extract_tpr_at_tnr(y_lock, lock_scores, target_tnr=0.90)
     return {
         "lock_scores": lock_scores,
@@ -540,6 +564,10 @@ def _score_lockbox_for_role(
                 "F2": m["F2"],
                 "lockbox_n": int(m["lockbox_n"]),
                 "lockbox_fails": int(m["lockbox_fails"]),
+                "TPR_available": bool(m["lockbox_fails"] > 0),
+                "TNR_available": bool(m["lockbox_n"] > m["lockbox_fails"]),
+                "BER_available": bool(0 < m["lockbox_fails"] < m["lockbox_n"]),
+                "low_failure_count_warning": bool(m["lockbox_fails"] < 20),
                 "threshold_at_TNR90": float(lock_ctx["threshold_at_tnr90"]),
                 "TNR_at_TNR90": float(lock_ctx["tnr_at_tnr90"]),
                 "TPR_at_TNR90": float(lock_ctx["tpr_at_tnr90"]),
@@ -549,7 +577,18 @@ def _score_lockbox_for_role(
                 "FN": int(m["FN"]),
             }
         )
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    for index, row in frame.iterrows():
+        for label, successes, count in (
+            ("TPR", int(row.TP), int(row.TP + row.FN)),
+            ("TNR", int(row.TN), int(row.TN + row.FP)),
+        ):
+            interval = binomtest(successes, count).proportion_ci(method="exact") if count else None
+            frame.loc[index, f"{label}_exact_lower"] = interval.low if interval else np.nan
+            frame.loc[index, f"{label}_exact_upper"] = interval.high if interval else np.nan
+        frame.loc[index, "interval_semantics"] = "conditional_fixed_model_independent_trials_only"
+        frame.loc[index, "evaluation_semantics"] = "retrospective_later_block"
+    return frame
 
 
 def _drift_gate_for_role(
@@ -565,17 +604,26 @@ def _drift_gate_for_role(
     dev_fail_rate = float(np.mean(y_dev == 1))
     lock_fail_rate = float(np.mean(y_lock == 1))
     abs_prev = abs(lock_fail_rate - dev_fail_rate)
-    ks_p = float(ks_2samp(model.dev_scores, lock_scores, alternative="two-sided", mode="auto").pvalue)
+    ks_p = float(ks_2samp(model.calibration_scores, lock_scores, alternative="two-sided", mode="auto").pvalue)
 
     coef_abs = np.abs(model.clf.coef_[0])
     sel_meta = [model.feature_meta[int(i)] for i in model.selected_local_idx.tolist()]
     candidates = [(coef_abs[i], meta.raw_index) for i, meta in enumerate(sel_meta) if meta.feature_type == "value"]
     candidates = sorted(candidates, key=lambda x: (-x[0], x[1]))
     top_raw_idx = [raw_idx for _, raw_idx in candidates[:PSI_MAX_FEATURES]]
-    psi_vals = [psi_for_feature(x_dev_raw[:, idx], x_lock_raw[:, idx]) for idx in top_raw_idx]
+    psi_vals = [psi_for_feature(x_dev_raw[: model.fit_n, idx], x_lock_raw[:, idx]) for idx in top_raw_idx]
     max_psi = 0.0 if not psi_vals else float(np.max(psi_vals))
     med_psi = 0.0 if not psi_vals else float(np.median(psi_vals))
 
+    indicator_rates = [
+        {
+            "feature": meta.feature_name_or_source_col,
+            "fit_missing_rate": float(np.isnan(x_dev_raw[: model.fit_n, meta.raw_index]).mean()),
+            "later_missing_rate": float(np.isnan(x_lock_raw[:, meta.raw_index]).mean()),
+        }
+        for meta in sel_meta
+        if meta.feature_type == "missing_indicator"
+    ]
     violated = 0
     if abs_prev >= PREVALENCE_SHIFT_CAUTION:
         violated += 1
@@ -594,7 +642,21 @@ def _drift_gate_for_role(
         "median_PSI": med_psi,
         "psi_feature_count": int(len(top_raw_idx)),
         "drift_gate_status": status,
-        "lockbox_claims_allowed": status in {"PASS", "CAUTION"},
+        "confirmatory_claims_allowed": False,
+        "score_reference": "held_out_calibration_same_retained_model",
+        "selected_indicator_missingness_rates": json.dumps(indicator_rates, sort_keys=True),
+        "missingness_reference": "FIT_original_column_masks",
+        "max_missingness_rate_shift": max(
+            [
+                abs(
+                    float(np.isnan(x_dev_raw[: model.fit_n, meta.raw_index]).mean())
+                    - float(np.isnan(x_lock_raw[:, meta.raw_index]).mean())
+                )
+                for meta in sel_meta
+                if meta.feature_type != "value"
+            ],
+            default=0.0,
+        ),
     }
 
 
@@ -602,46 +664,61 @@ def _mspc_fit_and_score(
     x_train_pass: np.ndarray,
     x_eval: np.ndarray,
     y_eval: np.ndarray,
+    *,
+    x_calibration: np.ndarray,
+    y_calibration: np.ndarray,
 ) -> dict[str, Any]:
-    """Fit a PCA MSPC baseline on pass samples and score an eval window."""
+    """Fit on pass-only FIT rows; select source and thresholds on held-out calibration."""
     imputer = SimpleImputer(strategy="median", keep_empty_features=True, add_indicator=False)
     scaler = StandardScaler()
-    x_train_imp = imputer.fit_transform(x_train_pass)
-    x_train_s = scaler.fit_transform(x_train_imp)
-    n_comp = max(1, min(10, x_train_s.shape[1], x_train_s.shape[0] - 1))
-    pca = PCA(n_components=n_comp, random_state=42)
-    t_train = pca.fit_transform(x_train_s)
-    xhat_train = pca.inverse_transform(t_train)
-    q_train = np.sum((x_train_s - xhat_train) ** 2, axis=1)
-    ev = pca.explained_variance_
-    t2_train = np.sum((t_train**2) / (ev + 1e-12), axis=1)
-    ucl_t2 = float(np.quantile(t2_train, MSPC_QUANTILE))
-    ucl_q = float(np.quantile(q_train, MSPC_QUANTILE))
+    x_fit = scaler.fit_transform(imputer.fit_transform(x_train_pass))
+    n_comp = max(1, min(10, x_fit.shape[1], x_fit.shape[0] - 1))
+    pca = PCA(n_components=n_comp, random_state=42).fit(x_fit)
 
-    x_eval_s = scaler.transform(imputer.transform(x_eval))
-    t_eval = pca.transform(x_eval_s)
-    xhat_eval = pca.inverse_transform(t_eval)
-    q_eval = np.sum((x_eval_s - xhat_eval) ** 2, axis=1)
-    t2_eval = np.sum((t_eval**2) / (ev + 1e-12), axis=1)
-    _t2_thr, _, t2_tpr90 = extract_tpr_at_tnr(y_eval, t2_eval, target_tnr=0.90)
-    _q_thr, _, q_tpr90 = extract_tpr_at_tnr(y_eval, q_eval, target_tnr=0.90)
-    alarm = ((t2_eval > ucl_t2) | (q_eval > ucl_q)).astype(int)
-    alarm_rate = float(np.mean(alarm))
-    alarm_positions = np.where(alarm == 1)[0]
-    arl0 = np.nan if alarm_positions.size < 2 else float(np.mean(np.diff(alarm_positions)))
-    best_tpr = max(float(t2_tpr90), float(q_tpr90))
-    best_src = "T2" if np.isclose(best_tpr, float(t2_tpr90)) else "Q"
-    t2_auc = roc_auc_or_default(y_eval, t2_eval, default=np.nan)
-    q_auc = roc_auc_or_default(y_eval, q_eval, default=np.nan)
+    def scores(raw):
+        scaled = scaler.transform(imputer.transform(raw))
+        transformed = pca.transform(scaled)
+        return {
+            "T2": validated_model_scores(np.sum(transformed**2 / (pca.explained_variance_ + 1e-12), axis=1)),
+            "Q": validated_model_scores(np.sum((scaled - pca.inverse_transform(transformed)) ** 2, axis=1)),
+        }
+
+    calibration, evaluation = scores(x_calibration), scores(x_eval)
+    thresholds = {
+        name: float(np.quantile(values[np.asarray(y_calibration) == 0], MSPC_QUANTILE))
+        for name, values in calibration.items()
+    }
+    calibration_tpr = {
+        name: extract_tpr_at_tnr(y_calibration, values, target_tnr=0.90)[2] for name, values in calibration.items()
+    }
+    source = max(("T2", "Q"), key=lambda name: (calibration_tpr[name], name == "T2"))
+    metrics = binary_metrics_at_threshold(y_eval, evaluation[source], thresholds[source])
+    alarm = (evaluation["T2"] >= thresholds["T2"]) | (evaluation["Q"] >= thresholds["Q"])
+    positions = np.flatnonzero(alarm)
+    diagnostic = {name: extract_tpr_at_tnr(y_eval, values, target_tnr=0.90)[2] for name, values in evaluation.items()}
     return {
-        "T2_AUC": t2_auc,
-        "Q_AUC": q_auc,
-        "alarm_rate": alarm_rate,
-        "empirical_ARL0": arl0,
-        "T2_TPR_at_TNR90": float(t2_tpr90),
-        "Q_TPR_at_TNR90": float(q_tpr90),
-        "best_MSPC_TPR_at_TNR90": float(best_tpr),
-        "best_MSPC_source": best_src,
+        "T2_AUC": roc_auc_or_default(y_eval, evaluation["T2"], default=np.nan),
+        "Q_AUC": roc_auc_or_default(y_eval, evaluation["Q"], default=np.nan),
+        "alarm_rate": float(alarm.mean()),
+        "observed_mean_inter_alarm_spacing": float(np.diff(positions).mean()) if len(positions) > 1 else np.nan,
+        "T2_TPR_at_TNR90": diagnostic["T2"],
+        "Q_TPR_at_TNR90": diagnostic["Q"],
+        "calibration_selected_MSPC_TPR_at_TNR90": diagnostic[source],
+        "calibration_selected_MSPC_source": source,
+        "frozen_threshold": thresholds[source],
+        "T2_frozen_threshold": thresholds["T2"],
+        "Q_frozen_threshold": thresholds["Q"],
+        "frozen_BER": metrics["BER"],
+        "frozen_TPR": metrics["True+"],
+        "frozen_TNR": metrics["True-"],
+        "TP": int(metrics["lockbox_fails"] - metrics["FN"]),
+        "TN": int(metrics["lockbox_n"] - metrics["lockbox_fails"] - metrics["FP"]),
+        "FP": int(metrics["FP"]),
+        "FN": int(metrics["FN"]),
+        "TNR90_semantics": "retrospective_evaluation_ROC_diagnostic",
+        "source_selection_region": "held_out_calibration",
+        "T2_calibration_TPR_at_TNR90": calibration_tpr["T2"],
+        "Q_calibration_TPR_at_TNR90": calibration_tpr["Q"],
     }
 
 
@@ -676,6 +753,7 @@ def _manager_weekly_metrics(
     sample_count = len(y_true)
     return {
         "predicted_flag_fraction": float(np.mean(preds)) if sample_count else 0.0,
+        "mean_weekly_flag_fraction": weekly_flag_fraction(scores, threshold, weeks),
         "mean_weekly_flagged_samples": float(np.mean(flagged_counts)) if flagged_counts.size else 0.0,
         "mean_weekly_fail_captures": float(np.mean(tp_counts)) if tp_counts.size else 0.0,
         "mean_weekly_fail_misses": float(np.mean(fn_counts)) if fn_counts.size else 0.0,
@@ -717,17 +795,20 @@ def _build_manager_outputs(
     for fitted in fitted_models:
         for policy, threshold in _threshold_values_for_model(fitted):
             weekly = _manager_weekly_metrics(
-                y_true=y_dev,
-                scores=fitted.dev_scores,
+                y_true=y_dev[fitted.calibration_indices],
+                scores=fitted.calibration_scores,
                 threshold=float(threshold),
-                week_labels=week_dev,
+                week_labels=week_dev[fitted.calibration_indices],
             )
             rows.append(
                 {
+                    "evaluation_region": "held_out_DEV_calibration",
+                    "workload_semantics": "illustrative_mean_weekly_policy_not_per_week_cap",
                     "role": fitted.config.role,
                     "selector": fitted.config.selector,
                     "threshold_policy": policy,
                     "predicted_flag_fraction": float(weekly["predicted_flag_fraction"]),
+                    "mean_weekly_flag_fraction": float(weekly["mean_weekly_flag_fraction"]),
                     "mean_weekly_flagged_samples": float(weekly["mean_weekly_flagged_samples"]),
                     "mean_weekly_fail_captures": float(weekly["mean_weekly_fail_captures"]),
                     "mean_weekly_fail_misses": float(weekly["mean_weekly_fail_misses"]),
@@ -738,12 +819,15 @@ def _build_manager_outputs(
 
 def _temporal_claim_restrictions(lockbox_df: pd.DataFrame, drift_df: pd.DataFrame, mspc_df: pd.DataFrame) -> list[str]:
     """Return temporal claim restrictions implied by lockbox, drift, and MSPC artifacts."""
-    restrictions: list[str] = []
+    restrictions: list[str] = [
+        "retrospective_later_block_not_fresh_confirmatory_lockbox",
+        "no_production_readiness_or_superiority_claim",
+    ]
     mspc_lock = mspc_df[mspc_df["eval_scope"] == "lockbox"]
     if mspc_lock.empty:
         return restrictions
 
-    mspc_tpr = float(mspc_lock.iloc[0]["best_MSPC_TPR_at_TNR90"])
+    mspc_tpr = float(mspc_lock.iloc[0]["calibration_selected_MSPC_TPR_at_TNR90"])
     lockbox_scientific = lockbox_df[lockbox_df["threshold_policy"] == ThresholdPolicy.SCIENTIFIC]
     for row in lockbox_scientific.itertuples(index=False):
         scope = ModelScope.PRIMARY if row.role == "primary" else ModelScope.CHALLENGER
@@ -856,14 +940,10 @@ def _modal_selected_config(group: pd.DataFrame) -> dict[str, Any]:
 def _summarize_temporal_selector_results(
     *,
     outer_eval_df: pd.DataFrame,
-    deciding_outer_fold: int,
 ) -> list[dict[str, Any]]:
-    """Summarize outer-evaluation selector results for temporal role assignment."""
+    """Summarize exploratory outer family diagnostics; never assign final roles."""
     selector_stats: list[dict[str, Any]] = []
     for selector, grp in outer_eval_df.groupby("selector", sort=False):
-        deciding_vote = grp[(grp["seed"] == SEEDS_STAGE_B[0]) & (grp["outer_fold"] == deciding_outer_fold)]
-        vote_ber = float(deciding_vote["BER"].iloc[0]) if not deciding_vote.empty else np.inf
-        vote_true_pos = float(deciding_vote["True+"].iloc[0]) if not deciding_vote.empty else -np.inf
         selector_stats.append(
             {
                 "selector": selector,
@@ -872,44 +952,9 @@ def _summarize_temporal_selector_results(
                 "mean_True+": float(grp["True+"].mean()),
                 "mean_True-": float(grp["True-"].mean()),
                 **_modal_selected_config(grp),
-                "vote_outer_BER": vote_ber,
-                "vote_outer_True+": vote_true_pos,
             }
         )
     return selector_stats
-
-
-def _selector_rank_key(row: dict[str, Any]) -> tuple[float, float, float, float, int, float, int, float, str]:
-    """Rank temporal selectors by study priority and deterministic simplicity."""
-    modal_config = {
-        "k": row["modal_k"],
-        "C": row["modal_C"],
-        "scaler": row["modal_scaler"],
-        "n_neighbors": row["modal_n_neighbors"],
-    }
-    modal_k, modal_c, scaler_pref, nn_key = _selector_config_simplicity_key(modal_config)
-    return (
-        float(row["mean_BER"]),
-        -float(row["mean_True+"]),
-        float(row["vote_outer_BER"]),
-        -float(row["vote_outer_True+"]),
-        modal_k,
-        modal_c,
-        scaler_pref,
-        nn_key,
-        str(row["selector"]),
-    )
-
-
-def _choose_temporal_roles(selector_stats: list[dict[str, Any]]) -> tuple[str, str | None]:
-    """Choose primary and optional challenger selectors from temporal summaries."""
-    if not selector_stats:
-        raise ValueError("No temporal selector statistics available for role assignment")
-    ranked = sorted(selector_stats, key=_selector_rank_key)
-    primary = ranked[0]["selector"]
-    eligible = [row for row in ranked[1:] if float(row["mean_BER"]) <= TEMPORAL_CHALLENGER_MAX_BER]
-    challenger = eligible[0]["selector"] if eligible else None
-    return str(primary), None if challenger is None else str(challenger)
 
 
 def _model_selection_artifact_row(
@@ -952,31 +997,42 @@ def _run_stage_b_model_selection(
 
     inner_rows: list[dict[str, Any]] = []
     outer_eval_rows: list[dict[str, Any]] = []
+    prediction_rows = []
+    calibration_frames, diagnostics = [], []
+    joint_candidates = {}
     for selector in selectors_run:
         configs = build_stage_b_config_grid(selector)
         config_groups = _group_stage_b_configs_by_preparation(configs)
+        max_k = max(int(cfg["k"]) for cfg in configs)
 
         for fold in bundle.fold_plan.folds:
+            outer_fit, _outer_cal = fit_calibration_indices(len(fold.train_index))
+            x_outer_fit = x_dev[fold.train_index[outer_fit]]
+            y_outer_fit = y_dev[fold.train_index[outer_fit]]
             x_outer_train = x_dev[fold.train_index]
             y_outer_train = y_dev[fold.train_index]
             x_outer_test = x_dev[fold.test_index]
             y_outer_test = y_dev[fold.test_index]
 
-            for seed in SEEDS_STAGE_B:
+            for seed in (42,):
                 if progress:
                     progress(f"temporal selection selector={selector} outer_fold={fold.outer_fold} seed={seed}")
                 config_scores = []
+                preparation_cache: dict[tuple[str, int | None], list[dict[str, Any]]] = {}
                 resample_id = f"outer_{fold.outer_fold}_seed_{seed}"
                 for (k_value, scaler_name, n_neighbors), cfg_group in config_groups.items():
-                    prepared_views = _prepare_inner_cv_views(
-                        x_outer_train_raw=x_outer_train,
-                        y_outer_train=y_outer_train,
-                        selector=selector,
-                        k=k_value,
-                        scaler_name=scaler_name,
-                        n_neighbors=n_neighbors,
-                        seed=seed,
-                    )
+                    preparation_key = (scaler_name, n_neighbors)
+                    if preparation_key not in preparation_cache:
+                        preparation_cache[preparation_key] = _prepare_inner_cv_views(
+                            x_outer_train_raw=x_outer_fit,
+                            y_outer_train=y_outer_fit,
+                            selector=selector,
+                            k=max_k,
+                            scaler_name=scaler_name,
+                            n_neighbors=n_neighbors,
+                            seed=seed,
+                        )
+                    prepared_views = _selector_budget_views(preparation_cache[preparation_key], k_value)
                     for cfg in cfg_group:
                         mean_auc, mean_ber = _score_prepared_inner_cv(
                             prepared_views=prepared_views,
@@ -988,6 +1044,8 @@ def _run_stage_b_model_selection(
                         row["mean_inner_ROC_AUC"] = mean_auc
                         row["mean_inner_BER"] = mean_ber
                         config_scores.append(row)
+                    if k_value == max_k:
+                        del preparation_cache[preparation_key]
 
                 best = select_best_inner_config(config_scores)
                 inner_rows.extend(
@@ -1000,7 +1058,7 @@ def _run_stage_b_model_selection(
                     for row in config_scores
                 )
 
-                metrics, threshold = _fit_eval_with_labels(
+                metrics, threshold, scores, calibration_scores = _fit_eval_with_labels(
                     x_train_raw=x_outer_train,
                     y_train=y_outer_train,
                     x_eval_raw=x_outer_test,
@@ -1010,6 +1068,10 @@ def _run_stage_b_model_selection(
                     c_value=float(best["C"]),
                     scaler_name=best["scaler"],
                     n_neighbors=best.get("n_neighbors"),
+                    return_calibration=True,
+                )
+                joint_candidates.setdefault(fold.outer_fold, []).append(
+                    (best, scores, threshold, fold, calibration_scores)
                 )
                 outer_eval_rows.append(
                     _outer_eval_artifact_row(
@@ -1023,7 +1085,52 @@ def _run_stage_b_model_selection(
                     )
                 )
 
-    return pd.DataFrame(inner_rows), pd.DataFrame(outer_eval_rows)
+    from secom.workflows.benchmark_procedures import prediction_frame
+
+    for candidates in joint_candidates.values():
+        winner = select_ber_config(
+            [item[0] for item in candidates],
+            simplicity_key=lambda row: (*_selector_config_simplicity_key(row), str(row["selector"])),
+        )
+        best, scores, threshold, fold, calibration_scores = next(item for item in candidates if item[0] is winner)
+        frame = prediction_frame(
+            sample_ids=bundle.dev_with_weeks.loc[fold.test_index, "raw_row_id"].to_numpy(),
+            fold=fold.outer_fold,
+            y_true=y_dev[fold.test_index],
+            scores=scores,
+            threshold=threshold,
+            config={**best, "classifier": "logreg", "replication_mode": "with_missing_indicators"},
+            procedure="temporal_joint",
+            study="DEV_chronological",
+        )
+        fit, calibration = fit_calibration_indices(len(fold.train_index))
+        timestamp = bundle.dev_with_weeks.timestamp
+        frame["timestamp"] = timestamp.loc[fold.test_index].to_numpy()
+        frame["fit_end_timestamp"] = timestamp.loc[fold.train_index[fit[-1]]]
+        frame["calibration_start_timestamp"] = timestamp.loc[fold.train_index[calibration[0]]]
+        frame["calibration_end_timestamp"] = timestamp.loc[fold.train_index[calibration[-1]]]
+        frame["fit_n"] = len(fit)
+        frame["calibration_n"] = len(calibration)
+        from secom.workflows.calibration import calibration_receipt
+
+        cal_frame, diagnostic = calibration_receipt(
+            data=bundle.dev_with_weeks,
+            fit_ids=fold.train_index[fit],
+            calibration_ids=fold.train_index[calibration],
+            scores=calibration_scores,
+            threshold=threshold,
+            config={**best, "classifier": "logreg", "replication_mode": "with_missing_indicators"},
+            procedure="temporal_joint",
+            fold=fold.outer_fold,
+        )
+        calibration_frames.append(cal_frame)
+        diagnostics.append(diagnostic)
+        prediction_rows.append(frame)
+    outer_frame = pd.DataFrame(outer_eval_rows)
+    outer_frame.attrs["calibration_frames"] = calibration_frames
+    outer_frame.attrs["calibration_diagnostics"] = diagnostics
+    outer_frame.attrs["joint_predictions"] = pd.concat(prediction_rows, ignore_index=True)
+    return pd.DataFrame(inner_rows), outer_frame
 
 
 def run_temporal_robustness(
@@ -1134,28 +1241,61 @@ def _run_temporal_robustness(
         progress=progress,
     )
     write_csv(inner_df, reports / ArtifactName.TEMPORAL_INNER_CV)
+    from secom.workflows.benchmark_procedures import prediction_metrics
 
-    deciding_outer_fold = max(f.outer_fold for f in bundle.fold_plan.folds)
+    temporal_predictions = outer_eval_df.attrs["joint_predictions"]
+    temporal_metrics = pd.DataFrame(
+        [
+            {
+                "fold": fold,
+                "procedure": "temporal_joint",
+                "ROC_AUC": roc_auc_or_default(frame.y_true.to_numpy(), frame.score.to_numpy()),
+                **prediction_metrics(frame),
+            }
+            for fold, frame in temporal_predictions.groupby("fold")
+        ]
+    )
+    write_csv(temporal_predictions, reports / ArtifactName.TEMPORAL_PREDICTIONS)
+    write_csv(temporal_metrics, reports / ArtifactName.TEMPORAL_PROCEDURE_METRICS)
+
     selector_stats = _summarize_temporal_selector_results(
         outer_eval_df=outer_eval_df,
-        deciding_outer_fold=deciding_outer_fold,
     )
-    primary, challenger = _choose_temporal_roles(selector_stats)
+    dev_fit, dev_calibration = fit_calibration_indices(len(y_dev))
+    role_candidates = [
+        _phase2_freeze_for_role("candidate", selector, x_dev[dev_fit], y_dev[dev_fit], progress)
+        for selector in selectors_run
+    ]
+
+    def role_key(item):
+        frame, cfg = item
+        selected = frame[frame.is_frozen_config]
+        return (
+            float(selected.mean_inner_BER.mean()),
+            cfg.k,
+            cfg.c_value,
+            cfg.scaler,
+            cfg.n_neighbors or 0,
+            cfg.selector,
+        )
+
+    role_candidates.sort(key=role_key)
+    primary = role_candidates[0][1].selector
+    challenger = role_candidates[1][1].selector if len(role_candidates) > 1 else None
 
     model_selection_rows = [
         _model_selection_artifact_row(row=row, primary=primary, challenger=challenger) for row in selector_stats
     ]
     write_csv(pd.DataFrame(model_selection_rows), reports / ArtifactName.TEMPORAL_MODEL_SELECTION)
 
-    freeze_frames = []
-    frozen_roles: list[RoleConfig] = []
-    freeze_primary_df, cfg_primary = _phase2_freeze_for_role("primary", primary, x_dev, y_dev, progress)
-    freeze_frames.append(freeze_primary_df)
-    frozen_roles.append(cfg_primary)
-    if challenger is not None:
-        freeze_ch_df, cfg_ch = _phase2_freeze_for_role("challenger", challenger, x_dev, y_dev, progress)
-        freeze_frames.append(freeze_ch_df)
-        frozen_roles.append(cfg_ch)
+    from dataclasses import replace
+
+    freeze_frames, frozen_roles = [], []
+    for role, (frame, cfg) in zip(("primary", "challenger"), role_candidates[:2]):
+        frame = frame.copy()
+        frame["role"] = role
+        freeze_frames.append(frame)
+        frozen_roles.append(replace(cfg, role=role))
     freeze_df = pd.concat(freeze_frames, ignore_index=True)
     write_csv(freeze_df, reports / ArtifactName.TEMPORAL_FREEZE)
 
@@ -1169,6 +1309,46 @@ def _run_temporal_robustness(
         )
         for cfg in frozen_roles
     ]
+
+    from secom.workflows.calibration import calibration_receipt
+    from secom.workflows.temporal_krr import run_krr_comparator
+
+    calibration_frames = outer_eval_df.attrs["calibration_frames"]
+    calibration_diagnostics = outer_eval_df.attrs["calibration_diagnostics"]
+    for model in fitted_models:
+        cal_frame, diagnostic = calibration_receipt(
+            data=bundle.dev_with_weeks,
+            fit_ids=dev_fit,
+            calibration_ids=dev_calibration,
+            scores=model.calibration_scores,
+            threshold=model.scientific_threshold,
+            config={
+                **model.config.to_hash_payload(),
+                "classifier": "logreg",
+                "replication_mode": "with_missing_indicators",
+            },
+            procedure=f"logreg_final_{model.config.role}",
+            fold=0,
+        )
+        calibration_frames.append(cal_frame)
+        calibration_diagnostics.append(diagnostic)
+    krr_search, krr_predictions, krr_metrics, krr_cal, krr_diag = run_krr_comparator(
+        data=bundle.dev_with_weeks,
+        x_raw=x_dev,
+        folds=bundle.fold_plan.folds,
+        selectors=selectors_run,
+        progress=progress,
+    )
+    calibration_frames.extend(krr_cal)
+    calibration_diagnostics.extend(krr_diag)
+    for frame, name in (
+        (krr_search, ArtifactName.TEMPORAL_KRR_SEARCH),
+        (krr_predictions, ArtifactName.TEMPORAL_KRR_PREDICTIONS),
+        (krr_metrics, ArtifactName.TEMPORAL_KRR_METRICS),
+        (pd.concat(calibration_frames, ignore_index=True), ArtifactName.TEMPORAL_CALIBRATION_SCORES),
+        (pd.DataFrame(calibration_diagnostics), ArtifactName.TEMPORAL_CALIBRATION_DIAGNOSTICS),
+    ):
+        write_csv(frame, reports / name)
 
     if progress:
         progress("temporal frozen models fitted; scoring lockbox, drift and MSPC")
@@ -1196,11 +1376,24 @@ def _run_temporal_robustness(
     for fold in bundle.fold_plan.folds:
         tr = fold.train_index
         te = fold.test_index
-        x_train_pass = x_dev[tr][y_dev[tr] == 0]
-        m = _mspc_fit_and_score(x_train_pass=x_train_pass, x_eval=x_dev[te], y_eval=y_dev[te])
+        fit, calibration = fit_calibration_indices(len(tr))
+        x_train_pass = x_dev[tr[fit]][y_dev[tr[fit]] == 0]
+        m = _mspc_fit_and_score(
+            x_train_pass=x_train_pass,
+            x_eval=x_dev[te],
+            y_eval=y_dev[te],
+            x_calibration=x_dev[tr[calibration]],
+            y_calibration=y_dev[tr[calibration]],
+        )
         mspc_rows.append({"eval_scope": "outer_fold", "fold_index": str(fold.outer_fold), **m})
-    x_dev_pass = x_dev[y_dev == 0]
-    m = _mspc_fit_and_score(x_train_pass=x_dev_pass, x_eval=x_lock, y_eval=y_lock)
+    x_dev_pass = x_dev[dev_fit][y_dev[dev_fit] == 0]
+    m = _mspc_fit_and_score(
+        x_train_pass=x_dev_pass,
+        x_eval=x_lock,
+        y_eval=y_lock,
+        x_calibration=x_dev[dev_calibration],
+        y_calibration=y_dev[dev_calibration],
+    )
     mspc_rows.append({"eval_scope": "lockbox", "fold_index": "LOCKBOX", **m})
     mspc_df = pd.DataFrame(mspc_rows)
     write_csv(mspc_df, reports / ArtifactName.TEMPORAL_MSPC)

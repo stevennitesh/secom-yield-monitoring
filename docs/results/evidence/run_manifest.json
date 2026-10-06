@@ -1,30 +1,43 @@
 {
   "artifact_sha256": {
-    "benchmark_ablation.csv": "0ae6ea23dec887d0253b5be746811bbfb551f058dde8405b3dc054f6c04096ad",
-    "benchmark_best_config.csv": "76b25a0dd080a8419897904df594d2978aac2a416f11542e1be011a7313123cf",
-    "benchmark_fold_metrics.csv": "4a9a2e36aa3533cdae65fefc3f010eedc23b92776b1cfd04d1f1a570c3f805b2",
-    "benchmark_full_fit_summary.csv": "5cd5261b89bfee64d6786b57b4181f7b68367011985d9643f1d5689a6ae630c4",
-    "benchmark_summary.csv": "e9dc19b6a8e438a35b1376f53216219dbc55cc52259c27ab91eb3bc70902cdb3",
-    "benchmark_sweep.csv": "2b3aede9ef3fbb85e75a876eb054f3b6b1cdfb9f5b7b256e9b49be1383e8fc1e",
-    "benchmark_tuned_ablation.csv": "a1c56f62d180099270cd33eb8972ac3f81ecbfb25952d74de1f8d58c18a1f301",
-    "benchmark_tuned_best_config.csv": "74b0be217d87d6cf5790283f3ffc9f6c663937a26574e6042d880dfe9762d911",
-    "benchmark_tuned_feature_report.csv": "b6390050db4bbfc44feced891db585df75753107488301d1a16ac364d50ebd92",
-    "benchmark_tuned_feature_stability.csv": "e7b8c5dca5df34bb9c65f719673d55523c8cac402c26002f4c4e303b197f2fde",
-    "benchmark_tuned_fold_metrics.csv": "4d5bf3f50d01c4726d3e572ac8f175c83ec799049385fd65733f8851d80c2269",
-    "benchmark_tuned_full_fit_summary.csv": "ad09da0d86c00c4e79f3704eb5e2219f677b714b2b30ff0b478ec083d8392c66",
-    "benchmark_tuned_search.csv": "cf48d0ce01f70948289ec4ad5e0bd83d4842ecb0c34e5e24c0e50c94ccb778a2",
-    "benchmark_tuned_summary.csv": "b378d84e1fafae5225938f4cb20f99e18ee9cdb029f906bb945c0d95a7cfb116",
-    "feature_report.csv": "b7ddd5313ce2470801ed5ba1734cb536283a8fec97e3e18b22c5820cd110cecd",
-    "feature_stability.csv": "9a1cb5534b03cbd1580d2ce6a4298f83cf543c200e31ab08ebea6e234cb3bd6f",
-    "temporal_cost_curves.csv": "619e7148cf36a9241f36443395b55f677680943f8ea274baa862e0cee3ba54f8",
-    "temporal_drift_summary.csv": "cb9f3d08cc517840a55a1b0863ec4bb10ce3537d84951a8302260f8f8601e96e",
-    "temporal_freeze.csv": "1fa51d3fd31606e827032c9b63f08a0e1f0b0d06b46c4d0ccb2a202223e23ba3",
-    "temporal_inner_cv.csv": "70988cce7d473f991743b3c9054bb4d584a3bfa3fab29b55993d94dd37b5e92b",
-    "temporal_lockbox.csv": "233bf020ce354108b01d6afef4d92255102cc9f706d8aeb89ed974279764fd2c",
-    "temporal_manager_outputs.csv": "73dc80ad7b30c461a8893756ffee68b838c8ffe44ab592fe16c65b7658a43190",
-    "temporal_model_selection.csv": "fbff8bcb0b65e7cbf1d69656b76391c47fd4d10dfd7a79eb12b5e71bf77fb151",
-    "temporal_mspc.csv": "6f4d8ea05c1f5747f2a1b79a8c2e91589a07fc47ac69dfec2cba8c4d5b1d1bd5",
-    "temporal_selector_screening.csv": "9ec284309b8cd05ff7edbc07d4ed13c212b877156d50207afb6fcf5f4af92e87",
+    "benchmark_ablation.csv": "1716638d60ed18db6624317b2daa668e79fc6bec4148e18f6018767b6c25265e",
+    "benchmark_best_config.csv": "34b72788442231af37d70d1687a3765bbe555b69d10b9a320348e470fb14bf8f",
+    "benchmark_fold_metrics.csv": "013633f9ac0e598d3a6297fdf70a8a0605ce0a5cd3f4fc3547706cf04be30353",
+    "benchmark_full_fit_summary.csv": "59d2bed86d44b416a3d8fbc33607604d80867949d3618337848d3b341b586e8c",
+    "benchmark_predictions.csv": "31e93efb7b9cfd5e2800f1e4fd79e47de357cd3c7731a3978fa706822a3df4d4",
+    "benchmark_procedure_fold_metrics.csv": "fb7e5ba4200ab4624767f58b768bc0b708c900ecaa4db9b267e68f49e381ce85",
+    "benchmark_procedure_summary.csv": "78b39534d2a503e7cb993e50256caff4895c8ed811c1db4246170da71ecbbca4",
+    "benchmark_summary.csv": "4ee9a2facd12b1113e5e02adacb0857048b612374bd4bd7316f9c4480c43fc82",
+    "benchmark_sweep.csv": "cdedd6b578be9cd2025955b7758c8f89cb204696a7d90cbd98294a24ba41b2c5",
+    "benchmark_tuned_ablation.csv": "7e2c0dd337f53a321f1d6b2c31f57353d693675816a391a538884893c1f15889",
+    "benchmark_tuned_best_config.csv": "6fbced0b6b44a2715075a492236397fb7879457d824e1ef93f6785707ae651fa",
+    "benchmark_tuned_feature_report.csv": "64c9a6334355bd625ecd8db56a2f8fa964c7d9f8072bd05900ddefcbf1b563b5",
+    "benchmark_tuned_feature_stability.csv": "43399a12bbc2ab14d1558c80f873e04f14a8b98f551f7b337ce05167669b5fb7",
+    "benchmark_tuned_fold_metrics.csv": "be246193784320fc20c646872ce305c804c7edc0812bdb152dbc792aff0bfe30",
+    "benchmark_tuned_full_fit_summary.csv": "6092b5be74169fd2b837126b85652656a53eab0b9347ae60c65edaf2db21cfb9",
+    "benchmark_tuned_predictions.csv": "559d9eba49a8c981793fe5b0df2cae657d77094acf88d90534c375e17880521d",
+    "benchmark_tuned_procedure_fold_metrics.csv": "dc3392eae25ffe3ab43e4fb03df8c91192a2f8b500d1ce7e12bf0cf89739789e",
+    "benchmark_tuned_procedure_summary.csv": "9177ac507cb453abb960d3951eac2bc7bfed7d95acaca0b0ac6c37312ac61a96",
+    "benchmark_tuned_search.csv": "e6eb5b4092feba498a54c3d8b87d2b9c1ce3e1082da3fb7bda306173b2c42a2a",
+    "benchmark_tuned_summary.csv": "e2bd8e508ab639e8475867746c1358a80a15b7e524bda575ceb7ca560b3526e7",
+    "feature_report.csv": "c1b224695b287d7de06ca450fed85b3d2c2e5c0249b357148b3b62008951e50e",
+    "feature_stability.csv": "34ccffdcc0753db08e1b6db362d68d1c31394f557d600aae871038b9a5e84917",
+    "temporal_calibration_diagnostics.csv": "ff2165b6e189d67916cdffc136b2f1b14355bb862da9969cc82ba872f2d84659",
+    "temporal_calibration_scores.csv": "6ac9e28e55162b7e06845914594ee53d4c7a37fb1752a56f1447fe4af6ad34d5",
+    "temporal_cost_curves.csv": "7d119218b36a7c3f971c9a60c98d8cb50956940ed1eee5214e7415762c538035",
+    "temporal_drift_summary.csv": "beac70311c57c8c99aa509d6b2168d5d72d889f3fa822c75f6bba62a48a785cb",
+    "temporal_freeze.csv": "c8bb8313cad90227f2a02005babfed7c3fbbae9e2d38605e771e1d2c95ad902c",
+    "temporal_inner_cv.csv": "82f4ed4ec523861aed3b7dafae1c1319029795b2acb4ba5bc421f91e188785aa",
+    "temporal_krr_fold_metrics.csv": "a09a5c24278af02ee5074454e69c41b9e8641eb2bb5bb694d3b626a73b561f46",
+    "temporal_krr_predictions.csv": "de1765d1525c5e0d12cf464cf1854b79d12ea7ef6b46198d42cbde4697d9c33e",
+    "temporal_krr_search.csv": "fe3c7e0b666673fc0c4a7b747d72f5f2e64cbc6630bddb5d35f6ecda37dd7dd4",
+    "temporal_lockbox.csv": "bc4e4775e7263eae39d8fecf08a75d35db96ae2408b7ded96acf62145a715c8a",
+    "temporal_manager_outputs.csv": "0a249c36e58fc98d62ad1c64ed3d6286c58bb27e253568e9264e0d3c616811ac",
+    "temporal_model_selection.csv": "888946257be6fd9c8a1b000fb8090ce2a1abd04568bf3b2e45662c70960ba9af",
+    "temporal_mspc.csv": "3bc4e69c3a0f13d6abdc5b2cb087e60c33ceac01e4cd3eaa4394b1a7b97034ee",
+    "temporal_predictions.csv": "8ead9ebef70ff171ca091af59afd5c641d54d49a02a57e594fe7a1145e29d779",
+    "temporal_procedure_fold_metrics.csv": "e5c42c017b9ff49dc7b1975df8cea67e63117e658d59edcd3bcd5e6c0d009005",
+    "temporal_selector_screening.csv": "a1870726785a48adfb4b998d77e26ba51c4098fdf49c8ddf133a83150020380c",
     "temporal_split_metadata.csv": "9760e48e8d5b0dbbe2022d78d45bb557a4822ed44f2cbf90147d040516b478b0"
   },
   "benchmark_original_status": "passed",
@@ -1093,40 +1106,31 @@
   },
   "execution": {
     "duration_seconds": {
-      "benchmark": 761.831,
-      "temporal": 494.964,
-      "total_modeling": 1256.79
+      "benchmark": 1101.04,
+      "temporal": 282.98,
+      "total_modeling": 1384.02
     },
-    "finished_at_utc": "2026-10-04T00:36:36.606464+00:00",
+    "finished_at_utc": "2026-10-05T02:50:55.449524+00:00",
     "model_score_cache": {
       "entries": 4096,
-      "hits": 5263,
+      "hits": 10991,
       "max_entries": 4096,
-      "misses": 17039,
-      "score_bytes": 46280680
+      "misses": 36181,
+      "score_bytes": 7679584
     },
     "platform": "Windows-11-10.0.26200-SP0",
     "settings": {
+      "benchmark_headline": "joint_inner_selected_procedure",
       "benchmark_inner_folds": 3,
+      "benchmark_inner_objective": "BER",
       "benchmark_outer_folds": 10,
       "benchmark_seed": 42,
-      "bootstrap_draws": 1000,
-      "bootstrap_seed": 42,
+      "benchmark_threshold_source": "pooled_inner_out_of_fold",
       "classifiers": [
         "krr",
         "logreg"
       ],
-      "krr_alpha_grid": [
-        0.1,
-        1.0,
-        10.0
-      ],
-      "krr_gamma_grid": [
-        null,
-        0.01,
-        0.1,
-        1.0
-      ],
+      "fold_uncertainty_semantics": "descriptive_mean_std_range",
       "lockbox_fraction": 0.15,
       "logreg_C_grid": [
         0.01,
@@ -1135,6 +1139,17 @@
         10.0
       ],
       "original_feature_budget": 40,
+      "original_krr_alpha_grid": [
+        0.1,
+        1.0,
+        10.0
+      ],
+      "original_krr_gamma_grid": [
+        null,
+        0.01,
+        0.1,
+        1.0
+      ],
       "original_selectors": [
         "S2N",
         "Ttest",
@@ -1153,44 +1168,53 @@
         20
       ],
       "relief_reference_version": "0.8.4",
+      "temporal_calibration_fraction": 0.2,
       "temporal_classifier": "balanced logistic regression",
-      "temporal_freeze_seeds": [
-        42,
-        11,
-        23,
-        37,
-        59
+      "temporal_eval_semantics": "retrospective_later_block",
+      "temporal_inner_plan": "three_chronological_expanding_splits_min_two_feasible",
+      "temporal_krr_calibration_fractions": [
+        0.2,
+        0.3
       ],
-      "temporal_stage_b_seeds": [
-        42,
-        11,
-        23,
-        37,
-        59
-      ],
+      "temporal_krr_scope": "DEV_only_joint_values_only_values_and_indicators_StandardScaler",
       "tuned_feature_budgets": [
         10,
         20,
         40
+      ],
+      "tuned_gamma_semantics": "multiplier / actual_selected_feature_count_per_fit",
+      "tuned_krr_alpha_grid": [
+        0.1,
+        1.0,
+        10.0,
+        100.0
+      ],
+      "tuned_krr_budget": "16 versus 12 original classifier configurations per selector budget",
+      "tuned_krr_gamma_multipliers": [
+        0.1,
+        0.2,
+        1.0,
+        2.0
       ],
       "tuned_selectors": [
         "S2N",
         "Ttest",
         "F-test",
         "ReliefF",
-        "Gram-Schmidt"
+        "Gram-Schmidt",
+        "Pearson"
       ]
     },
-    "started_at_utc": "2026-10-04T00:15:39.798037+00:00",
+    "started_at_utc": "2026-10-05T02:27:51.366524+00:00",
     "thread_environment": {
       "MKL_NUM_THREADS": "1",
       "OMP_NUM_THREADS": "1",
       "OPENBLAS_NUM_THREADS": "1",
-      "SECOM_RELIEF_BACKEND": "vectorized",
+      "SECOM_RELIEF_BACKEND": null,
       "SECOM_RELIEF_N_JOBS": null
     }
   },
-  "git_commit": "3a016025b702e4c3166b4d931020987dae9ed6e5",
+  "git_commit": "9f3c064a2f091c535a868331550416ac4b28cdd9",
   "git_dirty": true,
   "industrialization_notes": [],
   "library_versions": {
@@ -1203,7 +1227,7 @@
     "sklearn": "1.9.0",
     "skrebate": "0.8.4"
   },
-  "manifest_version": "2.0",
+  "manifest_version": "3.0",
   "primary_study_status": "passed",
   "python_executable": "E:\\GitHub\\code\\secom-yield-monitoring\\.venv\\Scripts\\python.exe",
   "resolved_packages": {
@@ -1242,15 +1266,15 @@
   },
   "source_tree": {
     "files": {
-      "docs/spec/01-study-goal.md": "e8a4e6940f28bbfdecd97ab1112d52c3b3a56db384214f9f0014a668da559daa",
-      "docs/spec/02-benchmark-replication-study.md": "6017960f858a7555f4679a399750ae8b00bbc675e39649ab8ac28180386a3748",
-      "docs/spec/03-feature-stability-and-interpretation.md": "cac391d24fd5eb6a393fb2259a1598b7662f108f5e656e67595f04ea34a1df1d",
-      "docs/spec/04-temporal-robustness-study.md": "628fa22ec4dcc630fc313533f968a486f894ceadafbeaaef4fc219d3f8c1dfc5",
-      "docs/spec/05-industrialization-gap-analysis.md": "758868b67991f58ba91844bee2d226d9026208b3cc768ea21b4110a6249afe0a",
-      "docs/spec/06-report-structure.md": "2e0b2237bae61ab8709434557bfd6e08e29d026e317ef9337127d558907a08f7",
-      "docs/spec/07-artifact-contracts.md": "f61d585efa2d3aff2f775523995cd287ff579fe6ea822f41f98c225d1f5510d3",
-      "docs/spec/08-audit-and-claim-semantics.md": "874ba310834b7f8c5c185a56cc0062bc4db9c5ce1b75e11003f91e560b483f1c",
-      "docs/spec/README.md": "e0ca39f8c7c8047b5cbc637ffa86583a201d451b639d8b08b1b3ed19fbed2a05",
+      "docs/spec/01-study-goal.md": "ce52e4431dc7b291fa7d74a57e145a40739f4af096b4cf33b9335cd8b70b9fe7",
+      "docs/spec/02-benchmark-replication-study.md": "72bcc02d23bfebc3e489dc2377811b8b5fc758d10f8b0685a626450b9bfd6211",
+      "docs/spec/03-feature-stability-and-interpretation.md": "b3c15a72e96545e5915564be90046829a1e854ba2b2ca216942e28fa169e84b8",
+      "docs/spec/04-temporal-robustness-study.md": "5d28cc45fabf2b8ac09bebf625eb68ceae9324be4621c937d95745075fc1cd5a",
+      "docs/spec/05-industrialization-gap-analysis.md": "388d6af7863173f823aa0d8a57ecb4ed6b0d6e6fa0efc0b595ec7f444e294dbc",
+      "docs/spec/06-report-structure.md": "c66aa09fba578ec11c5d0b4732ddd4f59918eb8b10840400e59c3791e69107e7",
+      "docs/spec/07-artifact-contracts.md": "561aa2c2b535eeb35fb31f177480fa1c7bf3ecb2e7489ef5f66203ded9ff9b68",
+      "docs/spec/08-audit-and-claim-semantics.md": "9fa602009e8e2c08437559a8a6c3e67eed472506893d47f87561274dee6eac18",
+      "docs/spec/README.md": "96ea29659f268e1316d0c76b97d2ef5d4fe3b9bce974a5cabfd66193a1647f8c",
       "pyproject.toml": "a1a3dc6be0ccb71c20fc030124a2216823faf05e896fc1dc75f56f7fdf37e6e9",
       "requirements.txt": "b5c841138a85d6ed9a12a7460ac254fa5ecf570bc1d7611c01db72f98de3d274",
       "scripts/_script_path.py": "ead15501e47fc8240ecbe5eb894d77607cf7c870a3f9c8523419d34170046033",
@@ -1267,49 +1291,56 @@
       "scripts/run_report_skeleton.py": "e72140f9351932136b5956773cd76f00a76c70792f2e01f335847d4ac1c692f4",
       "scripts/run_temporal_robustness.py": "f4173c011ae6c00df4ea2b508fe34b42ab704a4753e2f32c8895cdf494b1f3fa",
       "src/secom/__init__.py": "f863d8f46f746d30fcc05a58396ef07221ade83004aff1eeebc36003c55eeb4d",
-      "src/secom/artifacts.py": "a847740165ca2c50e32dd582b8aa67a309ac061bf59dbc7bea3fb03866db3159",
+      "src/secom/artifacts.py": "8c28f66a4a55aabfe8d2b152d86698222058499a39cf792ff69bedbbfb10b289",
       "src/secom/common/__init__.py": "77ab0139ea26201cbc3ca1d9111e5c61f463ea9bc6d08a3cf3661c091d4e5d81",
       "src/secom/common/drift.py": "aff361fa1a6aa27030e3298ffa42126b500d57466abb60db4d62b172013cfe7f",
       "src/secom/common/meta.py": "f90c88408842d7847b023837ef17115bc945cf44b4b599512dc9a0b772b2bba1",
       "src/secom/common/paths.py": "dc3db076fc6fd5cb0aef04c3e5e42372d9f65c57c250fef938cff4fbbb09f88e",
-      "src/secom/common/thresholds.py": "18a4549c8c2455c4c4629bb27582682bbb00801ee9d84a8bf8297e40da1ec22f",
-      "src/secom/config.py": "fb5dd79154a352b45cd565bb6e9900eb5272ed5bfde657b4df57426b5f3c3706",
-      "src/secom/cv.py": "dcfc75eef3f5db3e5276b4b5e6c5e0e9d84cb5b9e2a292b00d947b0edb949ff7",
-      "src/secom/evidence.py": "48e5574d8124daf4efed18fb2a1f9a07f7bce74df30f900e7cdcd4bc9178f67e",
+      "src/secom/common/thresholds.py": "3bcf1f67dd2b040fdb1cfe3af52192dbbdca62f6e110f2b04df89d46af7dd7a6",
+      "src/secom/config.py": "f66a7e6eb6adc265884571c6c117c00144e44d950b545ddd96618ca19d2fea96",
+      "src/secom/cv.py": "9c0b5576165e9dfdab1304fb3bf8fc04e02228b88ecdc33bb986ca8204cbe84f",
+      "src/secom/evidence.py": "60739e5ef84aca5bea9d452d06035eed85e9d5556792b68372763a5d6774b42b",
       "src/secom/feature_select/__init__.py": "59f9d8929414373ff1581a4e62e24279114ec15643bce253070bd4c3337ab8cb",
       "src/secom/feature_select/_ranking.py": "40dc2bbf96998e50970af10418709a8e2cc59d67025b114de85f57b08435dae2",
       "src/secom/feature_select/_relief_backend.py": "28f5e4e4f1b4daaa1649a04fd615f7d2364e0d56a6d8a5a8659a3610426a370f",
       "src/secom/feature_select/gram_schmidt.py": "f632c9bc7ec8932799876071b30b217f787681cf3326d2c31bbdd94be1aeeab7",
       "src/secom/feature_select/relief.py": "e810d5674a7837c8986a04e6a03b00e1dc2930b504a42ecce07f12de922a4c54",
       "src/secom/feature_select/univariate.py": "bee9a540b4948c8f5e38cea211d33c2158db089b816f6ee53e9e64b2fb996693",
-      "src/secom/io.py": "b41071e4ed206a83d8c23df6d808a458f9a179120e5238b5edfd27847d02f692",
-      "src/secom/metrics.py": "41a7a67c84ae2941fecf250e88a12a084d4944220ee53f9ad21a2250b69278f1",
-      "src/secom/models.py": "5856db1f5044e1c41f830590c7e2d5a3feebaeb2e8f1e0134907d9805a3f43d2",
+      "src/secom/io.py": "eba3ca6aba59c55b2bdd06aa3f8070ef61f0c950ebeaecafb425a2d0d3f6415b",
+      "src/secom/metrics.py": "13b0d2b0bc66304a71c647baf246c9778b3b3e3e8f87683ae527d318aad0beaf",
+      "src/secom/models.py": "0a266ac6e40e25c0dcc6e0be39ab838edd8a256cec2dfa9506418d7c91181e77",
       "src/secom/preprocess.py": "bd1ded538ec41b5b023ff6d81cd8935bf445c2c724b8422f707ec804a7239324",
-      "src/secom/provenance.py": "ae5742b2bfe41e91123ac4b539be94e58bbb7585d4ffce39e9a06d5985a88f3f",
-      "src/secom/qa.py": "da37fd7ac9b4b091751b9857c06aadd325d44fd9b456c5c101b11e82cf99ee42",
-      "src/secom/report_figures.py": "f98b8cf119bba40442c4d6dd76dd67d8dfed2d6d3c45ce9af9bd081a02818a5d",
-      "src/secom/reporting.py": "c0499cfa5730f7b8c93ec6bceee437fd33d2b6dacaab2c1fb673baf02f6dcb7e",
+      "src/secom/provenance.py": "609c8a1e787866464a5928af75a72dae0c72b43fcedf0f82f5e9c7022ab2c5e5",
+      "src/secom/qa.py": "d2339e16de13f37f0bc66208a4cb4408a61a43406c34be4105ae9ba5f9994ae3",
+      "src/secom/report_figures.py": "d12f71d2c8caf3b39438a8fb8ffb508ed2656c896d3e21e009f5b699f25719a2",
+      "src/secom/reporting.py": "5ff0042f8372a6cb69b66fc3fbd3d28bdb93298e881b606cfef8992dc33009d8",
       "src/secom/selection/__init__.py": "fe845840a8cc723fca9fb829eec4e52d21afa799ba7ba4a2ceb26cdd23dea3dd",
       "src/secom/selection/engine.py": "92a666d644cf22504e4bfe91815e14d24026e47d64c53ff8a0c9ab0cc7608c4c",
-      "src/secom/selection/tuning.py": "d8d07334d84b5db16bec7fcc104387205f52b964ad0f2d88e80c73c92f32d2f2",
-      "src/secom/types.py": "996641e6b69b850496f4cb176c807af23dda1755c492e96757df327961ba0fa8",
+      "src/secom/selection/tuning.py": "40d29bd0ccda54731bb73a45945ec747ee400be07b657bc99e892bed9c36c853",
+      "src/secom/types.py": "ec4accee5e1bdd82d744a2f7aed752e502cfbc016f6a4a714aa56541a4fcba42",
       "src/secom/workflows/__init__.py": "bb7190999e60ff4e7d4a3be83fc54bca3e5c74f1c2d0b3848d2b11a1a17069c0",
-      "src/secom/workflows/audit.py": "a786e0186686bc157865f91e5b11c20c11618a156796eed367f9ebbd21b38d31",
-      "src/secom/workflows/benchmark_common.py": "b3e6edb46feba6fdf2fb6e9478052b3c21e3eeba68739b5ad9b9abba100a9b58",
-      "src/secom/workflows/benchmark_replication.py": "8f6af1a295ad5c1a71b8abead7ca7ea96e0795091a0f0c450b234e804db77a5c",
-      "src/secom/workflows/benchmark_tuned.py": "925433bf7b992ecb942aaaceafe6ea417fae3c584a87f9cbac36eb13734997e6",
+      "src/secom/workflows/audit.py": "62bc744a9e8c35ba7114be9ae9894a9e1172bd3878685725cce63074bb86bddc",
+      "src/secom/workflows/benchmark_common.py": "6d5962e741a883b3398bf3efc69c6899084547a79a2d0d4bff650566e0066a0d",
+      "src/secom/workflows/benchmark_procedures.py": "849c66a78f94cbba92caaae05cd4345d4c714bd21dfce0d99fa73e36f84a3a98",
+      "src/secom/workflows/benchmark_replication.py": "bdc8ff69a90c49ac4ff18ed9de50cdcd41368788cfd68148ae5bd0b7db9ba92b",
+      "src/secom/workflows/benchmark_tuned.py": "b836fec43cddcba6ae9e85216696163234eb73f9ac5f57c5f71037dc78da6f9e",
+      "src/secom/workflows/calibration.py": "297ecefd07048a894c9e3e05e9f5ac69b29c044d899a5695117957fb81a6b62c",
       "src/secom/workflows/full_study.py": "892efc72a84cb86df869ce4af6ecb5c7a59d3dfbbf0f406496552cd82ae33c70",
-      "src/secom/workflows/manifest.py": "a1f2e18caa92c84e5f1f5bd54e15c182da815293e0eed1d8c313d11a762fa923",
-      "src/secom/workflows/temporal_robustness.py": "52d9b48b5dded1ab7b4bb75b0b1f0fe45ad6835709e57a8f066b7dbc1f78d315"
+      "src/secom/workflows/manifest.py": "20804945089819225eab3172d4a773c4e18daf15a12070950cd252e77fbcc7e2",
+      "src/secom/workflows/temporal_comparator_audit.py": "fa10f23dbd07b1ae139572688c8c42085f9f6d3b04294ba168d25e643e024c06",
+      "src/secom/workflows/temporal_krr.py": "8036ff0e17ef1b5cfcb0f8005a8186846d9ac2bcef2d638103fc1f1e1cafbb30",
+      "src/secom/workflows/temporal_robustness.py": "d675c42374d5ea423164a079125f39288aa746e2c4f8754cbb776aade3649ba9"
     },
     "normalization": "UTF-8 text with LF line endings",
-    "sha256": "9c660d2bb051504fe86203e90797e1b60e3f14e4d8bca538bec4ea47a83f3814"
+    "sha256": "faf5b9e1f35bee43daba8cf0b5a7bb863cb4df55f7f9fa2fc159fcfe914bd40e"
   },
   "study_spec_path": "docs/spec",
-  "study_spec_sha256": "5c5ef3c040d1504116e7345213e7a44a8a04e807d4787bca9aaca02c4ed100f6",
+  "study_spec_sha256": "0e4d008b2ad68142a38628e9808443f7b7693fecbe7f5673df9c64808f8d4722",
   "temporal_claim_restrictions": [
-    "primary_high_shift_blocks_lockbox_superiority_claim"
+    "retrospective_later_block_not_fresh_confirmatory_lockbox",
+    "no_production_readiness_or_superiority_claim",
+    "primary_high_shift_blocks_lockbox_superiority_claim",
+    "challenger_high_shift_blocks_lockbox_superiority_claim"
   ],
   "temporal_robustness_status": "warning"
 }

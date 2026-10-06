@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -57,10 +57,12 @@ class FittedRoleModel:
     selected_local_idx: np.ndarray
     selected_global_idx: list[int]
     clf: Any
-    dev_scores: np.ndarray
+    calibration_scores: np.ndarray
     scientific_threshold: float
     operational_threshold: float
-    threshold_at_tnr90_dev: float
-    tnr_at_tnr90_dev: float
-    tpr_at_tnr90_dev: float
+    threshold_at_tnr90_calibration: float
+    tnr_at_tnr90_calibration: float
+    tpr_at_tnr90_calibration: float
     feature_meta: list[Any]
+    fit_n: int = 0
+    calibration_indices: np.ndarray = field(default_factory=lambda: np.array([], dtype=int))
