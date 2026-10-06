@@ -13,6 +13,110 @@ PROCEDURES = {
 }
 CLASSIFIERS = {"krr": "Kernel ridge", "logreg": "Logistic regression"}
 
+TABLE_HEADERS = {
+    "selector": "Selection method",
+    "classifier": "Model",
+    "replication_mode": "Inputs",
+    "mode": "Inputs",
+    "procedure": "Procedure",
+    "role": "Model role",
+    "fold_index": "Test period",
+    "eval_scope": "Evaluation samples",
+    "evaluation_region": "Score source",
+    "threshold_policy": "Threshold rule",
+    "BER": "Balanced error",
+    "mean_BER": "Mean balanced error",
+    "std_BER": "Fold SD",
+    "min_BER": "Minimum error",
+    "max_BER": "Maximum error",
+    "True+": "Failure recall",
+    "True-": "Pass specificity",
+    "TPR": "Failure recall",
+    "TNR": "Pass specificity",
+    "mean_True+": "Mean failure recall",
+    "mean_True-": "Mean pass specificity",
+    "ROC_AUC": "Ranking AUC",
+    "PR_AUC": "Precision-recall AUC",
+    "TP": "Failures caught",
+    "TN": "Passes unflagged",
+    "FP": "False alerts",
+    "FN": "Failures missed",
+    "pooled_TP": "Failures caught",
+    "pooled_TN": "Passes unflagged",
+    "pooled_FP": "False alerts",
+    "pooled_FN": "Failures missed",
+    "C": "LR inverse regularization",
+    "alpha": "KRR regularization",
+    "gamma": "Kernel width",
+    "gamma_multiplier": "Width multiplier",
+    "n_neighbors": "ReliefF neighbors",
+    "k": "Selected inputs",
+    "k_values": "Feature-budget count",
+    "evaluated_configs": "Candidates checked",
+    "calibration_n": "Calibration samples",
+    "calibration_fails": "Calibration failures",
+    "calibration_passes": "Calibration passes",
+    "BER_step_failure": "Error step per failure",
+    "BER_step_pass": "Error step per pass",
+    "lofo_available": "Recalibration available",
+    "lofo_threshold_min": "Recalibrated threshold min",
+    "lofo_threshold_max": "Recalibrated threshold max",
+    "lofo_flagged_fraction_min": "Recalibrated flagged fraction min",
+    "lofo_flagged_fraction_max": "Recalibrated flagged fraction max",
+    "TNR90_semantics": "90% specificity interpretation",
+    "observed_mean_inter_alarm_spacing": "Observed samples between alarms",
+    "primary_scientific": "Primary: balanced error",
+    "primary_operational": "Primary: workload limited",
+    "challenger_scientific": "Comparison: balanced error",
+    "challenger_operational": "Comparison: workload limited",
+    "all_pass_baseline": "Always predict pass",
+    "all_flag_baseline": "Flag every sample",
+    "modal_k": "Modal selected inputs",
+    "modal_scaler": "Modal scaler",
+    "confirmatory_claims_allowed": "Confirmatory claims allowed",
+    "abs_prevalence_shift": "Absolute prevalence shift",
+    "ks_pvalue_scores": "Score distribution p-value",
+    "max_PSI": "Maximum measurement PSI",
+    "median_PSI": "Median measurement PSI",
+}
+
+
+def table_header(column: str) -> str:
+    """Translate display headings without changing stored artifact fields."""
+    readable = column.replace("_", " ")
+    return TABLE_HEADERS.get(column, readable[:1].upper() + readable[1:])
+
+
+def table_value(column: str, value: object) -> object:
+    """Translate known categorical fields; retain numeric values and unknown identifiers."""
+    if column in {"mode", "replication_mode", "procedure"}:
+        return procedure_label(value)
+    if column == "classifier":
+        return CLASSIFIERS.get(str(value), value)
+    if column == "role":
+        return {"primary": "Primary model", "challenger": "Comparison model"}.get(str(value), value)
+    if column == "threshold_policy":
+        return {"scientific": "Balanced error", "operational": "Workload limited"}.get(str(value), value)
+    if column in {
+        "fold",
+        "fold_index",
+        "eval_scope",
+        "evaluation_region",
+        "source_selection_region",
+        "TNR90_semantics",
+        "workload_semantics",
+    }:
+        return {
+            "LOCKBOX": "Final retrospective block",
+            "lockbox": "Final retrospective block",
+            "outer_fold": "Chronological test period",
+            "held_out_DEV_calibration": "Held-out calibration",
+            "held_out_calibration": "Held-out calibration",
+            "retrospective_evaluation_ROC_diagnostic": "Retrospective ranking diagnostic",
+            "illustrative_mean_weekly_policy_not_per_week_cap": "Illustrative mean weekly rule",
+        }.get(str(value), value)
+    return value
+
 
 def fold_count_label(frame) -> str:
     """Describe recorded fold counts without treating CLI defaults as observations."""

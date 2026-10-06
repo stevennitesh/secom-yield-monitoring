@@ -11,7 +11,7 @@ Keep work proportional. Production services, deployment, new datasets and expand
 | Work | Owner |
 | --- | --- |
 | Reviewer story and runnable setup | [README](README.md) |
-| Reading paths and publication decisions | [Documentation index](docs/README.md) |
+| Reading paths | [Documentation index](docs/README.md) |
 | Code, checks and evidence procedures | [Development guide](docs/development.md) |
 | Study, metrics, artifacts or claims | [Specifications, in reading order](docs/spec/README.md) |
 | Report order and metric priorities | [Report specification](docs/spec/06-report-structure.md) |
@@ -34,7 +34,7 @@ Both benchmarks share outer folds, nested BER-first selection and inner-held-out
 - Full evidence runs require a fresh directory, both `krr,logreg` classifiers and `--progress --strict`; omitting classifiers defaults to KRR.
 - Runtime optimization must preserve folds, grids, seeds, thresholds and exact numerical behavior.
 - Do not commit unless explicitly asked.
-- Keep internal working notes local and ignored; public documentation describes the study and engineering evidence.
+- Keep internal working notes, implementation plans and session audit diaries local and ignored. Public documentation describes the study and concise engineering evidence.
 - Raw data and full outputs stay in ignored `data/` and `runs/`. Git keeps the curated report, six figures, execution manifest and audit receipt. Detailed CSVs and ZIP archives stay local.
 - Preserve completed and partial runs. Never edit generated reports or manifests to match newer documentation. `final_report.md` is canonical; the skeleton is a debugging aid.
 - A new real-data evidence run or public snapshot replacement requires explicit authorization and validated export. Authorized editorial refreshes fit no models, use fresh destinations and record rendering separately from execution.

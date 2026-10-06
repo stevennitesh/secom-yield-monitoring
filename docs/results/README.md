@@ -85,6 +85,8 @@ Anonymous associations establish no causal, early-warning, intervention-benefit 
 | --- | --- |
 | [Execution manifest](evidence/run_manifest.json) | October 4 scientific run: `runs/20261004_tuned_temporal_full_01/` |
 | [Publication audit receipt](evidence/audit_receipt.json) | Separate execution/rendering identities, artifact hashes, zero errors, 21 temporal warnings and four claim restrictions |
+| [Technical report](final_report.md) | Methods, result arithmetic, interpretation and detailed diagnostics |
+| [Engineering checks](../engineering.md) | Data validation, prediction audits, cache equivalence and export safeguards |
 | [Development procedure](../development.md#documentation-changes-and-historical-provenance) | Source matching, historical audits and deliberate refreshes |
 
-Git keeps the report, six figures, manifest and receipt. Full CSV/source archives stay in ignored local run storage; they are not GitHub downloads. Current documentation can be clearer than the archived reader files without changing the recorded execution or rendering identities.
+Git keeps the report, six figures, manifest and receipt. Full CSV/source archives stay in ignored local run storage; they are not GitHub downloads. The report is rendered from saved results without fitting models; its receipt records rendering separately from scientific execution.

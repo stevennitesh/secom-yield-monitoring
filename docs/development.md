@@ -86,4 +86,6 @@ Model code, scientific specs01-05, dependencies, metrics, grids and splits canno
 
 The local editorial archive streams existing CSVs and retains original source under `source/`, current renderer under `presentation_source/`, and separate provenance. It excludes raw data and persisted matrices. Verify focused report/figure/export/metadata/CLI tests, lint/format, saved-result agreement, all six images, links and predecessor hashes. Preserve manual files and old runs/archives.
 
-[Current evidence](results/README.md#evidence) owns execution status; presentation validation owns its historical checks and checkpoint paths.
+[Current evidence](results/README.md#evidence) records execution and rendering status; [engineering checks](engineering.md) summarize implemented safeguards.
+
+If later scientific-spec prose prevents a presentation refresh, use an isolated copy of the execution archive's source and overlay only the permitted editorial owners. Run that copy's exporter so the loaded code matches its recorded rendering identity. Keep the current scientific specifications and the historical execution unchanged; do not broaden the exception or relabel a manifest.

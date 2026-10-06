@@ -10,28 +10,8 @@ Start with the project overview, follow the charts, then inspect the technical e
 | Where is the code, and how do I verify changes? | [Development guide](development.md) |
 | What scientific requirements must hold? | [Study specifications](spec/README.md) |
 | What made the studies faster? | [Performance evidence](performance.md) |
+| What engineering safeguards support the results? | [Engineering checks](engineering.md) |
 
-The benchmarks, chronological stress tests, audit, renderer and compact exporter are implemented. The [evidence record](results/README.md#evidence) identifies the executed study and later presentation. Historical plans do not create unfinished work; `learning/` is separate teaching material.
+The benchmarks, chronological stress tests, artifact audit and report exporter are implemented. The [evidence record](results/README.md#evidence) identifies the scientific execution and its report rendering. `learning/` contains separate teaching examples.
 
-## Publication Decisions
-
-| Item | Status or next decision |
-| --- | --- |
-| Reviewer story and results | Available locally through the links above |
-| Software license | [MIT](../LICENSE), chosen by the owner; dataset attribution remains separate |
-| Commit, push and hosted CI | Require a publication request and verification on the published revision |
-| More experiments | Optional; define an unresolved question and acceptance criteria first |
-
-Production operating capabilities are outside this study's scope. Keep requirements at the specifications, procedures at the development guide, and measured results at the report and performance records.
-
-## Historical References
-
-| Record | Purpose |
-| --- | --- |
-| Engineering audit | Correctness, storage and runtime checks |
-| Methodology revision | Corrected design and code validation |
-| Tuning implementation | Bounded extension and independent review |
-| Full-study analysis | Scientific execution and result arithmetic |
-| Reader presentation | Earlier rendering checks and preservation receipts |
-| Report presentation | Chart and navigation validation |
-| Report design, implementation plan | Historical rationale |
+The study evaluates recorded pass/fail labels. It does not establish production readiness, causal effects or early warning. Software uses the [MIT license](../LICENSE); the dataset retains its separate attribution.

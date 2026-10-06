@@ -98,11 +98,22 @@ Fixed nonoverlapping calendar test blocks follow expanding earlier training regi
 
 ### Later-period logistic-regression results
 
-| Later test period | Procedure | Test samples / failures | Balanced error | Failure recall | Pass specificity | Ranking AUC | Failures caught | False alerts on passes | Samples flagged |
-|---|---|---|---|---|---|---|---|---|---|
-| 1 | Complete selected logistic-regression procedure | 244 / 7 | 50.06% | 28.57% | 71.31% | 0.462 | 2 | 68 | 28.7% |
-| 2 | Complete selected logistic-regression procedure | 299 / 9 | 50.69% | 0.00% | 98.62% | 0.579 | 0 | 4 | 1.3% |
-| 3 | Complete selected logistic-regression procedure | 207 / 17 | 50.98% | 76.47% | 21.58% | 0.402 | 13 | 149 | 78.3% |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | Later test period | Procedure | Test samples / failures | Balanced error | Failure recall | Pass specificity | Ranking AUC | Failures caught |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | Complete selected logistic-regression procedure | 244 / 7 | 50.06% | 28.57% | 71.31% | 0.462 | 2 |
+| 2 | 2 | Complete selected logistic-regression procedure | 299 / 9 | 50.69% | 0.00% | 98.62% | 0.579 | 0 |
+| 3 | 3 | Complete selected logistic-regression procedure | 207 / 17 | 50.98% | 76.47% | 21.58% | 0.402 | 13 |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | Later test period | Procedure | False alerts on passes | Samples flagged |
+|---|---|---|---|---|
+| 1 | 1 | Complete selected logistic-regression procedure | 68 | 28.7% |
+| 2 | 2 | Complete selected logistic-regression procedure | 4 | 1.3% |
+| 3 | 3 | Complete selected logistic-regression procedure | 149 | 78.3% |
+
 
 Mean per-period balanced error: 50.58%. Per-period results matter: pooling samples can conceal weak transfer when failure prevalence and alert rates differ between periods.
 
@@ -190,7 +201,9 @@ Named measurements, pre-outcome timing, device/tool context, intervention record
 
 ## Technical Appendix
 
-Machine field names and search tables below support reproducibility. They do not define additional headline results.
+Detailed tables preserve the recorded values with readable display labels. They do not define additional headline results. Unless a heading includes %, rates are fractions from 0 to 1. Wide tables use numbered panels with shared row numbers.
+
+Artifact vocabulary: `strict` means measurements only; `with_missing_indicators` means measurements plus missing flags; `held_out_DEV_calibration` means held-out calibration. BER is balanced error; TPR/True+ is failure recall; TNR/True- is pass specificity. LOFO means recalibration after leaving out one failed calibration example. The saved CSVs retain their original field names and categorical identifiers.
 
 <details>
 <summary>Original Replication Design</summary>
@@ -211,63 +224,127 @@ Recorded feature budgets: 40. Recorded ReliefF neighbor counts: 10. Recorded KRR
 
 #### Original Search Space
 
-| selector | classifier | mode | evaluated_configs | k_values | c_values | alpha_values | gamma_values | gamma_multiplier_values | n_neighbors_values |
-|---|---|---|---|---|---|---|---|---|---|
-| S2N | krr | strict | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| S2N | logreg | strict | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
-| S2N | krr | with_missing_indicators | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| S2N | logreg | with_missing_indicators | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
-| Ttest | krr | strict | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| Ttest | logreg | strict | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
-| Ttest | krr | with_missing_indicators | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| Ttest | logreg | with_missing_indicators | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
-| F-test | krr | strict | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| F-test | logreg | strict | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
-| F-test | krr | with_missing_indicators | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| F-test | logreg | with_missing_indicators | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
-| ReliefF | krr | strict | 12 | 1 | 0 | 3 | 3 | 0 | 1 |
-| ReliefF | logreg | strict | 4 | 1 | 4 | 0 | 0 | 0 | 1 |
-| ReliefF | krr | with_missing_indicators | 12 | 1 | 0 | 3 | 3 | 0 | 1 |
-| ReliefF | logreg | with_missing_indicators | 4 | 1 | 4 | 0 | 0 | 0 | 1 |
-| Gram-Schmidt | krr | strict | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| Gram-Schmidt | logreg | strict | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
-| Gram-Schmidt | krr | with_missing_indicators | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| Gram-Schmidt | logreg | with_missing_indicators | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
-| Pearson | krr | strict | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| Pearson | logreg | strict | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
-| Pearson | krr | with_missing_indicators | 12 | 1 | 0 | 3 | 3 | 0 | 0 |
-| Pearson | logreg | with_missing_indicators | 4 | 1 | 4 | 0 | 0 | 0 | 0 |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | Selection method | Model | Inputs | Candidates checked | Feature-budget count | C values | Alpha values | Gamma values |
+|---|---|---|---|---|---|---|---|---|
+| 1 | S2N | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 2 | S2N | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
+| 3 | S2N | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 4 | S2N | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
+| 5 | Ttest | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 6 | Ttest | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
+| 7 | Ttest | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 8 | Ttest | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
+| 9 | F-test | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 10 | F-test | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
+| 11 | F-test | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 12 | F-test | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
+| 13 | ReliefF | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 14 | ReliefF | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
+| 15 | ReliefF | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 16 | ReliefF | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
+| 17 | Gram-Schmidt | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 18 | Gram-Schmidt | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
+| 19 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 20 | Gram-Schmidt | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
+| 21 | Pearson | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 22 | Pearson | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
+| 23 | Pearson | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 24 | Pearson | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | Selection method | Model | Gamma multiplier values | N neighbors values |
+|---|---|---|---|---|
+| 1 | S2N | Kernel ridge | 0 | 0 |
+| 2 | S2N | Logistic regression | 0 | 0 |
+| 3 | S2N | Kernel ridge | 0 | 0 |
+| 4 | S2N | Logistic regression | 0 | 0 |
+| 5 | Ttest | Kernel ridge | 0 | 0 |
+| 6 | Ttest | Logistic regression | 0 | 0 |
+| 7 | Ttest | Kernel ridge | 0 | 0 |
+| 8 | Ttest | Logistic regression | 0 | 0 |
+| 9 | F-test | Kernel ridge | 0 | 0 |
+| 10 | F-test | Logistic regression | 0 | 0 |
+| 11 | F-test | Kernel ridge | 0 | 0 |
+| 12 | F-test | Logistic regression | 0 | 0 |
+| 13 | ReliefF | Kernel ridge | 0 | 1 |
+| 14 | ReliefF | Logistic regression | 0 | 1 |
+| 15 | ReliefF | Kernel ridge | 0 | 1 |
+| 16 | ReliefF | Logistic regression | 0 | 1 |
+| 17 | Gram-Schmidt | Kernel ridge | 0 | 0 |
+| 18 | Gram-Schmidt | Logistic regression | 0 | 0 |
+| 19 | Gram-Schmidt | Kernel ridge | 0 | 0 |
+| 20 | Gram-Schmidt | Logistic regression | 0 | 0 |
+| 21 | Pearson | Kernel ridge | 0 | 0 |
+| 22 | Pearson | Logistic regression | 0 | 0 |
+| 23 | Pearson | Kernel ridge | 0 | 0 |
+| 24 | Pearson | Logistic regression | 0 | 0 |
+
 
 #### Original Selected Configurations
 
 Modal configurations describe inner selections across folds and full-data interpretation fits, not a new performance estimate.
 
-| selector | classifier | mode | k | C | alpha | gamma | gamma_multiplier | n_neighbors | selected_count | mean_inner_ROC_AUC | mean_inner_BER |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| ReliefF | krr | strict | 40 | n/a | 1.000 | 0.010 | n/a | 10.000 | 5 | 0.743 | 0.296 |
-| F-test | krr | strict | 40 | n/a | 10.000 | 0.100 | n/a | n/a | 6 | 0.703 | 0.319 |
-| Pearson | krr | strict | 40 | n/a | 10.000 | 0.100 | n/a | n/a | 6 | 0.703 | 0.319 |
-| Ttest | krr | strict | 40 | n/a | 10.000 | 0.100 | n/a | n/a | 6 | 0.703 | 0.319 |
-| F-test | krr | with_missing_indicators | 40 | n/a | 10.000 | n/a | n/a | n/a | 5 | 0.700 | 0.315 |
-| Pearson | krr | with_missing_indicators | 40 | n/a | 10.000 | n/a | n/a | n/a | 5 | 0.700 | 0.316 |
-| Ttest | krr | with_missing_indicators | 40 | n/a | 10.000 | n/a | n/a | n/a | 5 | 0.699 | 0.316 |
-| ReliefF | logreg | with_missing_indicators | 40 | 0.100 | n/a | n/a | n/a | 10.000 | 6 | 0.715 | 0.306 |
-| ReliefF | krr | with_missing_indicators | 40 | n/a | 10.000 | n/a | n/a | 10.000 | 4 | 0.729 | 0.291 |
-| ReliefF | logreg | strict | 40 | 0.100 | n/a | n/a | n/a | 10.000 | 7 | 0.725 | 0.318 |
-| F-test | logreg | strict | 40 | 0.010 | n/a | n/a | n/a | n/a | 7 | 0.689 | 0.330 |
-| Pearson | logreg | strict | 40 | 0.010 | n/a | n/a | n/a | n/a | 7 | 0.689 | 0.330 |
-| Ttest | logreg | strict | 40 | 0.010 | n/a | n/a | n/a | n/a | 7 | 0.689 | 0.330 |
-| Gram-Schmidt | logreg | strict | 40 | 0.010 | n/a | n/a | n/a | n/a | 7 | 0.658 | 0.363 |
-| S2N | logreg | with_missing_indicators | 40 | 0.010 | n/a | n/a | n/a | n/a | 4 | 0.685 | 0.341 |
-| Ttest | logreg | with_missing_indicators | 40 | 0.010 | n/a | n/a | n/a | n/a | 4 | 0.701 | 0.322 |
-| F-test | logreg | with_missing_indicators | 40 | 0.010 | n/a | n/a | n/a | n/a | 4 | 0.701 | 0.324 |
-| Pearson | logreg | with_missing_indicators | 40 | 0.010 | n/a | n/a | n/a | n/a | 4 | 0.701 | 0.325 |
-| S2N | krr | with_missing_indicators | 40 | n/a | 10.000 | n/a | n/a | n/a | 5 | 0.696 | 0.323 |
-| Gram-Schmidt | logreg | with_missing_indicators | 40 | 0.100 | n/a | n/a | n/a | n/a | 4 | 0.637 | 0.376 |
-| Gram-Schmidt | krr | strict | 40 | n/a | 10.000 | 0.010 | n/a | n/a | 4 | 0.675 | 0.344 |
-| Gram-Schmidt | krr | with_missing_indicators | 40 | n/a | 10.000 | n/a | n/a | n/a | 4 | 0.666 | 0.351 |
-| S2N | logreg | strict | 40 | 0.010 | n/a | n/a | n/a | n/a | 4 | 0.676 | 0.352 |
-| S2N | krr | strict | 40 | n/a | 10.000 | n/a | n/a | n/a | 4 | 0.716 | 0.304 |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | selector | classifier | mode | k | C | alpha | gamma | gamma_multiplier |
+|---|---|---|---|---|---|---|---|---|
+| 1 | ReliefF | Kernel ridge | Measurements only | 40 | n/a | 1.000 | 0.010 | n/a |
+| 2 | F-test | Kernel ridge | Measurements only | 40 | n/a | 10.000 | 0.100 | n/a |
+| 3 | Pearson | Kernel ridge | Measurements only | 40 | n/a | 10.000 | 0.100 | n/a |
+| 4 | Ttest | Kernel ridge | Measurements only | 40 | n/a | 10.000 | 0.100 | n/a |
+| 5 | F-test | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 6 | Pearson | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 7 | Ttest | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 8 | ReliefF | Logistic regression | Measurements + missing flags | 40 | 0.100 | n/a | n/a | n/a |
+| 9 | ReliefF | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 10 | ReliefF | Logistic regression | Measurements only | 40 | 0.100 | n/a | n/a | n/a |
+| 11 | F-test | Logistic regression | Measurements only | 40 | 0.010 | n/a | n/a | n/a |
+| 12 | Pearson | Logistic regression | Measurements only | 40 | 0.010 | n/a | n/a | n/a |
+| 13 | Ttest | Logistic regression | Measurements only | 40 | 0.010 | n/a | n/a | n/a |
+| 14 | Gram-Schmidt | Logistic regression | Measurements only | 40 | 0.010 | n/a | n/a | n/a |
+| 15 | S2N | Logistic regression | Measurements + missing flags | 40 | 0.010 | n/a | n/a | n/a |
+| 16 | Ttest | Logistic regression | Measurements + missing flags | 40 | 0.010 | n/a | n/a | n/a |
+| 17 | F-test | Logistic regression | Measurements + missing flags | 40 | 0.010 | n/a | n/a | n/a |
+| 18 | Pearson | Logistic regression | Measurements + missing flags | 40 | 0.010 | n/a | n/a | n/a |
+| 19 | S2N | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 20 | Gram-Schmidt | Logistic regression | Measurements + missing flags | 40 | 0.100 | n/a | n/a | n/a |
+| 21 | Gram-Schmidt | Kernel ridge | Measurements only | 40 | n/a | 10.000 | 0.010 | n/a |
+| 22 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 23 | S2N | Logistic regression | Measurements only | 40 | 0.010 | n/a | n/a | n/a |
+| 24 | S2N | Kernel ridge | Measurements only | 40 | n/a | 10.000 | n/a | n/a |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | selector | classifier | n_neighbors | selected_count | mean_inner_ROC_AUC | mean_inner_BER |
+|---|---|---|---|---|---|---|
+| 1 | ReliefF | Kernel ridge | 10.000 | 5 | 0.743 | 0.296 |
+| 2 | F-test | Kernel ridge | n/a | 6 | 0.703 | 0.319 |
+| 3 | Pearson | Kernel ridge | n/a | 6 | 0.703 | 0.319 |
+| 4 | Ttest | Kernel ridge | n/a | 6 | 0.703 | 0.319 |
+| 5 | F-test | Kernel ridge | n/a | 5 | 0.700 | 0.315 |
+| 6 | Pearson | Kernel ridge | n/a | 5 | 0.700 | 0.316 |
+| 7 | Ttest | Kernel ridge | n/a | 5 | 0.699 | 0.316 |
+| 8 | ReliefF | Logistic regression | 10.000 | 6 | 0.715 | 0.306 |
+| 9 | ReliefF | Kernel ridge | 10.000 | 4 | 0.729 | 0.291 |
+| 10 | ReliefF | Logistic regression | 10.000 | 7 | 0.725 | 0.318 |
+| 11 | F-test | Logistic regression | n/a | 7 | 0.689 | 0.330 |
+| 12 | Pearson | Logistic regression | n/a | 7 | 0.689 | 0.330 |
+| 13 | Ttest | Logistic regression | n/a | 7 | 0.689 | 0.330 |
+| 14 | Gram-Schmidt | Logistic regression | n/a | 7 | 0.658 | 0.363 |
+| 15 | S2N | Logistic regression | n/a | 4 | 0.685 | 0.341 |
+| 16 | Ttest | Logistic regression | n/a | 4 | 0.701 | 0.322 |
+| 17 | F-test | Logistic regression | n/a | 4 | 0.701 | 0.324 |
+| 18 | Pearson | Logistic regression | n/a | 4 | 0.701 | 0.325 |
+| 19 | S2N | Kernel ridge | n/a | 5 | 0.696 | 0.323 |
+| 20 | Gram-Schmidt | Logistic regression | n/a | 4 | 0.637 | 0.376 |
+| 21 | Gram-Schmidt | Kernel ridge | n/a | 4 | 0.675 | 0.344 |
+| 22 | Gram-Schmidt | Kernel ridge | n/a | 4 | 0.666 | 0.351 |
+| 23 | S2N | Logistic regression | n/a | 4 | 0.676 | 0.352 |
+| 24 | S2N | Kernel ridge | n/a | 4 | 0.716 | 0.304 |
+
 
 
 </details>
@@ -281,96 +358,109 @@ Modal configurations describe inner selections across folds and full-data interp
 
 Headline source: `benchmark_procedure_summary.csv`, recomputed from `benchmark_predictions.csv`. Fold mean, standard deviation, and range are descriptive because training samples overlap. They are not algorithm-performance confidence intervals.
 
-| procedure | mean_BER | std_BER | min_BER | max_BER | mean_True+ | mean_True- | pooled_TP | pooled_FP | pooled_TN | pooled_FN |
-|---|---|---|---|---|---|---|---|---|---|---|
-| joint | 0.314 | 0.080 | 0.152 | 0.428 | 0.675 | 0.696 | 70 | 445 | 1018 | 34 |
-| values_only | 0.327 | 0.069 | 0.228 | 0.428 | 0.734 | 0.612 | 76 | 568 | 895 | 28 |
-| values_and_indicators | 0.301 | 0.081 | 0.152 | 0.421 | 0.684 | 0.714 | 71 | 418 | 1045 | 33 |
-| missingness_only | 0.433 | 0.100 | 0.223 | 0.584 | 0.463 | 0.672 | 48 | 480 | 983 | 56 |
-| all_pass | 0.500 | 0.000 | 0.500 | 0.500 | 0.000 | 1.000 | 0 | 0 | 1463 | 104 |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | Procedure | Mean balanced error | Fold SD | Minimum error | Maximum error | Mean failure recall | Mean pass specificity | Failures caught |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Complete selected procedure | 0.314 | 0.080 | 0.152 | 0.428 | 0.675 | 0.696 | 70 |
+| 2 | Measurements only | 0.327 | 0.069 | 0.228 | 0.428 | 0.734 | 0.612 | 76 |
+| 3 | Measurements + missing flags | 0.301 | 0.081 | 0.152 | 0.421 | 0.684 | 0.714 | 71 |
+| 4 | Missing flags only | 0.433 | 0.100 | 0.223 | 0.584 | 0.463 | 0.672 | 48 |
+| 5 | Always predict pass | 0.500 | 0.000 | 0.500 | 0.500 | 0.000 | 1.000 | 0 |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | Procedure | Mean balanced error | False alerts | Passes unflagged | Failures missed |
+|---|---|---|---|---|---|
+| 1 | Complete selected procedure | 0.314 | 445 | 1018 | 34 |
+| 2 | Measurements only | 0.327 | 568 | 895 | 28 |
+| 3 | Measurements + missing flags | 0.301 | 418 | 1045 | 33 |
+| 4 | Missing flags only | 0.433 | 480 | 983 | 56 |
+| 5 | Always predict pass | 0.500 | 0 | 1463 | 104 |
+
 
 #### Exploratory Nested Family Comparisons
 
 | selector | classifier | mode | mean_BER | fold_min | fold_max | mean_TPR | mean_TNR |
 |---|---|---|---|---|---|---|---|
-| ReliefF | krr | with_missing_indicators | 0.306 | 0.152 | 0.427 | 0.655 | 0.734 |
-| F-test | krr | strict | 0.308 | 0.156 | 0.428 | 0.751 | 0.632 |
-| Pearson | krr | strict | 0.308 | 0.156 | 0.428 | 0.751 | 0.632 |
-| Ttest | krr | strict | 0.308 | 0.156 | 0.428 | 0.751 | 0.632 |
-| ReliefF | krr | strict | 0.309 | 0.203 | 0.418 | 0.722 | 0.660 |
-| ReliefF | logreg | with_missing_indicators | 0.315 | 0.116 | 0.476 | 0.639 | 0.731 |
-| F-test | krr | with_missing_indicators | 0.316 | 0.136 | 0.421 | 0.713 | 0.656 |
-| Pearson | krr | with_missing_indicators | 0.316 | 0.136 | 0.425 | 0.713 | 0.656 |
-| Ttest | krr | with_missing_indicators | 0.316 | 0.136 | 0.425 | 0.713 | 0.656 |
-| Ttest | logreg | with_missing_indicators | 0.321 | 0.201 | 0.478 | 0.674 | 0.685 |
-| F-test | logreg | with_missing_indicators | 0.321 | 0.201 | 0.478 | 0.674 | 0.684 |
-| Pearson | logreg | with_missing_indicators | 0.321 | 0.201 | 0.478 | 0.674 | 0.684 |
-| F-test | logreg | strict | 0.339 | 0.190 | 0.499 | 0.693 | 0.630 |
-| Pearson | logreg | strict | 0.339 | 0.190 | 0.499 | 0.693 | 0.630 |
-| Ttest | logreg | strict | 0.339 | 0.190 | 0.499 | 0.693 | 0.630 |
-| S2N | krr | with_missing_indicators | 0.343 | 0.248 | 0.471 | 0.683 | 0.631 |
-| ReliefF | logreg | strict | 0.348 | 0.228 | 0.465 | 0.636 | 0.669 |
-| Gram-Schmidt | krr | with_missing_indicators | 0.349 | 0.254 | 0.537 | 0.673 | 0.630 |
-| Gram-Schmidt | logreg | strict | 0.357 | 0.217 | 0.540 | 0.645 | 0.642 |
-| S2N | logreg | with_missing_indicators | 0.358 | 0.270 | 0.435 | 0.740 | 0.544 |
-| Gram-Schmidt | krr | strict | 0.359 | 0.276 | 0.538 | 0.606 | 0.677 |
-| S2N | krr | strict | 0.364 | 0.247 | 0.504 | 0.674 | 0.597 |
-| Gram-Schmidt | logreg | with_missing_indicators | 0.378 | 0.277 | 0.523 | 0.607 | 0.638 |
-| S2N | logreg | strict | 0.418 | 0.307 | 0.566 | 0.624 | 0.540 |
+| ReliefF | Kernel ridge | Measurements + missing flags | 0.306 | 0.152 | 0.427 | 0.655 | 0.734 |
+| F-test | Kernel ridge | Measurements only | 0.308 | 0.156 | 0.428 | 0.751 | 0.632 |
+| Pearson | Kernel ridge | Measurements only | 0.308 | 0.156 | 0.428 | 0.751 | 0.632 |
+| Ttest | Kernel ridge | Measurements only | 0.308 | 0.156 | 0.428 | 0.751 | 0.632 |
+| ReliefF | Kernel ridge | Measurements only | 0.309 | 0.203 | 0.418 | 0.722 | 0.660 |
+| ReliefF | Logistic regression | Measurements + missing flags | 0.315 | 0.116 | 0.476 | 0.639 | 0.731 |
+| F-test | Kernel ridge | Measurements + missing flags | 0.316 | 0.136 | 0.421 | 0.713 | 0.656 |
+| Pearson | Kernel ridge | Measurements + missing flags | 0.316 | 0.136 | 0.425 | 0.713 | 0.656 |
+| Ttest | Kernel ridge | Measurements + missing flags | 0.316 | 0.136 | 0.425 | 0.713 | 0.656 |
+| Ttest | Logistic regression | Measurements + missing flags | 0.321 | 0.201 | 0.478 | 0.674 | 0.685 |
+| F-test | Logistic regression | Measurements + missing flags | 0.321 | 0.201 | 0.478 | 0.674 | 0.684 |
+| Pearson | Logistic regression | Measurements + missing flags | 0.321 | 0.201 | 0.478 | 0.674 | 0.684 |
+| F-test | Logistic regression | Measurements only | 0.339 | 0.190 | 0.499 | 0.693 | 0.630 |
+| Pearson | Logistic regression | Measurements only | 0.339 | 0.190 | 0.499 | 0.693 | 0.630 |
+| Ttest | Logistic regression | Measurements only | 0.339 | 0.190 | 0.499 | 0.693 | 0.630 |
+| S2N | Kernel ridge | Measurements + missing flags | 0.343 | 0.248 | 0.471 | 0.683 | 0.631 |
+| ReliefF | Logistic regression | Measurements only | 0.348 | 0.228 | 0.465 | 0.636 | 0.669 |
+| Gram-Schmidt | Kernel ridge | Measurements + missing flags | 0.349 | 0.254 | 0.537 | 0.673 | 0.630 |
+| Gram-Schmidt | Logistic regression | Measurements only | 0.357 | 0.217 | 0.540 | 0.645 | 0.642 |
+| S2N | Logistic regression | Measurements + missing flags | 0.358 | 0.270 | 0.435 | 0.740 | 0.544 |
+| Gram-Schmidt | Kernel ridge | Measurements only | 0.359 | 0.276 | 0.538 | 0.606 | 0.677 |
+| S2N | Kernel ridge | Measurements only | 0.364 | 0.247 | 0.504 | 0.674 | 0.597 |
+| Gram-Schmidt | Logistic regression | Measurements + missing flags | 0.378 | 0.277 | 0.523 | 0.607 | 0.638 |
+| S2N | Logistic regression | Measurements only | 0.418 | 0.307 | 0.566 | 0.624 | 0.540 |
 
 #### Supporting Benchmark Metrics
 
 | selector | classifier | mode | mean_ROC_AUC | mean_PR_AUC | mean_MCC | mean_F2 |
 |---|---|---|---|---|---|---|
-| ReliefF | krr | with_missing_indicators | 0.741 | 0.231 | 0.217 | 0.390 |
-| F-test | krr | strict | 0.733 | 0.219 | 0.197 | 0.378 |
-| Pearson | krr | strict | 0.733 | 0.219 | 0.197 | 0.378 |
-| Ttest | krr | strict | 0.733 | 0.219 | 0.197 | 0.378 |
-| ReliefF | krr | strict | 0.748 | 0.227 | 0.202 | 0.384 |
-| ReliefF | logreg | with_missing_indicators | 0.752 | 0.255 | 0.203 | 0.377 |
-| F-test | krr | with_missing_indicators | 0.738 | 0.240 | 0.193 | 0.374 |
-| Pearson | krr | with_missing_indicators | 0.738 | 0.240 | 0.193 | 0.374 |
-| Ttest | krr | with_missing_indicators | 0.738 | 0.240 | 0.193 | 0.374 |
-| Ttest | logreg | with_missing_indicators | 0.726 | 0.198 | 0.192 | 0.370 |
-| F-test | logreg | with_missing_indicators | 0.726 | 0.198 | 0.191 | 0.369 |
-| Pearson | logreg | with_missing_indicators | 0.726 | 0.198 | 0.191 | 0.369 |
-| F-test | logreg | strict | 0.723 | 0.188 | 0.166 | 0.350 |
-| Pearson | logreg | strict | 0.723 | 0.188 | 0.166 | 0.350 |
-| Ttest | logreg | strict | 0.723 | 0.188 | 0.166 | 0.350 |
-| S2N | krr | with_missing_indicators | 0.717 | 0.185 | 0.163 | 0.349 |
-| ReliefF | logreg | strict | 0.731 | 0.214 | 0.160 | 0.340 |
-| Gram-Schmidt | krr | with_missing_indicators | 0.713 | 0.216 | 0.153 | 0.335 |
-| Gram-Schmidt | logreg | strict | 0.701 | 0.190 | 0.151 | 0.338 |
-| S2N | logreg | with_missing_indicators | 0.691 | 0.175 | 0.144 | 0.333 |
-| Gram-Schmidt | krr | strict | 0.703 | 0.227 | 0.153 | 0.334 |
-| S2N | krr | strict | 0.709 | 0.180 | 0.138 | 0.326 |
-| Gram-Schmidt | logreg | with_missing_indicators | 0.684 | 0.182 | 0.133 | 0.314 |
-| S2N | logreg | strict | 0.675 | 0.178 | 0.081 | 0.274 |
+| ReliefF | Kernel ridge | Measurements + missing flags | 0.741 | 0.231 | 0.217 | 0.390 |
+| F-test | Kernel ridge | Measurements only | 0.733 | 0.219 | 0.197 | 0.378 |
+| Pearson | Kernel ridge | Measurements only | 0.733 | 0.219 | 0.197 | 0.378 |
+| Ttest | Kernel ridge | Measurements only | 0.733 | 0.219 | 0.197 | 0.378 |
+| ReliefF | Kernel ridge | Measurements only | 0.748 | 0.227 | 0.202 | 0.384 |
+| ReliefF | Logistic regression | Measurements + missing flags | 0.752 | 0.255 | 0.203 | 0.377 |
+| F-test | Kernel ridge | Measurements + missing flags | 0.738 | 0.240 | 0.193 | 0.374 |
+| Pearson | Kernel ridge | Measurements + missing flags | 0.738 | 0.240 | 0.193 | 0.374 |
+| Ttest | Kernel ridge | Measurements + missing flags | 0.738 | 0.240 | 0.193 | 0.374 |
+| Ttest | Logistic regression | Measurements + missing flags | 0.726 | 0.198 | 0.192 | 0.370 |
+| F-test | Logistic regression | Measurements + missing flags | 0.726 | 0.198 | 0.191 | 0.369 |
+| Pearson | Logistic regression | Measurements + missing flags | 0.726 | 0.198 | 0.191 | 0.369 |
+| F-test | Logistic regression | Measurements only | 0.723 | 0.188 | 0.166 | 0.350 |
+| Pearson | Logistic regression | Measurements only | 0.723 | 0.188 | 0.166 | 0.350 |
+| Ttest | Logistic regression | Measurements only | 0.723 | 0.188 | 0.166 | 0.350 |
+| S2N | Kernel ridge | Measurements + missing flags | 0.717 | 0.185 | 0.163 | 0.349 |
+| ReliefF | Logistic regression | Measurements only | 0.731 | 0.214 | 0.160 | 0.340 |
+| Gram-Schmidt | Kernel ridge | Measurements + missing flags | 0.713 | 0.216 | 0.153 | 0.335 |
+| Gram-Schmidt | Logistic regression | Measurements only | 0.701 | 0.190 | 0.151 | 0.338 |
+| S2N | Logistic regression | Measurements + missing flags | 0.691 | 0.175 | 0.144 | 0.333 |
+| Gram-Schmidt | Kernel ridge | Measurements only | 0.703 | 0.227 | 0.153 | 0.334 |
+| S2N | Kernel ridge | Measurements only | 0.709 | 0.180 | 0.138 | 0.326 |
+| Gram-Schmidt | Logistic regression | Measurements + missing flags | 0.684 | 0.182 | 0.133 | 0.314 |
+| S2N | Logistic regression | Measurements only | 0.675 | 0.178 | 0.081 | 0.274 |
 
 #### Paired Missing-indicator Ablation
 
 Positive delta_BER means values-only BER minus values-plus-indicators BER. Paired fold deltas are descriptive.
 
-| selector | classifier | BER_reference | BER_missing_indicator | delta_BER | std_delta_BER | min_delta_BER | max_delta_BER |
+| Selection method | Model | BER reference | BER missing indicator | Delta BER | Std delta BER | Min delta BER | Max delta BER |
 |---|---|---|---|---|---|---|---|
-| S2N | krr | 0.364 | 0.343 | 0.021 | 0.040 | -0.051 | 0.090 |
-| S2N | logreg | 0.418 | 0.358 | 0.060 | 0.068 | -0.022 | 0.181 |
-| Ttest | krr | 0.308 | 0.316 | -0.007 | 0.046 | -0.073 | 0.062 |
-| Ttest | logreg | 0.339 | 0.321 | 0.018 | 0.035 | -0.036 | 0.084 |
-| F-test | krr | 0.308 | 0.316 | -0.007 | 0.046 | -0.073 | 0.062 |
-| F-test | logreg | 0.339 | 0.321 | 0.017 | 0.034 | -0.036 | 0.084 |
-| ReliefF | krr | 0.309 | 0.306 | 0.003 | 0.073 | -0.155 | 0.094 |
-| ReliefF | logreg | 0.348 | 0.315 | 0.033 | 0.059 | -0.046 | 0.125 |
-| Gram-Schmidt | krr | 0.359 | 0.349 | 0.010 | 0.062 | -0.100 | 0.126 |
-| Gram-Schmidt | logreg | 0.357 | 0.378 | -0.021 | 0.050 | -0.096 | 0.053 |
-| Pearson | krr | 0.308 | 0.316 | -0.007 | 0.046 | -0.073 | 0.062 |
-| Pearson | logreg | 0.339 | 0.321 | 0.017 | 0.034 | -0.036 | 0.084 |
+| S2N | Kernel ridge | 0.364 | 0.343 | 0.021 | 0.040 | -0.051 | 0.090 |
+| S2N | Logistic regression | 0.418 | 0.358 | 0.060 | 0.068 | -0.022 | 0.181 |
+| Ttest | Kernel ridge | 0.308 | 0.316 | -0.007 | 0.046 | -0.073 | 0.062 |
+| Ttest | Logistic regression | 0.339 | 0.321 | 0.018 | 0.035 | -0.036 | 0.084 |
+| F-test | Kernel ridge | 0.308 | 0.316 | -0.007 | 0.046 | -0.073 | 0.062 |
+| F-test | Logistic regression | 0.339 | 0.321 | 0.017 | 0.034 | -0.036 | 0.084 |
+| ReliefF | Kernel ridge | 0.309 | 0.306 | 0.003 | 0.073 | -0.155 | 0.094 |
+| ReliefF | Logistic regression | 0.348 | 0.315 | 0.033 | 0.059 | -0.046 | 0.125 |
+| Gram-Schmidt | Kernel ridge | 0.359 | 0.349 | 0.010 | 0.062 | -0.100 | 0.126 |
+| Gram-Schmidt | Logistic regression | 0.357 | 0.378 | -0.021 | 0.050 | -0.096 | 0.053 |
+| Pearson | Kernel ridge | 0.308 | 0.316 | -0.007 | 0.046 | -0.073 | 0.062 |
+| Pearson | Logistic regression | 0.339 | 0.321 | 0.017 | 0.034 | -0.036 | 0.084 |
 
 #### UCI Original Benchmark Reference
 
 [UCI SECOM](https://archive.ics.uci.edu/dataset/179/secom) describes KRR; [McCann and Johnston (2010), Table 2](https://proceedings.mlr.press/v6/mccann10a/mccann10a.pdf) labels its baseline Naive Bayes. These are reference context, not an exact classifier/protocol replication claim.
 
-| UCI method | local selector | UCI BER % | UCI True+ % | UCI True- % | local BER % | local True+ % | local True- % |
+| UCI method | Local selector | UCI BER % | UCI True+ % | UCI True- % | Local BER % | Local True+ % | Local True- % |
 |---|---|---|---|---|---|---|---|
 | S2N | S2N | 34.5 +/- 2.6 | 57.8 +/- 5.3 | 73.1 +/- 2.1 | 36.4 | 67.4 | 59.7 |
 | Ttest | Ttest | 33.7 +/- 2.1 | 59.6 +/- 4.7 | 73.0 +/- 1.8 | 30.8 | 75.1 | 63.2 |
@@ -403,63 +493,127 @@ Recorded feature budgets: 10/20/40. Recorded ReliefF neighbor counts: 5/10/20. R
 
 #### Tuned Search Space
 
-| selector | classifier | mode | evaluated_configs | k_values | c_values | alpha_values | gamma_values | gamma_multiplier_values | n_neighbors_values |
-|---|---|---|---|---|---|---|---|---|---|
-| S2N | krr | strict | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| S2N | logreg | strict | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
-| S2N | krr | with_missing_indicators | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| S2N | logreg | with_missing_indicators | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
-| Ttest | krr | strict | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| Ttest | logreg | strict | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
-| Ttest | krr | with_missing_indicators | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| Ttest | logreg | with_missing_indicators | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
-| F-test | krr | strict | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| F-test | logreg | strict | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
-| F-test | krr | with_missing_indicators | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| F-test | logreg | with_missing_indicators | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
-| ReliefF | krr | strict | 1440 | 3 | 0 | 4 | 8 | 4 | 3 |
-| ReliefF | logreg | strict | 360 | 3 | 4 | 0 | 0 | 0 | 3 |
-| ReliefF | krr | with_missing_indicators | 1440 | 3 | 0 | 4 | 8 | 4 | 3 |
-| ReliefF | logreg | with_missing_indicators | 360 | 3 | 4 | 0 | 0 | 0 | 3 |
-| Gram-Schmidt | krr | strict | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| Gram-Schmidt | logreg | strict | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
-| Gram-Schmidt | krr | with_missing_indicators | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| Gram-Schmidt | logreg | with_missing_indicators | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
-| Pearson | krr | strict | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| Pearson | logreg | strict | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
-| Pearson | krr | with_missing_indicators | 480 | 3 | 0 | 4 | 8 | 4 | 0 |
-| Pearson | logreg | with_missing_indicators | 120 | 3 | 4 | 0 | 0 | 0 | 0 |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | Selection method | Model | Inputs | Candidates checked | Feature-budget count | C values | Alpha values | Gamma values |
+|---|---|---|---|---|---|---|---|---|
+| 1 | S2N | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
+| 2 | S2N | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
+| 3 | S2N | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
+| 4 | S2N | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
+| 5 | Ttest | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
+| 6 | Ttest | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
+| 7 | Ttest | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
+| 8 | Ttest | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
+| 9 | F-test | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
+| 10 | F-test | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
+| 11 | F-test | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
+| 12 | F-test | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
+| 13 | ReliefF | Kernel ridge | Measurements only | 1440 | 3 | 0 | 4 | 8 |
+| 14 | ReliefF | Logistic regression | Measurements only | 360 | 3 | 4 | 0 | 0 |
+| 15 | ReliefF | Kernel ridge | Measurements + missing flags | 1440 | 3 | 0 | 4 | 8 |
+| 16 | ReliefF | Logistic regression | Measurements + missing flags | 360 | 3 | 4 | 0 | 0 |
+| 17 | Gram-Schmidt | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
+| 18 | Gram-Schmidt | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
+| 19 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
+| 20 | Gram-Schmidt | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
+| 21 | Pearson | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
+| 22 | Pearson | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
+| 23 | Pearson | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
+| 24 | Pearson | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | Selection method | Model | Gamma multiplier values | N neighbors values |
+|---|---|---|---|---|
+| 1 | S2N | Kernel ridge | 4 | 0 |
+| 2 | S2N | Logistic regression | 0 | 0 |
+| 3 | S2N | Kernel ridge | 4 | 0 |
+| 4 | S2N | Logistic regression | 0 | 0 |
+| 5 | Ttest | Kernel ridge | 4 | 0 |
+| 6 | Ttest | Logistic regression | 0 | 0 |
+| 7 | Ttest | Kernel ridge | 4 | 0 |
+| 8 | Ttest | Logistic regression | 0 | 0 |
+| 9 | F-test | Kernel ridge | 4 | 0 |
+| 10 | F-test | Logistic regression | 0 | 0 |
+| 11 | F-test | Kernel ridge | 4 | 0 |
+| 12 | F-test | Logistic regression | 0 | 0 |
+| 13 | ReliefF | Kernel ridge | 4 | 3 |
+| 14 | ReliefF | Logistic regression | 0 | 3 |
+| 15 | ReliefF | Kernel ridge | 4 | 3 |
+| 16 | ReliefF | Logistic regression | 0 | 3 |
+| 17 | Gram-Schmidt | Kernel ridge | 4 | 0 |
+| 18 | Gram-Schmidt | Logistic regression | 0 | 0 |
+| 19 | Gram-Schmidt | Kernel ridge | 4 | 0 |
+| 20 | Gram-Schmidt | Logistic regression | 0 | 0 |
+| 21 | Pearson | Kernel ridge | 4 | 0 |
+| 22 | Pearson | Logistic regression | 0 | 0 |
+| 23 | Pearson | Kernel ridge | 4 | 0 |
+| 24 | Pearson | Logistic regression | 0 | 0 |
+
 
 #### Modal Selected Configurations
 
 Modal configurations describe inner selections across folds and full-data interpretation fits, not a new performance estimate.
 
-| selector | classifier | mode | k | C | alpha | gamma | gamma_multiplier | n_neighbors | selected_count | mean_inner_ROC_AUC | mean_inner_BER |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| F-test | krr | with_missing_indicators | 10 | n/a | 100.000 | 0.200 | 2.000 | n/a | 2 | 0.699 | 0.306 |
-| Pearson | krr | with_missing_indicators | 10 | n/a | 100.000 | 0.200 | 2.000 | n/a | 2 | 0.699 | 0.306 |
-| Ttest | krr | with_missing_indicators | 10 | n/a | 100.000 | 0.200 | 2.000 | n/a | 2 | 0.699 | 0.306 |
-| F-test | krr | strict | 10 | n/a | 100.000 | 0.200 | 2.000 | n/a | 3 | 0.699 | 0.305 |
-| Pearson | krr | strict | 10 | n/a | 100.000 | 0.200 | 2.000 | n/a | 3 | 0.699 | 0.305 |
-| Ttest | krr | strict | 10 | n/a | 100.000 | 0.200 | 2.000 | n/a | 3 | 0.699 | 0.305 |
-| Gram-Schmidt | krr | strict | 10 | n/a | 100.000 | 0.200 | 2.000 | n/a | 3 | 0.702 | 0.310 |
-| ReliefF | krr | strict | 20 | n/a | 10.000 | 0.050 | 1.000 | 10.000 | 2 | 0.760 | 0.262 |
-| S2N | krr | strict | 10 | n/a | 100.000 | 0.200 | 2.000 | n/a | 2 | 0.695 | 0.308 |
-| F-test | logreg | strict | 10 | 1.000 | n/a | n/a | n/a | n/a | 3 | 0.690 | 0.314 |
-| Pearson | logreg | strict | 10 | 1.000 | n/a | n/a | n/a | n/a | 3 | 0.690 | 0.314 |
-| Ttest | logreg | strict | 10 | 1.000 | n/a | n/a | n/a | n/a | 3 | 0.690 | 0.314 |
-| ReliefF | logreg | with_missing_indicators | 20 | 10.000 | n/a | n/a | n/a | 5.000 | 2 | 0.720 | 0.282 |
-| Gram-Schmidt | logreg | with_missing_indicators | 20 | 0.010 | n/a | n/a | n/a | n/a | 2 | 0.663 | 0.346 |
-| S2N | logreg | with_missing_indicators | 20 | 0.010 | n/a | n/a | n/a | n/a | 3 | 0.684 | 0.333 |
-| S2N | krr | with_missing_indicators | 20 | n/a | 10.000 | 0.100 | 2.000 | n/a | 3 | 0.712 | 0.300 |
-| Gram-Schmidt | logreg | strict | 10 | 0.010 | n/a | n/a | n/a | n/a | 3 | 0.679 | 0.337 |
-| ReliefF | krr | with_missing_indicators | 40 | n/a | 10.000 | 0.050 | 2.000 | 10.000 | 3 | 0.737 | 0.282 |
-| ReliefF | logreg | strict | 20 | 10.000 | n/a | n/a | n/a | 5.000 | 2 | 0.744 | 0.280 |
-| F-test | logreg | with_missing_indicators | 10 | 0.100 | n/a | n/a | n/a | n/a | 2 | 0.703 | 0.303 |
-| Pearson | logreg | with_missing_indicators | 10 | 0.100 | n/a | n/a | n/a | n/a | 2 | 0.703 | 0.303 |
-| Ttest | logreg | with_missing_indicators | 10 | 0.100 | n/a | n/a | n/a | n/a | 2 | 0.703 | 0.303 |
-| Gram-Schmidt | krr | with_missing_indicators | 40 | n/a | 0.100 | 0.003 | 0.100 | n/a | 2 | 0.701 | 0.317 |
-| S2N | logreg | strict | 40 | 1.000 | n/a | n/a | n/a | n/a | 2 | 0.693 | 0.321 |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | selector | classifier | mode | k | C | alpha | gamma | gamma_multiplier |
+|---|---|---|---|---|---|---|---|---|
+| 1 | F-test | Kernel ridge | Measurements + missing flags | 10 | n/a | 100.000 | 0.200 | 2.000 |
+| 2 | Pearson | Kernel ridge | Measurements + missing flags | 10 | n/a | 100.000 | 0.200 | 2.000 |
+| 3 | Ttest | Kernel ridge | Measurements + missing flags | 10 | n/a | 100.000 | 0.200 | 2.000 |
+| 4 | F-test | Kernel ridge | Measurements only | 10 | n/a | 100.000 | 0.200 | 2.000 |
+| 5 | Pearson | Kernel ridge | Measurements only | 10 | n/a | 100.000 | 0.200 | 2.000 |
+| 6 | Ttest | Kernel ridge | Measurements only | 10 | n/a | 100.000 | 0.200 | 2.000 |
+| 7 | Gram-Schmidt | Kernel ridge | Measurements only | 10 | n/a | 100.000 | 0.200 | 2.000 |
+| 8 | ReliefF | Kernel ridge | Measurements only | 20 | n/a | 10.000 | 0.050 | 1.000 |
+| 9 | S2N | Kernel ridge | Measurements only | 10 | n/a | 100.000 | 0.200 | 2.000 |
+| 10 | F-test | Logistic regression | Measurements only | 10 | 1.000 | n/a | n/a | n/a |
+| 11 | Pearson | Logistic regression | Measurements only | 10 | 1.000 | n/a | n/a | n/a |
+| 12 | Ttest | Logistic regression | Measurements only | 10 | 1.000 | n/a | n/a | n/a |
+| 13 | ReliefF | Logistic regression | Measurements + missing flags | 20 | 10.000 | n/a | n/a | n/a |
+| 14 | Gram-Schmidt | Logistic regression | Measurements + missing flags | 20 | 0.010 | n/a | n/a | n/a |
+| 15 | S2N | Logistic regression | Measurements + missing flags | 20 | 0.010 | n/a | n/a | n/a |
+| 16 | S2N | Kernel ridge | Measurements + missing flags | 20 | n/a | 10.000 | 0.100 | 2.000 |
+| 17 | Gram-Schmidt | Logistic regression | Measurements only | 10 | 0.010 | n/a | n/a | n/a |
+| 18 | ReliefF | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | 0.050 | 2.000 |
+| 19 | ReliefF | Logistic regression | Measurements only | 20 | 10.000 | n/a | n/a | n/a |
+| 20 | F-test | Logistic regression | Measurements + missing flags | 10 | 0.100 | n/a | n/a | n/a |
+| 21 | Pearson | Logistic regression | Measurements + missing flags | 10 | 0.100 | n/a | n/a | n/a |
+| 22 | Ttest | Logistic regression | Measurements + missing flags | 10 | 0.100 | n/a | n/a | n/a |
+| 23 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 40 | n/a | 0.100 | 0.003 | 0.100 |
+| 24 | S2N | Logistic regression | Measurements only | 40 | 1.000 | n/a | n/a | n/a |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | selector | classifier | n_neighbors | selected_count | mean_inner_ROC_AUC | mean_inner_BER |
+|---|---|---|---|---|---|---|
+| 1 | F-test | Kernel ridge | n/a | 2 | 0.699 | 0.306 |
+| 2 | Pearson | Kernel ridge | n/a | 2 | 0.699 | 0.306 |
+| 3 | Ttest | Kernel ridge | n/a | 2 | 0.699 | 0.306 |
+| 4 | F-test | Kernel ridge | n/a | 3 | 0.699 | 0.305 |
+| 5 | Pearson | Kernel ridge | n/a | 3 | 0.699 | 0.305 |
+| 6 | Ttest | Kernel ridge | n/a | 3 | 0.699 | 0.305 |
+| 7 | Gram-Schmidt | Kernel ridge | n/a | 3 | 0.702 | 0.310 |
+| 8 | ReliefF | Kernel ridge | 10.000 | 2 | 0.760 | 0.262 |
+| 9 | S2N | Kernel ridge | n/a | 2 | 0.695 | 0.308 |
+| 10 | F-test | Logistic regression | n/a | 3 | 0.690 | 0.314 |
+| 11 | Pearson | Logistic regression | n/a | 3 | 0.690 | 0.314 |
+| 12 | Ttest | Logistic regression | n/a | 3 | 0.690 | 0.314 |
+| 13 | ReliefF | Logistic regression | 5.000 | 2 | 0.720 | 0.282 |
+| 14 | Gram-Schmidt | Logistic regression | n/a | 2 | 0.663 | 0.346 |
+| 15 | S2N | Logistic regression | n/a | 3 | 0.684 | 0.333 |
+| 16 | S2N | Kernel ridge | n/a | 3 | 0.712 | 0.300 |
+| 17 | Gram-Schmidt | Logistic regression | n/a | 3 | 0.679 | 0.337 |
+| 18 | ReliefF | Kernel ridge | 10.000 | 3 | 0.737 | 0.282 |
+| 19 | ReliefF | Logistic regression | 5.000 | 2 | 0.744 | 0.280 |
+| 20 | F-test | Logistic regression | n/a | 2 | 0.703 | 0.303 |
+| 21 | Pearson | Logistic regression | n/a | 2 | 0.703 | 0.303 |
+| 22 | Ttest | Logistic regression | n/a | 2 | 0.703 | 0.303 |
+| 23 | Gram-Schmidt | Kernel ridge | n/a | 2 | 0.701 | 0.317 |
+| 24 | S2N | Logistic regression | n/a | 2 | 0.693 | 0.321 |
+
 
 
 </details>
@@ -473,90 +627,103 @@ Modal configurations describe inner selections across folds and full-data interp
 
 Headline source: `benchmark_tuned_procedure_summary.csv`, recomputed from `benchmark_tuned_predictions.csv`. Fold mean, standard deviation, and range are descriptive because training samples overlap. They are not algorithm-performance confidence intervals.
 
-| procedure | mean_BER | std_BER | min_BER | max_BER | mean_True+ | mean_True- | pooled_TP | pooled_FP | pooled_TN | pooled_FN |
-|---|---|---|---|---|---|---|---|---|---|---|
-| joint | 0.309 | 0.062 | 0.228 | 0.416 | 0.636 | 0.746 | 66 | 371 | 1092 | 38 |
-| values_only | 0.300 | 0.050 | 0.228 | 0.399 | 0.656 | 0.744 | 68 | 375 | 1088 | 36 |
-| values_and_indicators | 0.306 | 0.109 | 0.142 | 0.439 | 0.654 | 0.734 | 68 | 389 | 1074 | 36 |
-| missingness_only | 0.433 | 0.100 | 0.223 | 0.584 | 0.463 | 0.672 | 48 | 480 | 983 | 56 |
-| all_pass | 0.500 | 0.000 | 0.500 | 0.500 | 0.000 | 1.000 | 0 | 0 | 1463 | 104 |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | Procedure | Mean balanced error | Fold SD | Minimum error | Maximum error | Mean failure recall | Mean pass specificity | Failures caught |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Complete selected procedure | 0.309 | 0.062 | 0.228 | 0.416 | 0.636 | 0.746 | 66 |
+| 2 | Measurements only | 0.300 | 0.050 | 0.228 | 0.399 | 0.656 | 0.744 | 68 |
+| 3 | Measurements + missing flags | 0.306 | 0.109 | 0.142 | 0.439 | 0.654 | 0.734 | 68 |
+| 4 | Missing flags only | 0.433 | 0.100 | 0.223 | 0.584 | 0.463 | 0.672 | 48 |
+| 5 | Always predict pass | 0.500 | 0.000 | 0.500 | 0.500 | 0.000 | 1.000 | 0 |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | Procedure | Mean balanced error | False alerts | Passes unflagged | Failures missed |
+|---|---|---|---|---|---|
+| 1 | Complete selected procedure | 0.309 | 371 | 1092 | 38 |
+| 2 | Measurements only | 0.300 | 375 | 1088 | 36 |
+| 3 | Measurements + missing flags | 0.306 | 389 | 1074 | 36 |
+| 4 | Missing flags only | 0.433 | 480 | 983 | 56 |
+| 5 | Always predict pass | 0.500 | 0 | 1463 | 104 |
+
 
 #### Exploratory Nested Family Comparisons
 
 | selector | classifier | mode | mean_BER | fold_min | fold_max | mean_TPR | mean_TNR |
 |---|---|---|---|---|---|---|---|
-| F-test | krr | with_missing_indicators | 0.301 | 0.186 | 0.421 | 0.705 | 0.693 |
-| Pearson | krr | with_missing_indicators | 0.301 | 0.186 | 0.425 | 0.705 | 0.692 |
-| Ttest | krr | with_missing_indicators | 0.301 | 0.186 | 0.425 | 0.705 | 0.692 |
-| F-test | krr | strict | 0.307 | 0.186 | 0.428 | 0.705 | 0.682 |
-| Pearson | krr | strict | 0.307 | 0.186 | 0.428 | 0.705 | 0.682 |
-| Ttest | krr | strict | 0.307 | 0.186 | 0.428 | 0.705 | 0.682 |
-| ReliefF | krr | strict | 0.309 | 0.228 | 0.399 | 0.636 | 0.745 |
-| F-test | logreg | with_missing_indicators | 0.310 | 0.193 | 0.478 | 0.665 | 0.716 |
-| Pearson | logreg | with_missing_indicators | 0.310 | 0.193 | 0.478 | 0.665 | 0.716 |
-| Ttest | logreg | with_missing_indicators | 0.310 | 0.193 | 0.478 | 0.665 | 0.716 |
-| F-test | logreg | strict | 0.314 | 0.216 | 0.428 | 0.705 | 0.666 |
-| Pearson | logreg | strict | 0.314 | 0.216 | 0.428 | 0.705 | 0.666 |
-| Ttest | logreg | strict | 0.314 | 0.216 | 0.428 | 0.705 | 0.666 |
-| ReliefF | krr | with_missing_indicators | 0.318 | 0.162 | 0.423 | 0.634 | 0.729 |
-| Gram-Schmidt | krr | strict | 0.323 | 0.222 | 0.458 | 0.657 | 0.696 |
-| ReliefF | logreg | with_missing_indicators | 0.325 | 0.142 | 0.486 | 0.587 | 0.763 |
-| S2N | krr | with_missing_indicators | 0.329 | 0.216 | 0.464 | 0.665 | 0.678 |
-| ReliefF | logreg | strict | 0.335 | 0.161 | 0.459 | 0.585 | 0.745 |
-| S2N | krr | strict | 0.337 | 0.185 | 0.508 | 0.664 | 0.662 |
-| Gram-Schmidt | krr | with_missing_indicators | 0.341 | 0.216 | 0.430 | 0.626 | 0.692 |
-| S2N | logreg | with_missing_indicators | 0.343 | 0.213 | 0.439 | 0.674 | 0.640 |
-| Gram-Schmidt | logreg | with_missing_indicators | 0.349 | 0.285 | 0.428 | 0.596 | 0.706 |
-| Gram-Schmidt | logreg | strict | 0.350 | 0.217 | 0.453 | 0.578 | 0.721 |
-| S2N | logreg | strict | 0.381 | 0.206 | 0.566 | 0.635 | 0.603 |
+| F-test | Kernel ridge | Measurements + missing flags | 0.301 | 0.186 | 0.421 | 0.705 | 0.693 |
+| Pearson | Kernel ridge | Measurements + missing flags | 0.301 | 0.186 | 0.425 | 0.705 | 0.692 |
+| Ttest | Kernel ridge | Measurements + missing flags | 0.301 | 0.186 | 0.425 | 0.705 | 0.692 |
+| F-test | Kernel ridge | Measurements only | 0.307 | 0.186 | 0.428 | 0.705 | 0.682 |
+| Pearson | Kernel ridge | Measurements only | 0.307 | 0.186 | 0.428 | 0.705 | 0.682 |
+| Ttest | Kernel ridge | Measurements only | 0.307 | 0.186 | 0.428 | 0.705 | 0.682 |
+| ReliefF | Kernel ridge | Measurements only | 0.309 | 0.228 | 0.399 | 0.636 | 0.745 |
+| F-test | Logistic regression | Measurements + missing flags | 0.310 | 0.193 | 0.478 | 0.665 | 0.716 |
+| Pearson | Logistic regression | Measurements + missing flags | 0.310 | 0.193 | 0.478 | 0.665 | 0.716 |
+| Ttest | Logistic regression | Measurements + missing flags | 0.310 | 0.193 | 0.478 | 0.665 | 0.716 |
+| F-test | Logistic regression | Measurements only | 0.314 | 0.216 | 0.428 | 0.705 | 0.666 |
+| Pearson | Logistic regression | Measurements only | 0.314 | 0.216 | 0.428 | 0.705 | 0.666 |
+| Ttest | Logistic regression | Measurements only | 0.314 | 0.216 | 0.428 | 0.705 | 0.666 |
+| ReliefF | Kernel ridge | Measurements + missing flags | 0.318 | 0.162 | 0.423 | 0.634 | 0.729 |
+| Gram-Schmidt | Kernel ridge | Measurements only | 0.323 | 0.222 | 0.458 | 0.657 | 0.696 |
+| ReliefF | Logistic regression | Measurements + missing flags | 0.325 | 0.142 | 0.486 | 0.587 | 0.763 |
+| S2N | Kernel ridge | Measurements + missing flags | 0.329 | 0.216 | 0.464 | 0.665 | 0.678 |
+| ReliefF | Logistic regression | Measurements only | 0.335 | 0.161 | 0.459 | 0.585 | 0.745 |
+| S2N | Kernel ridge | Measurements only | 0.337 | 0.185 | 0.508 | 0.664 | 0.662 |
+| Gram-Schmidt | Kernel ridge | Measurements + missing flags | 0.341 | 0.216 | 0.430 | 0.626 | 0.692 |
+| S2N | Logistic regression | Measurements + missing flags | 0.343 | 0.213 | 0.439 | 0.674 | 0.640 |
+| Gram-Schmidt | Logistic regression | Measurements + missing flags | 0.349 | 0.285 | 0.428 | 0.596 | 0.706 |
+| Gram-Schmidt | Logistic regression | Measurements only | 0.350 | 0.217 | 0.453 | 0.578 | 0.721 |
+| S2N | Logistic regression | Measurements only | 0.381 | 0.206 | 0.566 | 0.635 | 0.603 |
 
 #### Supporting Benchmark Metrics
 
 | selector | classifier | mode | mean_ROC_AUC | mean_PR_AUC | mean_MCC | mean_F2 |
 |---|---|---|---|---|---|---|
-| F-test | krr | with_missing_indicators | 0.730 | 0.204 | 0.213 | 0.389 |
-| Pearson | krr | with_missing_indicators | 0.730 | 0.204 | 0.213 | 0.389 |
-| Ttest | krr | with_missing_indicators | 0.730 | 0.204 | 0.213 | 0.389 |
-| F-test | krr | strict | 0.725 | 0.197 | 0.205 | 0.385 |
-| Pearson | krr | strict | 0.725 | 0.197 | 0.205 | 0.385 |
-| Ttest | krr | strict | 0.725 | 0.197 | 0.205 | 0.385 |
-| ReliefF | krr | strict | 0.740 | 0.235 | 0.218 | 0.391 |
-| F-test | logreg | with_missing_indicators | 0.737 | 0.191 | 0.209 | 0.387 |
-| Pearson | logreg | with_missing_indicators | 0.737 | 0.191 | 0.209 | 0.387 |
-| Ttest | logreg | with_missing_indicators | 0.737 | 0.191 | 0.209 | 0.387 |
-| F-test | logreg | strict | 0.737 | 0.200 | 0.199 | 0.378 |
-| Pearson | logreg | strict | 0.737 | 0.200 | 0.199 | 0.378 |
-| Ttest | logreg | strict | 0.737 | 0.200 | 0.199 | 0.378 |
-| ReliefF | krr | with_missing_indicators | 0.744 | 0.241 | 0.204 | 0.379 |
-| Gram-Schmidt | krr | strict | 0.712 | 0.202 | 0.191 | 0.372 |
-| ReliefF | logreg | with_missing_indicators | 0.728 | 0.223 | 0.204 | 0.375 |
-| S2N | krr | with_missing_indicators | 0.708 | 0.172 | 0.181 | 0.363 |
-| ReliefF | logreg | strict | 0.724 | 0.217 | 0.189 | 0.363 |
-| S2N | krr | strict | 0.704 | 0.189 | 0.171 | 0.352 |
-| Gram-Schmidt | krr | with_missing_indicators | 0.707 | 0.192 | 0.171 | 0.350 |
-| S2N | logreg | with_missing_indicators | 0.723 | 0.192 | 0.163 | 0.349 |
-| Gram-Schmidt | logreg | with_missing_indicators | 0.710 | 0.201 | 0.168 | 0.341 |
-| Gram-Schmidt | logreg | strict | 0.711 | 0.198 | 0.167 | 0.340 |
-| S2N | logreg | strict | 0.692 | 0.178 | 0.120 | 0.308 |
+| F-test | Kernel ridge | Measurements + missing flags | 0.730 | 0.204 | 0.213 | 0.389 |
+| Pearson | Kernel ridge | Measurements + missing flags | 0.730 | 0.204 | 0.213 | 0.389 |
+| Ttest | Kernel ridge | Measurements + missing flags | 0.730 | 0.204 | 0.213 | 0.389 |
+| F-test | Kernel ridge | Measurements only | 0.725 | 0.197 | 0.205 | 0.385 |
+| Pearson | Kernel ridge | Measurements only | 0.725 | 0.197 | 0.205 | 0.385 |
+| Ttest | Kernel ridge | Measurements only | 0.725 | 0.197 | 0.205 | 0.385 |
+| ReliefF | Kernel ridge | Measurements only | 0.740 | 0.235 | 0.218 | 0.391 |
+| F-test | Logistic regression | Measurements + missing flags | 0.737 | 0.191 | 0.209 | 0.387 |
+| Pearson | Logistic regression | Measurements + missing flags | 0.737 | 0.191 | 0.209 | 0.387 |
+| Ttest | Logistic regression | Measurements + missing flags | 0.737 | 0.191 | 0.209 | 0.387 |
+| F-test | Logistic regression | Measurements only | 0.737 | 0.200 | 0.199 | 0.378 |
+| Pearson | Logistic regression | Measurements only | 0.737 | 0.200 | 0.199 | 0.378 |
+| Ttest | Logistic regression | Measurements only | 0.737 | 0.200 | 0.199 | 0.378 |
+| ReliefF | Kernel ridge | Measurements + missing flags | 0.744 | 0.241 | 0.204 | 0.379 |
+| Gram-Schmidt | Kernel ridge | Measurements only | 0.712 | 0.202 | 0.191 | 0.372 |
+| ReliefF | Logistic regression | Measurements + missing flags | 0.728 | 0.223 | 0.204 | 0.375 |
+| S2N | Kernel ridge | Measurements + missing flags | 0.708 | 0.172 | 0.181 | 0.363 |
+| ReliefF | Logistic regression | Measurements only | 0.724 | 0.217 | 0.189 | 0.363 |
+| S2N | Kernel ridge | Measurements only | 0.704 | 0.189 | 0.171 | 0.352 |
+| Gram-Schmidt | Kernel ridge | Measurements + missing flags | 0.707 | 0.192 | 0.171 | 0.350 |
+| S2N | Logistic regression | Measurements + missing flags | 0.723 | 0.192 | 0.163 | 0.349 |
+| Gram-Schmidt | Logistic regression | Measurements + missing flags | 0.710 | 0.201 | 0.168 | 0.341 |
+| Gram-Schmidt | Logistic regression | Measurements only | 0.711 | 0.198 | 0.167 | 0.340 |
+| S2N | Logistic regression | Measurements only | 0.692 | 0.178 | 0.120 | 0.308 |
 
 #### Paired Missing-indicator Ablation
 
 Positive delta_BER means values-only BER minus values-plus-indicators BER. Paired fold deltas are descriptive.
 
-| selector | classifier | BER_reference | BER_missing_indicator | delta_BER | std_delta_BER | min_delta_BER | max_delta_BER |
+| Selection method | Model | BER reference | BER missing indicator | Delta BER | Std delta BER | Min delta BER | Max delta BER |
 |---|---|---|---|---|---|---|---|
-| S2N | krr | 0.337 | 0.329 | 0.008 | 0.045 | -0.083 | 0.067 |
-| S2N | logreg | 0.381 | 0.343 | 0.038 | 0.085 | -0.067 | 0.181 |
-| Ttest | krr | 0.307 | 0.301 | 0.006 | 0.018 | -0.018 | 0.041 |
-| Ttest | logreg | 0.314 | 0.310 | 0.005 | 0.037 | -0.088 | 0.043 |
-| F-test | krr | 0.307 | 0.301 | 0.006 | 0.018 | -0.018 | 0.041 |
-| F-test | logreg | 0.314 | 0.310 | 0.005 | 0.037 | -0.088 | 0.043 |
-| ReliefF | krr | 0.309 | 0.318 | -0.009 | 0.071 | -0.136 | 0.084 |
-| ReliefF | logreg | 0.335 | 0.325 | 0.010 | 0.049 | -0.070 | 0.112 |
-| Gram-Schmidt | krr | 0.323 | 0.341 | -0.017 | 0.040 | -0.103 | 0.029 |
-| Gram-Schmidt | logreg | 0.350 | 0.349 | 0.002 | 0.033 | -0.068 | 0.053 |
-| Pearson | krr | 0.307 | 0.301 | 0.006 | 0.018 | -0.018 | 0.041 |
-| Pearson | logreg | 0.314 | 0.310 | 0.005 | 0.037 | -0.088 | 0.043 |
+| S2N | Kernel ridge | 0.337 | 0.329 | 0.008 | 0.045 | -0.083 | 0.067 |
+| S2N | Logistic regression | 0.381 | 0.343 | 0.038 | 0.085 | -0.067 | 0.181 |
+| Ttest | Kernel ridge | 0.307 | 0.301 | 0.006 | 0.018 | -0.018 | 0.041 |
+| Ttest | Logistic regression | 0.314 | 0.310 | 0.005 | 0.037 | -0.088 | 0.043 |
+| F-test | Kernel ridge | 0.307 | 0.301 | 0.006 | 0.018 | -0.018 | 0.041 |
+| F-test | Logistic regression | 0.314 | 0.310 | 0.005 | 0.037 | -0.088 | 0.043 |
+| ReliefF | Kernel ridge | 0.309 | 0.318 | -0.009 | 0.071 | -0.136 | 0.084 |
+| ReliefF | Logistic regression | 0.335 | 0.325 | 0.010 | 0.049 | -0.070 | 0.112 |
+| Gram-Schmidt | Kernel ridge | 0.323 | 0.341 | -0.017 | 0.040 | -0.103 | 0.029 |
+| Gram-Schmidt | Logistic regression | 0.350 | 0.349 | 0.002 | 0.033 | -0.068 | 0.053 |
+| Pearson | Kernel ridge | 0.307 | 0.301 | 0.006 | 0.018 | -0.018 | 0.041 |
+| Pearson | Logistic regression | 0.314 | 0.310 | 0.005 | 0.037 | -0.088 | 0.043 |
 
 </details>
 
@@ -643,64 +810,168 @@ The retained logistic-regression role study and a bounded DEV-only KRR comparato
 
 KRR uses the shared tuned alpha grid and dimension-relative gamma multipliers with StandardScaler. Joint input mode and configuration are chosen by earlier FIT chronological inner BER. Values-only and combined procedures use the same fixed evaluation periods. The predeclared 30% calibration sensitivity tunes independently within its earlier 70% FIT. It is descriptive and cannot promote an outer-period winner or a later-block KRR champion.
 
-| fold | procedure | available | unavailable_reason | BER | ROC_AUC | n_inner_timestamp_ties | True+ | True- | TP | TN | FP | FN |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | krr_cal20_joint | True | n/a | 0.428 | 0.727 | 0 | 1.000 | 0.143 | 7 | 34 | 203 | 0 |
-| 1 | krr_cal20_values_only | True | n/a | 0.428 | 0.727 | 0 | 1.000 | 0.143 | 7 | 34 | 203 | 0 |
-| 1 | krr_cal20_values_and_indicators | True | n/a | 0.445 | 0.315 | 0 | 0.143 | 0.966 | 1 | 229 | 8 | 6 |
-| 2 | krr_cal20_joint | True | n/a | 0.491 | 0.589 | 0 | 1.000 | 0.017 | 9 | 5 | 285 | 0 |
-| 2 | krr_cal20_values_only | True | n/a | 0.434 | 0.610 | 0 | 0.667 | 0.466 | 6 | 135 | 155 | 3 |
-| 2 | krr_cal20_values_and_indicators | True | n/a | 0.491 | 0.589 | 0 | 1.000 | 0.017 | 9 | 5 | 285 | 0 |
-| 3 | krr_cal20_joint | True | n/a | 0.504 | 0.487 | 0 | 0.765 | 0.226 | 13 | 43 | 147 | 4 |
-| 3 | krr_cal20_values_only | True | n/a | 0.532 | 0.469 | 0 | 0.235 | 0.700 | 4 | 133 | 57 | 13 |
-| 3 | krr_cal20_values_and_indicators | True | n/a | 0.504 | 0.487 | 0 | 0.765 | 0.226 | 13 | 43 | 147 | 4 |
-| 1 | krr_cal30_joint | True | n/a | 0.429 | 0.555 | 0 | 0.143 | 1.000 | 1 | 237 | 0 | 6 |
-| 1 | krr_cal30_values_only | True | n/a | 0.429 | 0.555 | 0 | 0.143 | 1.000 | 1 | 237 | 0 | 6 |
-| 1 | krr_cal30_values_and_indicators | True | n/a | 0.528 | 0.455 | 0 | 0.143 | 0.802 | 1 | 190 | 47 | 6 |
-| 2 | krr_cal30_joint | True | n/a | 0.433 | 0.680 | 0 | 1.000 | 0.134 | 9 | 39 | 251 | 0 |
-| 2 | krr_cal30_values_only | True | n/a | 0.477 | 0.492 | 0 | 0.111 | 0.934 | 1 | 271 | 19 | 8 |
-| 2 | krr_cal30_values_and_indicators | True | n/a | 0.433 | 0.680 | 0 | 1.000 | 0.134 | 9 | 39 | 251 | 0 |
-| 3 | krr_cal30_joint | True | n/a | 0.514 | 0.478 | 1 | 0.529 | 0.442 | 9 | 84 | 106 | 8 |
-| 3 | krr_cal30_values_only | True | n/a | 0.514 | 0.478 | 1 | 0.529 | 0.442 | 9 | 84 | 106 | 8 |
-| 3 | krr_cal30_values_and_indicators | True | n/a | 0.483 | 0.525 | 1 | 0.765 | 0.268 | 13 | 51 | 139 | 4 |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | Fold | Procedure | Available | Unavailable reason | Balanced error | Ranking AUC | N inner timestamp ties | Failure recall |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | Complete selected procedure (20% calibration) | True | n/a | 0.428 | 0.727 | 0 | 1.000 |
+| 2 | 1 | Measurements only (20% calibration) | True | n/a | 0.428 | 0.727 | 0 | 1.000 |
+| 3 | 1 | Measurements + missing flags (20% calibration) | True | n/a | 0.445 | 0.315 | 0 | 0.143 |
+| 4 | 2 | Complete selected procedure (20% calibration) | True | n/a | 0.491 | 0.589 | 0 | 1.000 |
+| 5 | 2 | Measurements only (20% calibration) | True | n/a | 0.434 | 0.610 | 0 | 0.667 |
+| 6 | 2 | Measurements + missing flags (20% calibration) | True | n/a | 0.491 | 0.589 | 0 | 1.000 |
+| 7 | 3 | Complete selected procedure (20% calibration) | True | n/a | 0.504 | 0.487 | 0 | 0.765 |
+| 8 | 3 | Measurements only (20% calibration) | True | n/a | 0.532 | 0.469 | 0 | 0.235 |
+| 9 | 3 | Measurements + missing flags (20% calibration) | True | n/a | 0.504 | 0.487 | 0 | 0.765 |
+| 10 | 1 | Complete selected procedure (30% calibration) | True | n/a | 0.429 | 0.555 | 0 | 0.143 |
+| 11 | 1 | Measurements only (30% calibration) | True | n/a | 0.429 | 0.555 | 0 | 0.143 |
+| 12 | 1 | Measurements + missing flags (30% calibration) | True | n/a | 0.528 | 0.455 | 0 | 0.143 |
+| 13 | 2 | Complete selected procedure (30% calibration) | True | n/a | 0.433 | 0.680 | 0 | 1.000 |
+| 14 | 2 | Measurements only (30% calibration) | True | n/a | 0.477 | 0.492 | 0 | 0.111 |
+| 15 | 2 | Measurements + missing flags (30% calibration) | True | n/a | 0.433 | 0.680 | 0 | 1.000 |
+| 16 | 3 | Complete selected procedure (30% calibration) | True | n/a | 0.514 | 0.478 | 1 | 0.529 |
+| 17 | 3 | Measurements only (30% calibration) | True | n/a | 0.514 | 0.478 | 1 | 0.529 |
+| 18 | 3 | Measurements + missing flags (30% calibration) | True | n/a | 0.483 | 0.525 | 1 | 0.765 |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | Fold | Procedure | Pass specificity | Failures caught | Passes unflagged | False alerts | Failures missed |
+|---|---|---|---|---|---|---|---|
+| 1 | 1 | Complete selected procedure (20% calibration) | 0.143 | 7 | 34 | 203 | 0 |
+| 2 | 1 | Measurements only (20% calibration) | 0.143 | 7 | 34 | 203 | 0 |
+| 3 | 1 | Measurements + missing flags (20% calibration) | 0.966 | 1 | 229 | 8 | 6 |
+| 4 | 2 | Complete selected procedure (20% calibration) | 0.017 | 9 | 5 | 285 | 0 |
+| 5 | 2 | Measurements only (20% calibration) | 0.466 | 6 | 135 | 155 | 3 |
+| 6 | 2 | Measurements + missing flags (20% calibration) | 0.017 | 9 | 5 | 285 | 0 |
+| 7 | 3 | Complete selected procedure (20% calibration) | 0.226 | 13 | 43 | 147 | 4 |
+| 8 | 3 | Measurements only (20% calibration) | 0.700 | 4 | 133 | 57 | 13 |
+| 9 | 3 | Measurements + missing flags (20% calibration) | 0.226 | 13 | 43 | 147 | 4 |
+| 10 | 1 | Complete selected procedure (30% calibration) | 1.000 | 1 | 237 | 0 | 6 |
+| 11 | 1 | Measurements only (30% calibration) | 1.000 | 1 | 237 | 0 | 6 |
+| 12 | 1 | Measurements + missing flags (30% calibration) | 0.802 | 1 | 190 | 47 | 6 |
+| 13 | 2 | Complete selected procedure (30% calibration) | 0.134 | 9 | 39 | 251 | 0 |
+| 14 | 2 | Measurements only (30% calibration) | 0.934 | 1 | 271 | 19 | 8 |
+| 15 | 2 | Measurements + missing flags (30% calibration) | 0.134 | 9 | 39 | 251 | 0 |
+| 16 | 3 | Complete selected procedure (30% calibration) | 0.442 | 9 | 84 | 106 | 8 |
+| 17 | 3 | Measurements only (30% calibration) | 0.442 | 9 | 84 | 106 | 8 |
+| 18 | 3 | Measurements + missing flags (30% calibration) | 0.268 | 13 | 51 | 139 | 4 |
+
 
 #### Calibration Counts and Threshold Fragility
 
 Fewer than ten calibration failures is a fragility warning, not a reason to move a chronological boundary. BER steps are 1/(2 failures) and 1/(2 passes). Leave-one-failure-out recalibration keeps fitted scores fixed; flagged-fraction ranges use the same full calibration score set. LOFO ranges are undefined with fewer than two failures or no passes; class-specific BER steps are undefined when that class is absent. These ranges describe calibration instability only, not confidence intervals, future uncertainty or algorithm uncertainty. Per-period AUC distinguishes ranking weakness from threshold weakness. Inner rows follow stable (timestamp, raw_row_id) order; equal-timestamp boundaries are flagged in search/calibration receipts. Disjoint IDs and nondecreasing timestamps preserve the fixed splits. Raw row ID does not establish physical event order or independence within tied timestamps. Outer calendar tests remain strictly later.
 
-| fold | procedure | calibration_n | calibration_fails | calibration_passes | BER_step_failure | BER_step_pass | threshold | fragile_calibration | fit_calibration_timestamp_tie | lofo_available | lofo_threshold_min | lofo_threshold_max | lofo_flagged_fraction_min | lofo_flagged_fraction_max |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | temporal_joint | 117 | 4 | 113 | 0.125 | 0.004 | 0.503 | True | False | True | 0.503 | 0.885 | 0.009 | 0.393 |
-| 2 | temporal_joint | 166 | 3 | 163 | 0.167 | 0.003 | 0.683 | True | False | True | 0.133 | 0.683 | 0.012 | 0.837 |
-| 3 | temporal_joint | 225 | 6 | 219 | 0.083 | 0.002 | 0.087 | True | False | True | 0.087 | 0.472 | 0.200 | 0.818 |
-| 0 | logreg_final_primary | 267 | 17 | 250 | 0.029 | 0.002 | 0.185 | False | False | True | 0.185 | 0.188 | 0.566 | 0.577 |
-| 0 | logreg_final_challenger | 267 | 17 | 250 | 0.029 | 0.002 | 0.508 | False | False | True | -inf | 0.559 | 0.041 | 1.000 |
-| 1 | krr_cal20_joint | 117 | 4 | 113 | 0.125 | 0.004 | -0.783 | True | False | True | -0.783 | -0.258 | 0.094 | 0.573 |
-| 1 | krr_cal20_values_only | 117 | 4 | 113 | 0.125 | 0.004 | -0.783 | True | False | True | -0.783 | -0.258 | 0.094 | 0.573 |
-| 1 | krr_cal20_values_and_indicators | 117 | 4 | 113 | 0.125 | 0.004 | 0.004 | True | False | True | -0.130 | 0.004 | 0.009 | 0.991 |
-| 2 | krr_cal20_joint | 166 | 3 | 163 | 0.167 | 0.003 | -1.199 | True | False | True | -1.199 | -0.907 | 0.777 | 0.946 |
-| 2 | krr_cal20_values_only | 166 | 3 | 163 | 0.167 | 0.003 | -0.400 | True | False | True | -0.400 | -0.393 | 0.380 | 0.398 |
-| 2 | krr_cal20_values_and_indicators | 166 | 3 | 163 | 0.167 | 0.003 | -1.199 | True | False | True | -1.199 | -0.907 | 0.777 | 0.946 |
-| 3 | krr_cal20_joint | 225 | 6 | 219 | 0.083 | 0.002 | -0.534 | True | False | True | -0.534 | -0.126 | 0.187 | 0.844 |
-| 3 | krr_cal20_values_only | 225 | 6 | 219 | 0.083 | 0.002 | -0.428 | True | False | True | -0.428 | -0.323 | 0.173 | 0.236 |
-| 3 | krr_cal20_values_and_indicators | 225 | 6 | 219 | 0.083 | 0.002 | -0.534 | True | False | True | -0.534 | -0.126 | 0.187 | 0.844 |
-| 1 | krr_cal30_joint | 175 | 7 | 168 | 0.071 | 0.003 | 0.145 | True | False | True | -0.280 | 0.145 | 0.023 | 0.771 |
-| 1 | krr_cal30_values_only | 175 | 7 | 168 | 0.071 | 0.003 | 0.145 | True | False | True | -0.280 | 0.145 | 0.023 | 0.771 |
-| 1 | krr_cal30_values_and_indicators | 175 | 7 | 168 | 0.071 | 0.003 | -0.002 | True | False | True | -0.002 | 1.48e-06 | 0.131 | 0.149 |
-| 2 | krr_cal30_joint | 248 | 7 | 241 | 0.071 | 0.002 | -0.915 | True | False | True | -0.915 | 0.356 | 0.218 | 0.915 |
-| 2 | krr_cal30_values_only | 248 | 7 | 241 | 0.071 | 0.002 | -0.008 | True | False | True | -0.248 | -1.98e-05 | 0.165 | 0.851 |
-| 2 | krr_cal30_values_and_indicators | 248 | 7 | 241 | 0.071 | 0.002 | -0.915 | True | False | True | -0.915 | 0.356 | 0.218 | 0.915 |
-| 3 | krr_cal30_joint | 338 | 11 | 327 | 0.045 | 0.002 | -0.798 | False | False | True | -0.798 | -0.715 | 0.482 | 0.589 |
-| 3 | krr_cal30_values_only | 338 | 11 | 327 | 0.045 | 0.002 | -0.798 | False | False | True | -0.798 | -0.715 | 0.482 | 0.589 |
-| 3 | krr_cal30_values_and_indicators | 338 | 11 | 327 | 0.045 | 0.002 | -0.161 | False | False | True | -0.161 | -0.077 | 0.172 | 0.589 |
+**Table panel 1 of 3 — shared row numbers identify the same record.**
+
+| Row | Fold | Procedure | Calibration samples | Calibration failures | Calibration passes | Error step per failure | Error step per pass | Threshold |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | temporal_joint | 117 | 4 | 113 | 0.125 | 0.004 | 0.503 |
+| 2 | 2 | temporal_joint | 166 | 3 | 163 | 0.167 | 0.003 | 0.683 |
+| 3 | 3 | temporal_joint | 225 | 6 | 219 | 0.083 | 0.002 | 0.087 |
+| 4 | 0 | Final primary logistic regression | 267 | 17 | 250 | 0.029 | 0.002 | 0.185 |
+| 5 | 0 | Final comparison logistic regression | 267 | 17 | 250 | 0.029 | 0.002 | 0.508 |
+| 6 | 1 | Complete selected procedure (20% calibration) | 117 | 4 | 113 | 0.125 | 0.004 | -0.783 |
+| 7 | 1 | Measurements only (20% calibration) | 117 | 4 | 113 | 0.125 | 0.004 | -0.783 |
+| 8 | 1 | Measurements + missing flags (20% calibration) | 117 | 4 | 113 | 0.125 | 0.004 | 0.004 |
+| 9 | 2 | Complete selected procedure (20% calibration) | 166 | 3 | 163 | 0.167 | 0.003 | -1.199 |
+| 10 | 2 | Measurements only (20% calibration) | 166 | 3 | 163 | 0.167 | 0.003 | -0.400 |
+| 11 | 2 | Measurements + missing flags (20% calibration) | 166 | 3 | 163 | 0.167 | 0.003 | -1.199 |
+| 12 | 3 | Complete selected procedure (20% calibration) | 225 | 6 | 219 | 0.083 | 0.002 | -0.534 |
+| 13 | 3 | Measurements only (20% calibration) | 225 | 6 | 219 | 0.083 | 0.002 | -0.428 |
+| 14 | 3 | Measurements + missing flags (20% calibration) | 225 | 6 | 219 | 0.083 | 0.002 | -0.534 |
+| 15 | 1 | Complete selected procedure (30% calibration) | 175 | 7 | 168 | 0.071 | 0.003 | 0.145 |
+| 16 | 1 | Measurements only (30% calibration) | 175 | 7 | 168 | 0.071 | 0.003 | 0.145 |
+| 17 | 1 | Measurements + missing flags (30% calibration) | 175 | 7 | 168 | 0.071 | 0.003 | -0.002 |
+| 18 | 2 | Complete selected procedure (30% calibration) | 248 | 7 | 241 | 0.071 | 0.002 | -0.915 |
+| 19 | 2 | Measurements only (30% calibration) | 248 | 7 | 241 | 0.071 | 0.002 | -0.008 |
+| 20 | 2 | Measurements + missing flags (30% calibration) | 248 | 7 | 241 | 0.071 | 0.002 | -0.915 |
+| 21 | 3 | Complete selected procedure (30% calibration) | 338 | 11 | 327 | 0.045 | 0.002 | -0.798 |
+| 22 | 3 | Measurements only (30% calibration) | 338 | 11 | 327 | 0.045 | 0.002 | -0.798 |
+| 23 | 3 | Measurements + missing flags (30% calibration) | 338 | 11 | 327 | 0.045 | 0.002 | -0.161 |
+
+**Table panel 2 of 3 — shared row numbers identify the same record.**
+
+| Row | Fold | Procedure | Fragile calibration | Fit calibration timestamp tie | Recalibration available | Recalibrated threshold min | Recalibrated threshold max | Recalibrated flagged fraction min |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | temporal_joint | True | False | True | 0.503 | 0.885 | 0.009 |
+| 2 | 2 | temporal_joint | True | False | True | 0.133 | 0.683 | 0.012 |
+| 3 | 3 | temporal_joint | True | False | True | 0.087 | 0.472 | 0.200 |
+| 4 | 0 | Final primary logistic regression | False | False | True | 0.185 | 0.188 | 0.566 |
+| 5 | 0 | Final comparison logistic regression | False | False | True | -inf | 0.559 | 0.041 |
+| 6 | 1 | Complete selected procedure (20% calibration) | True | False | True | -0.783 | -0.258 | 0.094 |
+| 7 | 1 | Measurements only (20% calibration) | True | False | True | -0.783 | -0.258 | 0.094 |
+| 8 | 1 | Measurements + missing flags (20% calibration) | True | False | True | -0.130 | 0.004 | 0.009 |
+| 9 | 2 | Complete selected procedure (20% calibration) | True | False | True | -1.199 | -0.907 | 0.777 |
+| 10 | 2 | Measurements only (20% calibration) | True | False | True | -0.400 | -0.393 | 0.380 |
+| 11 | 2 | Measurements + missing flags (20% calibration) | True | False | True | -1.199 | -0.907 | 0.777 |
+| 12 | 3 | Complete selected procedure (20% calibration) | True | False | True | -0.534 | -0.126 | 0.187 |
+| 13 | 3 | Measurements only (20% calibration) | True | False | True | -0.428 | -0.323 | 0.173 |
+| 14 | 3 | Measurements + missing flags (20% calibration) | True | False | True | -0.534 | -0.126 | 0.187 |
+| 15 | 1 | Complete selected procedure (30% calibration) | True | False | True | -0.280 | 0.145 | 0.023 |
+| 16 | 1 | Measurements only (30% calibration) | True | False | True | -0.280 | 0.145 | 0.023 |
+| 17 | 1 | Measurements + missing flags (30% calibration) | True | False | True | -0.002 | 1.48e-06 | 0.131 |
+| 18 | 2 | Complete selected procedure (30% calibration) | True | False | True | -0.915 | 0.356 | 0.218 |
+| 19 | 2 | Measurements only (30% calibration) | True | False | True | -0.248 | -1.98e-05 | 0.165 |
+| 20 | 2 | Measurements + missing flags (30% calibration) | True | False | True | -0.915 | 0.356 | 0.218 |
+| 21 | 3 | Complete selected procedure (30% calibration) | False | False | True | -0.798 | -0.715 | 0.482 |
+| 22 | 3 | Measurements only (30% calibration) | False | False | True | -0.798 | -0.715 | 0.482 |
+| 23 | 3 | Measurements + missing flags (30% calibration) | False | False | True | -0.161 | -0.077 | 0.172 |
+
+**Table panel 3 of 3 — shared row numbers identify the same record.**
+
+| Row | Fold | Procedure | Recalibrated flagged fraction max |
+|---|---|---|---|
+| 1 | 1 | temporal_joint | 0.393 |
+| 2 | 2 | temporal_joint | 0.837 |
+| 3 | 3 | temporal_joint | 0.818 |
+| 4 | 0 | Final primary logistic regression | 0.577 |
+| 5 | 0 | Final comparison logistic regression | 1.000 |
+| 6 | 1 | Complete selected procedure (20% calibration) | 0.573 |
+| 7 | 1 | Measurements only (20% calibration) | 0.573 |
+| 8 | 1 | Measurements + missing flags (20% calibration) | 0.991 |
+| 9 | 2 | Complete selected procedure (20% calibration) | 0.946 |
+| 10 | 2 | Measurements only (20% calibration) | 0.398 |
+| 11 | 2 | Measurements + missing flags (20% calibration) | 0.946 |
+| 12 | 3 | Complete selected procedure (20% calibration) | 0.844 |
+| 13 | 3 | Measurements only (20% calibration) | 0.236 |
+| 14 | 3 | Measurements + missing flags (20% calibration) | 0.844 |
+| 15 | 1 | Complete selected procedure (30% calibration) | 0.771 |
+| 16 | 1 | Measurements only (30% calibration) | 0.771 |
+| 17 | 1 | Measurements + missing flags (30% calibration) | 0.149 |
+| 18 | 2 | Complete selected procedure (30% calibration) | 0.915 |
+| 19 | 2 | Measurements only (30% calibration) | 0.851 |
+| 20 | 2 | Measurements + missing flags (30% calibration) | 0.915 |
+| 21 | 3 | Complete selected procedure (30% calibration) | 0.589 |
+| 22 | 3 | Measurements only (30% calibration) | 0.589 |
+| 23 | 3 | Measurements + missing flags (30% calibration) | 0.589 |
+
 
 #### Temporal Joint Held-out Procedure
 
-| fold | procedure | ROC_AUC | BER | True+ | True- | TP | TN | FP | FN | n_test | n_test_fails | TPR_available | TNR_available | BER_available |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | temporal_joint | 0.462 | 0.501 | 0.286 | 0.713 | 2 | 169 | 68 | 5 | 244 | 7 | True | True | True |
-| 2 | temporal_joint | 0.579 | 0.507 | 0.000 | 0.986 | 0 | 286 | 4 | 9 | 299 | 9 | True | True | True |
-| 3 | temporal_joint | 0.402 | 0.510 | 0.765 | 0.216 | 13 | 41 | 149 | 4 | 207 | 17 | True | True | True |
+**Table panel 1 of 3 — shared row numbers identify the same record.**
+
+| Row | Fold | Procedure | Ranking AUC | Balanced error | Failure recall | Pass specificity | Failures caught | Passes unflagged |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | temporal_joint | 0.462 | 0.501 | 0.286 | 0.713 | 2 | 169 |
+| 2 | 2 | temporal_joint | 0.579 | 0.507 | 0.000 | 0.986 | 0 | 286 |
+| 3 | 3 | temporal_joint | 0.402 | 0.510 | 0.765 | 0.216 | 13 | 41 |
+
+**Table panel 2 of 3 — shared row numbers identify the same record.**
+
+| Row | Fold | Procedure | False alerts | Failures missed | N test | N test fails | TPR available | TNR available |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | temporal_joint | 68 | 5 | 244 | 7 | True | True |
+| 2 | 2 | temporal_joint | 4 | 9 | 299 | 9 | True | True |
+| 3 | 3 | temporal_joint | 149 | 4 | 207 | 17 | True | True |
+
+**Table panel 3 of 3 — shared row numbers identify the same record.**
+
+| Row | Fold | Procedure | BER available |
+|---|---|---|---|
+| 1 | 1 | temporal_joint | True |
+| 2 | 2 | temporal_joint | True |
+| 3 | 3 | temporal_joint | True |
+
 
 #### Temporal Model Selection Summary
 
@@ -708,7 +979,7 @@ Roles are chosen from chronological inner selection on the final fit prefix. Out
 
 ##### Selector Ranking and Modal Configurations
 
-| selector | status | mean_BER | mean_True+ | mean_True- | modal_k | modal_C | modal_scaler | modal_n_neighbors |
+| Selection method | Status | Mean balanced error | Mean failure recall | Mean pass specificity | Modal selected inputs | Modal C | Modal scaler | Modal n neighbors |
 |---|---|---|---|---|---|---|---|---|
 | S2N | primary | 0.531 | 0.455 | 0.482 | 10 | 0.010 | RobustScaler | n/a |
 | ReliefF | challenger | 0.535 | 0.252 | 0.677 | 10 | 0.010 | RobustScaler | 10.000 |
@@ -720,21 +991,70 @@ Roles are chosen from chronological inner selection on the final fit prefix. Out
 
 Frozen-threshold confusion counts accompany rates and exact binomial TPR/TNR intervals where available. When a class is absent, guarded numerical rate placeholders are marked unavailable; they are not evidence of that class recall. Intervals are conditional on a fixed model and independent Bernoulli trials; temporal dependence and model-selection uncertainty are excluded. TNR90 thresholds selected from evaluation labels remain retrospective ROC diagnostics.
 
-| role | selector | threshold_policy | threshold_value | BER | True+ | True- | ROC_AUC | PR_AUC | MCC | F2 | lockbox_n | lockbox_fails | TPR_available | TNR_available | BER_available | low_failure_count_warning | threshold_at_TNR90 | TNR_at_TNR90 | TPR_at_TNR90 | TP | TN | FP | FN | TPR_exact_lower | TPR_exact_upper | TNR_exact_lower | TNR_exact_upper | interval_semantics | evaluation_semantics |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| primary | S2N | scientific | 0.185 | 0.483 | 0.778 | 0.257 | 0.618 | 0.102 | 0.015 | 0.166 | 235 | 9 | True | True | True | True | 0.397 | 0.903 | 0.333 | 7 | 58 | 168 | 2 | 0.400 | 0.972 | 0.201 | 0.319 | conditional_fixed_model_independent_trials_only | retrospective_later_block |
-| primary | S2N | operational | 0.449 | 0.464 | 0.111 | 0.960 | 0.618 | 0.102 | 0.068 | 0.109 | 235 | 9 | True | True | True | True | 0.397 | 0.903 | 0.333 | 1 | 217 | 9 | 8 | 0.003 | 0.482 | 0.926 | 0.982 | conditional_fixed_model_independent_trials_only | retrospective_later_block |
-| challenger | ReliefF | scientific | 0.508 | 0.426 | 0.222 | 0.925 | 0.640 | 0.237 | 0.103 | 0.182 | 235 | 9 | True | True | True | True | 0.466 | 0.903 | 0.333 | 2 | 209 | 17 | 7 | 0.028 | 0.600 | 0.882 | 0.956 | conditional_fixed_model_independent_trials_only | retrospective_later_block |
-| challenger | ReliefF | operational | 0.504 | 0.429 | 0.222 | 0.920 | 0.640 | 0.237 | 0.098 | 0.179 | 235 | 9 | True | True | True | True | 0.466 | 0.903 | 0.333 | 2 | 208 | 18 | 7 | 0.028 | 0.600 | 0.877 | 0.952 | conditional_fixed_model_independent_trials_only | retrospective_later_block |
+**Table panel 1 of 5 — shared row numbers identify the same record.**
+
+| Row | Model role | Selection method | Threshold rule | Threshold value | Balanced error | Failure recall | Pass specificity | Ranking AUC |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Primary model | S2N | Balanced error | 0.185 | 0.483 | 0.778 | 0.257 | 0.618 |
+| 2 | Primary model | S2N | Workload limited | 0.449 | 0.464 | 0.111 | 0.960 | 0.618 |
+| 3 | Comparison model | ReliefF | Balanced error | 0.508 | 0.426 | 0.222 | 0.925 | 0.640 |
+| 4 | Comparison model | ReliefF | Workload limited | 0.504 | 0.429 | 0.222 | 0.920 | 0.640 |
+
+**Table panel 2 of 5 — shared row numbers identify the same record.**
+
+| Row | Model role | Selection method | Precision-recall AUC | MCC | F2 | Lockbox n | Lockbox fails | TPR available |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Primary model | S2N | 0.102 | 0.015 | 0.166 | 235 | 9 | True |
+| 2 | Primary model | S2N | 0.102 | 0.068 | 0.109 | 235 | 9 | True |
+| 3 | Comparison model | ReliefF | 0.237 | 0.103 | 0.182 | 235 | 9 | True |
+| 4 | Comparison model | ReliefF | 0.237 | 0.098 | 0.179 | 235 | 9 | True |
+
+**Table panel 3 of 5 — shared row numbers identify the same record.**
+
+| Row | Model role | Selection method | TNR available | BER available | Low failure count warning | Threshold at TNR90 | TNR at TNR90 | TPR at TNR90 |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Primary model | S2N | True | True | True | 0.397 | 0.903 | 0.333 |
+| 2 | Primary model | S2N | True | True | True | 0.397 | 0.903 | 0.333 |
+| 3 | Comparison model | ReliefF | True | True | True | 0.466 | 0.903 | 0.333 |
+| 4 | Comparison model | ReliefF | True | True | True | 0.466 | 0.903 | 0.333 |
+
+**Table panel 4 of 5 — shared row numbers identify the same record.**
+
+| Row | Model role | Selection method | Failures caught | Passes unflagged | False alerts | Failures missed | TPR exact lower | TPR exact upper |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Primary model | S2N | 7 | 58 | 168 | 2 | 0.400 | 0.972 |
+| 2 | Primary model | S2N | 1 | 217 | 9 | 8 | 0.003 | 0.482 |
+| 3 | Comparison model | ReliefF | 2 | 209 | 17 | 7 | 0.028 | 0.600 |
+| 4 | Comparison model | ReliefF | 2 | 208 | 18 | 7 | 0.028 | 0.600 |
+
+**Table panel 5 of 5 — shared row numbers identify the same record.**
+
+| Row | Model role | Selection method | TNR exact lower | TNR exact upper | Interval semantics | Evaluation semantics |
+|---|---|---|---|---|---|---|
+| 1 | Primary model | S2N | 0.201 | 0.319 | conditional_fixed_model_independent_trials_only | retrospective_later_block |
+| 2 | Primary model | S2N | 0.926 | 0.982 | conditional_fixed_model_independent_trials_only | retrospective_later_block |
+| 3 | Comparison model | ReliefF | 0.882 | 0.956 | conditional_fixed_model_independent_trials_only | retrospective_later_block |
+| 4 | Comparison model | ReliefF | 0.877 | 0.952 | conditional_fixed_model_independent_trials_only | retrospective_later_block |
+
 
 #### Drift and Claim Restrictions
 
 KS compares held-out calibration scores from the same retained model with future scores. Raw-feature PSI uses the fit reference descriptively. Missingness-rate changes indicate collection-regime association, not causes. Heuristic gates cannot authorize superiority or confirmatory claims.
 
-| model_scope | dev_fail_rate | lockbox_fail_rate | abs_prevalence_shift | ks_pvalue_scores | max_PSI | median_PSI | psi_feature_count | drift_gate_status | confirmatory_claims_allowed | score_reference | selected_indicator_missingness_rates | missingness_reference | max_missingness_rate_shift |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| primary | 0.071 | 0.038 | 0.033 | 0.000425 | 4.052 | 2.447 | 6 | HIGH_SHIFT | False | held_out_calibration_same_retained_model | [{"feature": "M72", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M73", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M345", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M346", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}] | FIT_original_column_masks | 0.338 |
-| challenger | 0.071 | 0.038 | 0.033 | 1.21e-09 | 4.224 | 1.350 | 10 | HIGH_SHIFT | False | held_out_calibration_same_retained_model | [{"feature": "M72", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M73", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M345", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M346", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M112", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M247", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M385", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M519", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M562", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M563", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M564", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M565", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M566", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M567", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M568", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M569", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M578", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}, {"feature": "M579", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}, {"feature": "M580", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}, {"feature": "M581", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}] | FIT_original_column_masks | 0.660 |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | Model scope | Dev fail rate | Lockbox fail rate | Absolute prevalence shift | Score distribution p-value | Maximum measurement PSI | Median measurement PSI | Psi feature count |
+|---|---|---|---|---|---|---|---|---|
+| 1 | primary | 0.071 | 0.038 | 0.033 | 0.000425 | 4.052 | 2.447 | 6 |
+| 2 | challenger | 0.071 | 0.038 | 0.033 | 1.21e-09 | 4.224 | 1.350 | 10 |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | Model scope | Dev fail rate | Drift gate status | Confirmatory claims allowed | Score reference | Selected indicator missingness rates | Missingness reference | Max missingness rate shift |
+|---|---|---|---|---|---|---|---|---|
+| 1 | primary | 0.071 | HIGH_SHIFT | False | held_out_calibration_same_retained_model | [{"feature": "M72", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M73", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M345", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M346", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}] | FIT_original_column_masks | 0.338 |
+| 2 | challenger | 0.071 | HIGH_SHIFT | False | held_out_calibration_same_retained_model | [{"feature": "M72", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M73", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M345", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M346", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M112", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M247", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M385", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M519", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M562", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M563", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M564", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M565", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M566", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M567", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M568", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M569", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M578", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}, {"feature": "M579", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}, {"feature": "M580", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}, {"feature": "M581", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}] | FIT_original_column_masks | 0.660 |
+
 - retrospective_later_block_not_fresh_confirmatory_lockbox
 - no_production_readiness_or_superiority_claim
 - primary_high_shift_blocks_lockbox_superiority_claim
@@ -744,27 +1064,69 @@ KS compares held-out calibration scores from the same retained model with future
 
 MSPC fits PCA on pass-only fit samples. Calibration freezes T2/Q source and thresholds before evaluation. Frozen confusion counts and retrospective TNR90 diagnostics are separate. Observed mean inter-alarm spacing across all samples is not in-control ARL0.
 
-| eval_scope | fold_index | T2_AUC | Q_AUC | alarm_rate | observed_mean_inter_alarm_spacing | T2_TPR_at_TNR90 | Q_TPR_at_TNR90 | calibration_selected_MSPC_TPR_at_TNR90 | calibration_selected_MSPC_source | frozen_threshold | T2_frozen_threshold | Q_frozen_threshold | frozen_BER | frozen_TPR | frozen_TNR | TP | TN | FP | FN | TNR90_semantics | source_selection_region | T2_calibration_TPR_at_TNR90 | Q_calibration_TPR_at_TNR90 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| outer_fold | 1 | 0.651 | 0.530 | 0.098 | 8.261 | 0.429 | 0.143 | 0.429 | T2 | 54.475 | 54.475 | 4413.270 | 0.431 | 0.143 | 0.996 | 1 | 236 | 1 | 6 | retrospective_evaluation_ROC_diagnostic | held_out_calibration | 0.250 | 0.250 |
-| outer_fold | 2 | 0.378 | 0.584 | 0.174 | 5.765 | 0.000 | 0.111 | 0.000 | T2 | 25.144 | 25.144 | 66058.636 | 0.507 | 0.000 | 0.986 | 0 | 286 | 4 | 9 | retrospective_evaluation_ROC_diagnostic | held_out_calibration | 0.333 | 0.000 |
-| outer_fold | 3 | 0.380 | 0.555 | 0.039 | 26.143 | 0.059 | 0.059 | 0.059 | T2 | 30.703 | 30.703 | 2699.252 | 0.516 | 0.000 | 0.968 | 0 | 184 | 6 | 17 | retrospective_evaluation_ROC_diagnostic | held_out_calibration | 0.000 | 0.000 |
-| lockbox | LOCKBOX | 0.538 | 0.401 | 0.013 | 50.500 | 0.111 | 0.111 | 0.111 | T2 | 26327.453 | 26327.453 | 3181164.124 | 0.507 | 0.000 | 0.987 | 0 | 223 | 3 | 9 | retrospective_evaluation_ROC_diagnostic | held_out_calibration | 0.059 | 0.059 |
+**Table panel 1 of 4 — shared row numbers identify the same record.**
+
+| Row | Evaluation samples | Test period | T2 AUC | Q AUC | Alarm rate | Observed samples between alarms | T2 TPR at TNR90 | Q TPR at TNR90 |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Chronological test period | 1 | 0.651 | 0.530 | 0.098 | 8.261 | 0.429 | 0.143 |
+| 2 | Chronological test period | 2 | 0.378 | 0.584 | 0.174 | 5.765 | 0.000 | 0.111 |
+| 3 | Chronological test period | 3 | 0.380 | 0.555 | 0.039 | 26.143 | 0.059 | 0.059 |
+| 4 | Final retrospective block | Final retrospective block | 0.538 | 0.401 | 0.013 | 50.500 | 0.111 | 0.111 |
+
+**Table panel 2 of 4 — shared row numbers identify the same record.**
+
+| Row | Evaluation samples | Test period | Calibration selected MSPC TPR at TNR90 | Calibration selected MSPC source | Frozen threshold | T2 frozen threshold | Q frozen threshold | Frozen BER |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Chronological test period | 1 | 0.429 | T2 | 54.475 | 54.475 | 4413.270 | 0.431 |
+| 2 | Chronological test period | 2 | 0.000 | T2 | 25.144 | 25.144 | 66058.636 | 0.507 |
+| 3 | Chronological test period | 3 | 0.059 | T2 | 30.703 | 30.703 | 2699.252 | 0.516 |
+| 4 | Final retrospective block | Final retrospective block | 0.111 | T2 | 26327.453 | 26327.453 | 3181164.124 | 0.507 |
+
+**Table panel 3 of 4 — shared row numbers identify the same record.**
+
+| Row | Evaluation samples | Test period | Frozen TPR | Frozen TNR | Failures caught | Passes unflagged | False alerts | Failures missed |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Chronological test period | 1 | 0.143 | 0.996 | 1 | 236 | 1 | 6 |
+| 2 | Chronological test period | 2 | 0.000 | 0.986 | 0 | 286 | 4 | 9 |
+| 3 | Chronological test period | 3 | 0.000 | 0.968 | 0 | 184 | 6 | 17 |
+| 4 | Final retrospective block | Final retrospective block | 0.000 | 0.987 | 0 | 223 | 3 | 9 |
+
+**Table panel 4 of 4 — shared row numbers identify the same record.**
+
+| Row | Evaluation samples | Test period | 90% specificity interpretation | Source selection region | T2 calibration TPR at TNR90 | Q calibration TPR at TNR90 |
+|---|---|---|---|---|---|---|
+| 1 | Chronological test period | 1 | Retrospective ranking diagnostic | Held-out calibration | 0.250 | 0.250 |
+| 2 | Chronological test period | 2 | Retrospective ranking diagnostic | Held-out calibration | 0.333 | 0.000 |
+| 3 | Chronological test period | 3 | Retrospective ranking diagnostic | Held-out calibration | 0.000 | 0.000 |
+| 4 | Final retrospective block | Final retrospective block | Retrospective ranking diagnostic | Held-out calibration | 0.059 | 0.059 |
+
 
 #### Illustrative Operational Framing
 
 Workload comes from held-out DEV calibration predictions. The operational policy constrains unweighted mean weekly flagged fraction to 10%, not every week's hard cap. Calibration workload is used to select that policy; future operating cost and production capacity remain unvalidated.
 
-| evaluation_region | workload_semantics | role | selector | threshold_policy | predicted_flag_fraction | mean_weekly_flag_fraction | mean_weekly_flagged_samples | mean_weekly_fail_captures | mean_weekly_fail_misses |
-|---|---|---|---|---|---|---|---|---|---|
-| held_out_DEV_calibration | illustrative_mean_weekly_policy_not_per_week_cap | primary | S2N | scientific | 0.577 | 0.578 | 51.333 | 5.000 | 0.667 |
-| held_out_DEV_calibration | illustrative_mean_weekly_policy_not_per_week_cap | primary | S2N | operational | 0.139 | 0.099 | 12.333 | 1.333 | 4.333 |
-| held_out_DEV_calibration | illustrative_mean_weekly_policy_not_per_week_cap | challenger | ReliefF | scientific | 0.090 | 0.080 | 8.000 | 0.667 | 5.000 |
-| held_out_DEV_calibration | illustrative_mean_weekly_policy_not_per_week_cap | challenger | ReliefF | operational | 0.101 | 0.099 | 9.000 | 0.667 | 5.000 |
+**Table panel 1 of 2 — shared row numbers identify the same record.**
+
+| Row | Score source | Workload semantics | Model role | Selection method | Threshold rule | Predicted flag fraction | Mean weekly flag fraction | Mean weekly flagged samples |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Held-out calibration | Illustrative mean weekly rule | Primary model | S2N | Balanced error | 0.577 | 0.578 | 51.333 |
+| 2 | Held-out calibration | Illustrative mean weekly rule | Primary model | S2N | Workload limited | 0.139 | 0.099 | 12.333 |
+| 3 | Held-out calibration | Illustrative mean weekly rule | Comparison model | ReliefF | Balanced error | 0.090 | 0.080 | 8.000 |
+| 4 | Held-out calibration | Illustrative mean weekly rule | Comparison model | ReliefF | Workload limited | 0.101 | 0.099 | 9.000 |
+
+**Table panel 2 of 2 — shared row numbers identify the same record.**
+
+| Row | Score source | Workload semantics | Mean weekly fail captures | Mean weekly fail misses |
+|---|---|---|---|---|
+| 1 | Held-out calibration | Illustrative mean weekly rule | 5.000 | 0.667 |
+| 2 | Held-out calibration | Illustrative mean weekly rule | 1.333 | 4.333 |
+| 3 | Held-out calibration | Illustrative mean weekly rule | 0.667 | 5.000 |
+| 4 | Held-out calibration | Illustrative mean weekly rule | 0.667 | 5.000 |
+
 
 ##### Cost Curves
 
-| cost_ratio | primary_scientific | primary_operational | challenger_scientific | challenger_operational | all_pass_baseline | all_flag_baseline |
+| Cost ratio | Primary: balanced error | Primary: workload limited | Comparison: balanced error | Comparison: workload limited | Always predict pass | Flag every sample |
 |---|---|---|---|---|---|---|
 | 1 | 0.723 | 0.072 | 0.102 | 0.106 | 0.038 | 0.962 |
 | 2 | 0.732 | 0.106 | 0.132 | 0.136 | 0.077 | 0.962 |

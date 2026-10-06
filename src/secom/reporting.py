@@ -12,7 +12,15 @@ import pandas as pd
 
 from secom.artifacts import read_csv_if_exists, read_manifest
 from secom.config import ArtifactName, BenchmarkClassifier, ReplicationMode, StudyStatus, ThresholdPolicy
-from secom.report_language import CLASSIFIERS, fold_count_label, later_sample_scope, procedure_label, role_label
+from secom.report_language import (
+    CLASSIFIERS,
+    fold_count_label,
+    later_sample_scope,
+    procedure_label,
+    role_label,
+    table_header,
+    table_value,
+)
 from secom.report_figures import (
     write_benchmark_comparison_figure,
     write_feature_stability_figure,
@@ -60,19 +68,42 @@ def _markdown_table(
     headers: list[str] | None = None,
     max_rows: int | None = None,
 ) -> list[str]:
-    """Render a small DataFrame slice as Markdown table lines."""
+    """Render reader labels and split wide tables without losing recorded cells."""
     table = frame.loc[:, columns].copy()
     if max_rows is not None:
         table = table.head(max_rows)
-    header_row = headers if headers is not None else columns
-    lines = [
-        "| " + " | ".join(header_row) + " |",
-        "|" + "|".join(["---"] * len(columns)) + "|",
-    ]
-    lines.extend(
-        "| " + " | ".join(_format_cell(value) for value in row) + " |"
+    header_row = headers if headers is not None else [table_header(column) for column in columns]
+    display = [
+        [_format_cell(table_value(column, value)) for column, value in zip(columns, row, strict=True)]
         for row in table.itertuples(index=False, name=None)
-    )
+    ]
+    if len(columns) <= 9:
+        return [
+            "| " + " | ".join(header_row) + " |",
+            "|" + "|".join(["---"] * len(columns)) + "|",
+            *("| " + " | ".join(row) + " |" for row in display),
+        ]
+    lines = []
+    # Repeat the leading identity fields and a row number so panels remain joinable,
+    # including tables whose leading fields are not themselves unique.
+    identity = list(range(2))
+    remaining = list(range(2, len(columns)))
+    panels = [remaining[start : start + 6] for start in range(0, len(remaining), 6)]
+    for number, panel in enumerate(panels, start=1):
+        positions = identity + panel
+        lines.extend(
+            [
+                f"**Table panel {number} of {len(panels)} — shared row numbers identify the same record.**",
+                "",
+                "| Row | " + " | ".join(header_row[position] for position in positions) + " |",
+                "|" + "|".join(["---"] * (len(positions) + 1)) + "|",
+            ]
+        )
+        lines.extend(
+            "| " + str(index) + " | " + " | ".join(row[position] for position in positions) + " |"
+            for index, row in enumerate(display, start=1)
+        )
+        lines.append("")
     return lines
 
 
@@ -915,7 +946,13 @@ def _render_technical_details(ctx: ReportContext) -> list[str]:
     lines = [
         "## Technical Appendix",
         "",
-        "Machine field names and search tables below support reproducibility. They do not define additional headline results.",
+        "Detailed tables preserve the recorded values with readable display labels. They do not define additional headline results. "
+        "Unless a heading includes %, rates are fractions from 0 to 1. Wide tables use numbered panels with shared row numbers.",
+        "",
+        "Artifact vocabulary: `strict` means measurements only; `with_missing_indicators` means measurements plus missing flags; "
+        "`held_out_DEV_calibration` means held-out calibration. BER is balanced error; TPR/True+ is failure recall; "
+        "TNR/True- is pass specificity. LOFO means recalibration after leaving out one failed calibration example. "
+        "The saved CSVs retain their original field names and categorical identifiers.",
         "",
     ]
     procedure_frames = []

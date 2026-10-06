@@ -20,7 +20,7 @@
   "errors": [],
   "executed_archive_path": "runs\\20261004_tuned_temporal_full_01\\evidence\\study_artifacts.zip",
   "executed_archive_sha256": "3908f12c88e9e23ec49e64d334074de62d3e0d6f263c29200e9112c7086157fb",
-  "exported_at_utc": "2026-10-06T02:55:05.138495+00:00",
+  "exported_at_utc": "2026-10-06T21:19:46.811022+00:00",
   "files_sha256": {
     "evidence/run_manifest.json": "038bb281fdd0cbd671dab59297a4658067f9ec5aa6c682276045fe8ffcf512c5",
     "figures/benchmark_comparison.png": "a94c33d6d04928c2a5061be4d856bf7bc72003a1e7c8d60a52cfb66645598593",
@@ -29,15 +29,15 @@
     "figures/temporal_drift.png": "34b032e78fdf34f9bfe93e7a5481280082b113a8729f2347849e3cad2fb8fd53",
     "figures/tuned_vs_original_delta.png": "59078e6b8ac6915386aeb858aa7dd440366ba9d7a0a35a15e9a002d84cc6a834",
     "figures/workload_cost_framing.png": "b6c37a1e65b256112df50afe4a5de8798c2e2dc7d5ec9051e632bed706df98f6",
-    "final_report.md": "6750d36099cfad2228649c4a887d44a28a7cdb88237d74da93059eae5edce1c4"
+    "final_report.md": "92586e2f874a2c980b2cf7006c56c6462905c02f9d1716c3d45b440aa09a540a"
   },
-  "local_archive_path": "E:\\GitHub\\code\\secom-yield-monitoring\\runs\\20261005_portfolio_presentation_04\\evidence\\study_artifacts.zip",
-  "local_archive_sha256": "c31ecc64440440424964535df38b2d6a7151451f56ed5902ec5e0967f880de61",
+  "local_archive_path": "E:\\GitHub\\code\\secom-yield-monitoring\\runs\\20261006_reader_cleanup_04\\evidence\\study_artifacts.zip",
+  "local_archive_sha256": "12cbc6f6b8d88a5a89b31d9f68e832d54a31df6c0cd616e754b18ee6ae6c9131",
   "presentation_only": true,
-  "presentation_run": "runs\\20261005_portfolio_presentation_04",
+  "presentation_run": "runs\\20261006_reader_cleanup_04",
   "rendering_reader_files_sha256": {
     "Makefile": "45589314d5a6e3c71b93add09967e8be394a31d311bcc6fc5e852267ecf3bb67",
-    "README.md": "37acf9f8f1ce6aeb3c099b95c2183764ad2974f68d8ba3045f532b78857d1d45"
+    "README.md": "e371f6022cf09b18a0ddfc279837dc626d83df3569f511ddf37a1b150448d90a"
   },
   "rendering_source": {
     "files": {
@@ -46,7 +46,7 @@
       "docs/spec/03-feature-stability-and-interpretation.md": "b3c15a72e96545e5915564be90046829a1e854ba2b2ca216942e28fa169e84b8",
       "docs/spec/04-temporal-robustness-study.md": "5d28cc45fabf2b8ac09bebf625eb68ceae9324be4621c937d95745075fc1cd5a",
       "docs/spec/05-industrialization-gap-analysis.md": "388d6af7863173f823aa0d8a57ecb4ed6b0d6e6fa0efc0b595ec7f444e294dbc",
-      "docs/spec/06-report-structure.md": "e4b19a5146e22effb98f8de7e86fc8f534d432ae9987712d9ddd1cb3d2514cb8",
+      "docs/spec/06-report-structure.md": "d0e56e15fb3a111c3d152406d9abd1fa5eff7e1d4911dab4a7d00df0928deaf3",
       "docs/spec/07-artifact-contracts.md": "f674e496f18886c37fe75aa1e385de7a46bd699cdcb7a474ed2e4ef6c1ebbd9f",
       "docs/spec/08-audit-and-claim-semantics.md": "55dbf2a157d28f7a0b32fb3f1342dd174e847b0260e714c5d5fd436697e15199",
       "docs/spec/README.md": "96ea29659f268e1316d0c76b97d2ef5d4fe3b9bce974a5cabfd66193a1647f8c",
@@ -88,8 +88,8 @@
       "src/secom/provenance.py": "609c8a1e787866464a5928af75a72dae0c72b43fcedf0f82f5e9c7022ab2c5e5",
       "src/secom/qa.py": "d2339e16de13f37f0bc66208a4cb4408a61a43406c34be4105ae9ba5f9994ae3",
       "src/secom/report_figures.py": "874c9c1927bf327c25e9585b9f50a716614f7b857af1b8411f898fb47b229dba",
-      "src/secom/report_language.py": "679bd5593e26a2bce83a8d11643bfeb435592730cb9bd08e2d6bc0d1339909eb",
-      "src/secom/reporting.py": "922843761d06eda29eaed6e387d95ccea097c28ccb246ca6a35f772ad7de8073",
+      "src/secom/report_language.py": "e5a6e8757a6681ab4477759e74f9dbe3a289a616e1503a9447e09b23b2a092de",
+      "src/secom/reporting.py": "66f700079c8cd061323b89d09b5ed37711da2983ac6a652ecc8bc17e376d084b",
       "src/secom/selection/__init__.py": "fe845840a8cc723fca9fb829eec4e52d21afa799ba7ba4a2ceb26cdd23dea3dd",
       "src/secom/selection/engine.py": "92a666d644cf22504e4bfe91815e14d24026e47d64c53ff8a0c9ab0cc7608c4c",
       "src/secom/selection/tuning.py": "40d29bd0ccda54731bb73a45945ec747ee400be07b657bc99e892bed9c36c853",
@@ -108,9 +108,9 @@
       "src/secom/workflows/temporal_robustness.py": "d675c42374d5ea423164a079125f39288aa746e2c4f8754cbb776aade3649ba9"
     },
     "normalization": "UTF-8 text with LF line endings",
-    "sha256": "c05179211ba2c5298012c0227c6edfe1e98251e9bba230576403a9f6bdffb391"
+    "sha256": "3daf530d05f7aad01dbc3b27077aecca6b9dccaeb09159985361743ac415f332"
   },
-  "rendering_source_sha256": "c05179211ba2c5298012c0227c6edfe1e98251e9bba230576403a9f6bdffb391",
+  "rendering_source_sha256": "3daf530d05f7aad01dbc3b27077aecca6b9dccaeb09159985361743ac415f332",
   "source_run": "runs\\20261004_tuned_temporal_full_01",
   "source_tree_sha256": "faf5b9e1f35bee43daba8cf0b5a7bb863cb4df55f7f9fa2fc159fcfe914bd40e",
   "warnings": [

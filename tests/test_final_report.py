@@ -14,6 +14,38 @@ from secom.reporting import write_final_report
 from tests.assertions import assert_renderable_png, assert_text_contains_all, assert_text_excludes_all
 
 
+def test_wide_report_panels_preserve_values_and_distinguish_duplicate_context() -> None:
+    """Splitting display tables must neither discard fields nor join different records."""
+    from secom.reporting import _markdown_table
+
+    frame = pd.DataFrame(
+        {
+            "context": ["same", "same"],
+            "group": ["same", "same"],
+            **{f"metric_{index}": [index, index + 100] for index in range(23)},
+        }
+    )
+    original = frame.copy(deep=True)
+    lines = _markdown_table(frame, list(frame.columns), headers=list(frame.columns))
+    records = {"1": {}, "2": {}}
+    headings = []
+    for line in lines:
+        if not line.startswith("| "):
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if cells[0] == "Row":
+            headings = cells
+            assert len(headings) <= 9
+            continue
+        for heading, value in zip(headings[1:], cells[1:], strict=True):
+            prior = records[cells[0]].setdefault(heading, value)
+            assert prior == value
+    assert records == {
+        str(index + 1): {column: str(value) for column, value in row.items()} for index, row in frame.iterrows()
+    }
+    pd.testing.assert_frame_equal(frame, original)
+
+
 def test_final_report_is_generated_from_active_artifacts(
     active_artifacts_output_dir: Path,
 ) -> None:
@@ -137,8 +169,8 @@ def test_final_report_includes_temporal_model_selection_summary(
             "Roles are chosen from chronological inner selection",
             "Outer family ranking remains exploratory.",
             "#### Selector Ranking and Modal Configurations",
-            "modal_k",
-            "modal_scaler",
+            "Modal selected inputs",
+            "Modal scaler",
         ],
     )
 
@@ -153,10 +185,10 @@ def test_final_report_includes_drift_claim_restriction_table(
         text,
         [
             "### Drift and Claim Restrictions",
-            "confirmatory_claims_allowed",
-            "abs_prevalence_shift",
-            "ks_pvalue_scores",
-            "max_PSI",
+            "Confirmatory claims allowed",
+            "Absolute prevalence shift",
+            "Score distribution p-value",
+            "Maximum measurement PSI",
         ],
     )
 
@@ -424,7 +456,7 @@ def test_reader_settings_counts_and_calibration_table_follow_recorded_inputs(act
     compact = main.split("### Calibration counts and threshold sensitivity")[1].split("### The final later block")[0]
     assert len([line for line in compact.splitlines() if line.startswith("| ")]) == 4
     assert "Full calibration diagnostics" in compact
-    assert "lofo_threshold_min" in appendix
+    assert "Recalibrated threshold min" in appendix
     assert "Final retained model" not in compact
 
 
@@ -523,7 +555,7 @@ def test_reader_navigation_keeps_appendix_tables_without_duplicate_main_headings
     )
     assert "expand it to see every predefined" in text
     appendix = text.split("## Technical Appendix")[1]
-    assert "lofo_threshold_min" in appendix and "modal_scaler" in appendix
+    assert "Recalibrated threshold min" in appendix and "Modal scaler" in appendix
 
 
 def test_executive_summary_reads_changed_evidence(active_artifacts_output_dir, monkeypatch):
