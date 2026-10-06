@@ -22,7 +22,7 @@ The benchmarks, chronological stress tests, audit, renderer and compact exporter
 | Commit, push and hosted CI | Require a publication request and verification on the published revision |
 | More experiments | Optional; define an unresolved question and acceptance criteria first |
 
-Production operating capabilities are outside this research project's scope. Keep requirements at the specifications, procedures at the development guide, and measured results at the report and performance records.
+Production operating capabilities are outside this study's scope. Keep requirements at the specifications, procedures at the development guide, and measured results at the report and performance records.
 
 ## Historical References
 
@@ -33,5 +33,5 @@ Production operating capabilities are outside this research project's scope. Kee
 | Tuning implementation | Bounded extension and independent review |
 | Full-study analysis | Scientific execution and result arithmetic |
 | Reader presentation | Earlier rendering checks and preservation receipts |
-| report presentation | external reviewers story, chart and navigation validation |
+| Report presentation | Chart and navigation validation |
 | Report design, implementation plan | Historical rationale |

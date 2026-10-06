@@ -1,6 +1,6 @@
 # Active Study Spec
 
-This directory owns the active canonical specification for the implemented SECOM benchmark-first research project. For repository orientation and maintenance, start with [the context index](../README.md).
+This directory owns the active canonical specification for the implemented SECOM benchmark-first study. For repository orientation and maintenance, start with [the context index](../README.md).
 
 ## Source Hierarchy
 

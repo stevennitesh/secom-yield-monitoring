@@ -2,7 +2,7 @@
 
 ## Scope
 
-This file owns the accepted scientific objective and study scope of the SECOM research project.
+This file owns the accepted scientific objective and scope of the SECOM study.
 
 The deliverable is a concise, defensible ML engineering case study backed by a reproducible implementation and audited evidence. Favor clear results, methodological judgment, and measured engineering improvements. Production services, deployment infrastructure, additional datasets, and expanded experiment suites are outside the current scope unless explicitly requested.
 
@@ -32,7 +32,7 @@ Deliver a report that:
 3. avoids overclaiming what the dataset cannot support,
 4. demonstrates strong engineering judgment about industrial applicability.
 
-The benchmark-first pipeline and public evidence snapshot are implemented. Further work should address a concrete presentation, correctness, reproducibility, or performance gap. Industrialization gaps describe evidence needed for stronger future claims; they do not require building those capabilities for this research project. Proposed review-budget or alternative-dataset studies do not replace this contract without an explicit scope decision.
+The benchmark-first pipeline and public evidence snapshot are implemented. Further work should address a concrete presentation, correctness, reproducibility, or performance gap. Industrialization gaps describe evidence needed for stronger future claims; they do not require building those capabilities for this study. Proposed review-budget or alternative-dataset studies do not replace this contract without an explicit scope decision.
 
 ## See Also
 
