@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -316,7 +317,7 @@ def test_final_report_scopes_feature_selection_claims(
         [
             "Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof",
             "validated process-driver identification",
-            "Exploratory family stability and scaled-coefficient heuristics.",
+            "Bars show selection frequency for exploratory families, not causal importance.",
         ],
     )
     assert_text_excludes_all(text, ["most stable and influential features"])
@@ -385,11 +386,11 @@ def test_reader_main_text_defines_metrics_and_keeps_machine_identifiers_in_appen
             "True+",
             "True-",
             "claim_restriction",
-            "joint",
             "Recorded ",
             "Configured ",
         ],
     )
+    assert re.search(r"\bjoint\b", main) is None
 
 
 @pytest.mark.parametrize(
@@ -580,3 +581,134 @@ def test_executive_summary_reads_changed_evidence(active_artifacts_output_dir, m
     assert "failures caught 12 → 9" in summary
     assert "false alerts 8 → 20" in summary
     assert "31.43%" not in summary and "30.86%" not in summary
+
+
+def test_drift_appendix_unpacks_all_indicator_records_without_mutating_evidence():
+    """Nested diagnostics should remain complete and identify populations in ordinary rows."""
+    from secom.reporting import _drift_table_lines
+
+    frame = pd.DataFrame(
+        [
+            {
+                "model_scope": role,
+                "score_reference": "held_out_calibration_same_retained_model",
+                "selected_indicator_missingness_rates": json.dumps(
+                    [
+                        {"feature": feature, "fit_missing_rate": 0.25, "later_missing_rate": rate}
+                        for feature, rate in indicators
+                    ]
+                ),
+            }
+            for role, indicators in [("primary", [("M112", 0.5)]), ("challenger", [("M247", 0.1), ("M519", 0.75)])]
+        ]
+    )
+    original = frame.copy(deep=True)
+    text = "\n".join(_drift_table_lines(frame))
+    assert "| Primary model | M112 | 25.00% | 50.00% | +25.00 |" in text
+    assert "| Comparison model | M247 | 25.00% | 10.00% | -15.00 |" in text
+    assert "| Comparison model | M519 | 25.00% | 75.00% | +50.00 |" in text
+    assert "Held-out calibration scores from the same retained model" in text
+    assert "fit_missing_rate" not in text and "[{" not in text
+    pd.testing.assert_frame_equal(frame, original)
+
+
+def test_report_period_ranges_use_actual_predictions_and_exclude_final_block(workspace_tmp_dir):
+    from secom.reporting import _temporal_period_lines
+
+    pd.DataFrame(
+        {
+            "fold": [1, 1, 2, "LOCKBOX"],
+            "timestamp": ["2009-08-01 12:00", "2009-08-02 13:00", "2009-08-02 13:01", "2010-01-01"],
+        }
+    ).to_csv(workspace_tmp_dir / ArtifactName.TEMPORAL_PREDICTIONS, index=False)
+    text = "\n".join(_temporal_period_lines(workspace_tmp_dir))
+    assert "| 1 | 2009-08-01 12:00 | 2009-08-02 13:00 |" in text
+    assert "| 2 | 2009-08-02 13:01 | 2009-08-02 13:01 |" in text
+    assert "2010" not in text and "2008" not in text
+
+
+def test_stability_example_matches_plotted_features_instead_of_first_manifest_group():
+    from types import SimpleNamespace
+    from secom.reporting import _feature_stability_context_lines
+
+    summary = pd.DataFrame([{"selector": "F-test", "classifier": "krr", "replication_mode": "strict", "mean_BER": 0.3}])
+    common = {"selector": "F-test", "classifier": "krr", "replication_mode": "strict", "selection_frequency": 1.0}
+    report = pd.DataFrame([{**common, "feature_name_or_source_col": "M112", "feature_type": "missing_indicator"}])
+    ctx = SimpleNamespace(
+        manifest={
+            "dataset": {
+                "shared_missingness_patterns": [
+                    {"features": ["M109"], "monthly_missing_rates": {}},
+                    {"features": ["M112", "M247"], "monthly_missing_rates": {"2009-08": 0.25}},
+                ]
+            }
+        },
+        feature_report=report,
+        benchmark_summary=summary,
+        benchmark_tuned_feature_report=None,
+        benchmark_tuned_summary=None,
+    )
+    text = "\n".join(_feature_stability_context_lines(ctx))
+    assert "columns 112, 247" in text and "109" not in text
+    assert "2009-08: 25.0%" in text
+
+
+def test_search_breadth_counts_configurations_once_across_outer_folds(monkeypatch):
+    """Distinct declared settings must not be inflated by fold count or fitted kernel widths."""
+    from secom import reporting
+
+    summaries = []
+    monkeypatch.setattr(reporting, "_markdown_table", lambda frame, columns: summaries.append(frame) or [])
+    rows = pd.DataFrame(
+        [
+            {
+                "selector": "S2N",
+                "classifier": "krr",
+                "replication_mode": "strict",
+                "fold": fold,
+                "k": 10,
+                "alpha": alpha,
+                "gamma": 0.01 * fold,
+                "gamma_multiplier": 0.1,
+                "C": None,
+                "n_neighbors": None,
+            }
+            for fold in (1, 2, 3)
+            for alpha in (0.1, 1.0)
+        ]
+    )
+    reporting._original_search_space_table(rows.assign(gamma=0.01))
+    reporting._tuned_search_space_table(rows)
+    assert [summary.evaluated_configs.tolist() for summary in summaries] == [[2], [2]]
+
+
+def test_automatic_rbf_setting_is_counted_and_distinguished_from_missing_parameters(monkeypatch):
+    """A valid default kernel setting must not look like a missing or inapplicable result."""
+    from secom import reporting
+
+    rows = pd.DataFrame(
+        [
+            {"classifier": "krr", "gamma": None, "gamma_multiplier": None},
+            {"classifier": "krr", "gamma": 0.01, "gamma_multiplier": None},
+            {"classifier": "krr", "gamma": 0.1, "gamma_multiplier": None},
+            {"classifier": "krr", "gamma": 1.0, "gamma_multiplier": None},
+            {"classifier": "logreg", "gamma": None, "gamma_multiplier": None},
+            {"classifier": "krr", "gamma": None, "gamma_multiplier": 0.1},
+        ]
+    )
+    original = rows.copy(deep=True)
+    table = reporting._markdown_table(rows, ["classifier", "gamma", "gamma_multiplier"])
+    assert "| Kernel ridge | Automatic (1 / selected input count) | n/a |" in table
+    assert "| Logistic regression | n/a | n/a |" in table
+    assert "| Kernel ridge | n/a | 0.100 |" in table
+    pd.testing.assert_frame_equal(rows, original)
+
+    candidates = rows.iloc[:5].assign(
+        selector="S2N", replication_mode="strict", k=40, alpha=1.0, C=None, n_neighbors=None
+    )
+    summaries = []
+    monkeypatch.setattr(reporting, "_markdown_table", lambda frame, columns: summaries.append(frame) or [])
+    reporting._original_search_space_table(pd.concat([candidates, candidates], ignore_index=True))
+    counts = summaries[0].set_index("classifier")
+    assert counts.loc["krr", ["evaluated_configs", "gamma_values"]].tolist() == [4, 4]
+    assert counts.loc["logreg", "gamma_values"] == 0

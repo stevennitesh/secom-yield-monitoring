@@ -110,6 +110,13 @@ def test_export_preserves_manifest_and_produces_independently_auditable_archive(
     assert receipt["claim_restrictions"]
     assert not list(destination.rglob("*.csv"))
     assert not list(destination.rglob("*.zip"))
+    html = destination / "index.html"
+    html_provenance = json.loads((destination / "html_provenance.json").read_text())
+    assert html_provenance["outputs_sha256"]["index.html"] == hashlib.sha256(html.read_bytes()).hexdigest()
+    assert (
+        html_provenance["inputs_sha256"]["evidence/audit_receipt.json"]
+        == hashlib.sha256((destination / "evidence/audit_receipt.json").read_bytes()).hexdigest()
+    )
     for name, sha in receipt["files_sha256"].items():
         assert hashlib.sha256((destination / name).read_bytes()).hexdigest() == sha
     extracted = workspace_tmp_dir / "extracted"

@@ -1,0 +1,24 @@
+{
+  "inputs_sha256": {
+    "evidence/audit_receipt.json": "bac5375feb3cb332b676c1f462f252409f0a3beca520415c391bc7108d5ecbf2",
+    "evidence/run_manifest.json": "038bb281fdd0cbd671dab59297a4658067f9ec5aa6c682276045fe8ffcf512c5",
+    "figures/benchmark_comparison.png": "a94c33d6d04928c2a5061be4d856bf7bc72003a1e7c8d60a52cfb66645598593",
+    "figures/feature_stability.png": "4398395cdd962e36e8c25c544777a9a79177f9a4d88b147a6b06ee4f681cb67d",
+    "figures/lockbox_vs_mspc.png": "4f8cd6bf2902dee390dada7d4534bce13f2e88bd63626ece72884e8230c486c9",
+    "figures/temporal_drift.png": "098963b700930ced04a49be34b40a5ff3a0ed6ed0ecde990f2f564252171f436",
+    "figures/tuned_vs_original_delta.png": "59078e6b8ac6915386aeb858aa7dd440366ba9d7a0a35a15e9a002d84cc6a834",
+    "figures/workload_cost_framing.png": "c4f2dae486614430c7d38d5037d2dbd8b689ab2e70a5e9cd3972826ccb66dcf0",
+    "final_report.md": "95059ed98c47cba9c0d47046e6efc391f8047479a09ab5c5846e2f7e1f5eac92"
+  },
+  "models_fitted": 0,
+  "outputs_sha256": {
+    "index.html": "01246496b685e242fd9e831f5b5b2cdcec017831aaf9969520852cd9bb57cadd"
+  },
+  "presentation_only": true,
+  "renderer_sha256": {
+    "scripts/run_html_report.py": "74309b0dc7a292bcd7de2c2101cd977023b72a7abd65c536be193d320813a410",
+    "src/secom/html_report.py": "7c1f7a96b08af2e1e3b69f77796690111a03fbf64afde7e3c4771f97eead2c6f"
+  },
+  "scientific_receipt": "evidence/audit_receipt.json",
+  "scientific_source_tree_sha256": "faf5b9e1f35bee43daba8cf0b5a7bb863cb4df55f7f9fa2fc159fcfe914bd40e"
+}

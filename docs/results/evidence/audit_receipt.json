@@ -20,24 +20,24 @@
   "errors": [],
   "executed_archive_path": "runs\\20261004_tuned_temporal_full_01\\evidence\\study_artifacts.zip",
   "executed_archive_sha256": "3908f12c88e9e23ec49e64d334074de62d3e0d6f263c29200e9112c7086157fb",
-  "exported_at_utc": "2026-10-06T21:19:46.811022+00:00",
+  "exported_at_utc": "2026-10-06T23:54:03.354982+00:00",
   "files_sha256": {
     "evidence/run_manifest.json": "038bb281fdd0cbd671dab59297a4658067f9ec5aa6c682276045fe8ffcf512c5",
     "figures/benchmark_comparison.png": "a94c33d6d04928c2a5061be4d856bf7bc72003a1e7c8d60a52cfb66645598593",
     "figures/feature_stability.png": "4398395cdd962e36e8c25c544777a9a79177f9a4d88b147a6b06ee4f681cb67d",
     "figures/lockbox_vs_mspc.png": "4f8cd6bf2902dee390dada7d4534bce13f2e88bd63626ece72884e8230c486c9",
-    "figures/temporal_drift.png": "34b032e78fdf34f9bfe93e7a5481280082b113a8729f2347849e3cad2fb8fd53",
+    "figures/temporal_drift.png": "098963b700930ced04a49be34b40a5ff3a0ed6ed0ecde990f2f564252171f436",
     "figures/tuned_vs_original_delta.png": "59078e6b8ac6915386aeb858aa7dd440366ba9d7a0a35a15e9a002d84cc6a834",
-    "figures/workload_cost_framing.png": "b6c37a1e65b256112df50afe4a5de8798c2e2dc7d5ec9051e632bed706df98f6",
-    "final_report.md": "92586e2f874a2c980b2cf7006c56c6462905c02f9d1716c3d45b440aa09a540a"
+    "figures/workload_cost_framing.png": "c4f2dae486614430c7d38d5037d2dbd8b689ab2e70a5e9cd3972826ccb66dcf0",
+    "final_report.md": "95059ed98c47cba9c0d47046e6efc391f8047479a09ab5c5846e2f7e1f5eac92"
   },
-  "local_archive_path": "E:\\GitHub\\code\\secom-yield-monitoring\\runs\\20261006_reader_cleanup_04\\evidence\\study_artifacts.zip",
-  "local_archive_sha256": "12cbc6f6b8d88a5a89b31d9f68e832d54a31df6c0cd616e754b18ee6ae6c9131",
+  "local_archive_path": "E:\\GitHub\\code\\secom-yield-monitoring\\runs\\20261006_portfolio_review_refresh_04\\evidence\\study_artifacts.zip",
+  "local_archive_sha256": "850e190918fbff78eadf94bdaf997a86908bddebaaa16b9ce393d953c952338e",
   "presentation_only": true,
-  "presentation_run": "runs\\20261006_reader_cleanup_04",
+  "presentation_run": "runs\\20261006_portfolio_review_refresh_04",
   "rendering_reader_files_sha256": {
     "Makefile": "45589314d5a6e3c71b93add09967e8be394a31d311bcc6fc5e852267ecf3bb67",
-    "README.md": "e371f6022cf09b18a0ddfc279837dc626d83df3569f511ddf37a1b150448d90a"
+    "README.md": "ed598d184248cbfbf04e05ff97537db1123a37b65aa2c6ebcea67ab26a9b97de"
   },
   "rendering_source": {
     "files": {
@@ -46,7 +46,7 @@
       "docs/spec/03-feature-stability-and-interpretation.md": "b3c15a72e96545e5915564be90046829a1e854ba2b2ca216942e28fa169e84b8",
       "docs/spec/04-temporal-robustness-study.md": "5d28cc45fabf2b8ac09bebf625eb68ceae9324be4621c937d95745075fc1cd5a",
       "docs/spec/05-industrialization-gap-analysis.md": "388d6af7863173f823aa0d8a57ecb4ed6b0d6e6fa0efc0b595ec7f444e294dbc",
-      "docs/spec/06-report-structure.md": "d0e56e15fb3a111c3d152406d9abd1fa5eff7e1d4911dab4a7d00df0928deaf3",
+      "docs/spec/06-report-structure.md": "768563cc1f5655411a313806834f04bf50325c5bb123e0fbd43a966135248115",
       "docs/spec/07-artifact-contracts.md": "f674e496f18886c37fe75aa1e385de7a46bd699cdcb7a474ed2e4ef6c1ebbd9f",
       "docs/spec/08-audit-and-claim-semantics.md": "55dbf2a157d28f7a0b32fb3f1342dd174e847b0260e714c5d5fd436697e15199",
       "docs/spec/README.md": "96ea29659f268e1316d0c76b97d2ef5d4fe3b9bce974a5cabfd66193a1647f8c",
@@ -87,9 +87,9 @@
       "src/secom/preprocess.py": "bd1ded538ec41b5b023ff6d81cd8935bf445c2c724b8422f707ec804a7239324",
       "src/secom/provenance.py": "609c8a1e787866464a5928af75a72dae0c72b43fcedf0f82f5e9c7022ab2c5e5",
       "src/secom/qa.py": "d2339e16de13f37f0bc66208a4cb4408a61a43406c34be4105ae9ba5f9994ae3",
-      "src/secom/report_figures.py": "874c9c1927bf327c25e9585b9f50a716614f7b857af1b8411f898fb47b229dba",
-      "src/secom/report_language.py": "e5a6e8757a6681ab4477759e74f9dbe3a289a616e1503a9447e09b23b2a092de",
-      "src/secom/reporting.py": "66f700079c8cd061323b89d09b5ed37711da2983ac6a652ecc8bc17e376d084b",
+      "src/secom/report_figures.py": "4d7fcb2562b5294fc7ce0caf9c10587f7d4f2b5c92127eb3efe944b189bc0ff8",
+      "src/secom/report_language.py": "2ce73a0bd8aaa539213b10ef1a77aaeeda778c72e34fa11bb6bae64520413260",
+      "src/secom/reporting.py": "29f23a38e26e163dff408715a6dff78378106ac83c128a66e8c8a2210bc3ea9c",
       "src/secom/selection/__init__.py": "fe845840a8cc723fca9fb829eec4e52d21afa799ba7ba4a2ceb26cdd23dea3dd",
       "src/secom/selection/engine.py": "92a666d644cf22504e4bfe91815e14d24026e47d64c53ff8a0c9ab0cc7608c4c",
       "src/secom/selection/tuning.py": "40d29bd0ccda54731bb73a45945ec747ee400be07b657bc99e892bed9c36c853",
@@ -108,9 +108,9 @@
       "src/secom/workflows/temporal_robustness.py": "d675c42374d5ea423164a079125f39288aa746e2c4f8754cbb776aade3649ba9"
     },
     "normalization": "UTF-8 text with LF line endings",
-    "sha256": "3daf530d05f7aad01dbc3b27077aecca6b9dccaeb09159985361743ac415f332"
+    "sha256": "d55e5fa67fcc8ce18527d860290236ec41daff982824043aab19e5231ec3f66c"
   },
-  "rendering_source_sha256": "3daf530d05f7aad01dbc3b27077aecca6b9dccaeb09159985361743ac415f332",
+  "rendering_source_sha256": "d55e5fa67fcc8ce18527d860290236ec41daff982824043aab19e5231ec3f66c",
   "source_run": "runs\\20261004_tuned_temporal_full_01",
   "source_tree_sha256": "faf5b9e1f35bee43daba8cf0b5a7bb863cb4df55f7f9fa2fc159fcfe914bd40e",
   "warnings": [

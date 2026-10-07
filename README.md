@@ -4,7 +4,9 @@
 
 **Can manufacturing measurements identify failures, and do those patterns hold in later samples?**
 
-A reproducible ML engineering case study using the public [UCI SECOM dataset](https://archive.ics.uci.edu/dataset/179/secom).
+A reproducible ML engineering case study using semiconductor manufacturing measurements from the public [UCI SECOM dataset](https://archive.ics.uci.edu/dataset/179/secom).
+
+The observations span **July 19–October 17, 2008**; the chronological tests examine transfer over weeks within that historical dataset.
 
 | Samples | Anonymous measurements | Failures | Missing measurement cells |
 | ---: | ---: | ---: | ---: |
@@ -12,7 +14,7 @@ A reproducible ML engineering case study using the public [UCI SECOM dataset](ht
 
 Predicting pass for everyone gives **93.36% accuracy but catches no failures**. We therefore use **balanced error**: the average of missed-failure and false-alert rates. Lower is better.
 
-[Visual case study](docs/results/README.md) | [Technical report](docs/results/final_report.md)
+[HTML report](docs/results/index.html) · open locally in a browser | [Visual case study](docs/results/README.md) | [Technical report](docs/results/final_report.md)
 
 ## Tuning Made a Tradeoff
 

@@ -47,12 +47,14 @@ TABLE_HEADERS = {
     "pooled_FN": "Failures missed",
     "C": "LR inverse regularization",
     "alpha": "KRR regularization",
-    "gamma": "Kernel width",
-    "gamma_multiplier": "Width multiplier",
+    "gamma": "RBF gamma",
+    "gamma_multiplier": "Gamma multiplier",
+    "gamma_values": "RBF gamma settings",
+    "gamma_multiplier_values": "Gamma multiplier settings",
     "n_neighbors": "ReliefF neighbors",
     "k": "Selected inputs",
     "k_values": "Feature-budget count",
-    "evaluated_configs": "Candidates checked",
+    "evaluated_configs": "Distinct configurations",
     "calibration_n": "Calibration samples",
     "calibration_fails": "Calibration failures",
     "calibration_passes": "Calibration passes",
@@ -65,6 +67,7 @@ TABLE_HEADERS = {
     "lofo_flagged_fraction_max": "Recalibrated flagged fraction max",
     "TNR90_semantics": "90% specificity interpretation",
     "observed_mean_inter_alarm_spacing": "Observed samples between alarms",
+    "calibration_selected_MSPC_TPR_at_TNR90": "Evaluation recall at 90% specificity (calibration-selected MSPC score)",
     "primary_scientific": "Primary: balanced error",
     "primary_operational": "Primary: workload limited",
     "challenger_scientific": "Comparison: balanced error",
@@ -93,7 +96,7 @@ def table_value(column: str, value: object) -> object:
         return procedure_label(value)
     if column == "classifier":
         return CLASSIFIERS.get(str(value), value)
-    if column == "role":
+    if column in {"role", "model_scope"}:
         return {"primary": "Primary model", "challenger": "Comparison model"}.get(str(value), value)
     if column == "threshold_policy":
         return {"scientific": "Balanced error", "operational": "Workload limited"}.get(str(value), value)
@@ -105,6 +108,9 @@ def table_value(column: str, value: object) -> object:
         "source_selection_region",
         "TNR90_semantics",
         "workload_semantics",
+        "score_reference",
+        "missingness_reference",
+        "drift_gate_status",
     }:
         return {
             "LOCKBOX": "Final retrospective block",
@@ -114,6 +120,10 @@ def table_value(column: str, value: object) -> object:
             "held_out_calibration": "Held-out calibration",
             "retrospective_evaluation_ROC_diagnostic": "Retrospective ranking diagnostic",
             "illustrative_mean_weekly_policy_not_per_week_cap": "Illustrative mean weekly rule",
+            "held_out_calibration_same_retained_model": "Held-out calibration scores from the same retained model",
+            "FIT_original_column_masks": "Original-column missingness masks in earlier fitting samples",
+            "HIGH_SHIFT": "Large descriptive shift",
+            "PASS": "Within heuristic shift limits",
         }.get(str(value), value)
     return value
 

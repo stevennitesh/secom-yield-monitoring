@@ -246,3 +246,43 @@ def test_figure_captions_derive_folds_and_later_counts(workspace_tmp_dir, monkey
     assert all("reference 4; tuned 4" in note for note in notes[:2])
     assert "20 failures and 80 passes" in notes[2]
     assert not any("nine" in note or "ten" in note.lower() for note in notes)
+
+
+def test_workload_cost_chart_separates_calibration_and_later_population(workspace_tmp_dir, monkeypatch):
+    """Mixed-population figures must label costs using the frozen evaluation denominator."""
+    from secom import report_figures
+
+    rendered = []
+    plotted = []
+
+    def capture(fig, output_path, note):
+        rendered.append(([ax.get_xlabel() for ax in fig.axes], fig.axes[1].get_ylabel(), fig.axes[1].get_title(), note))
+        plotted.extend(
+            (line.get_linestyle(), line.get_marker(), line.get_ydata().tolist()) for line in fig.axes[1].lines
+        )
+        report_figures.plt.close(fig)
+
+    monkeypatch.setattr(report_figures, "_finish", capture)
+    manager = pd.DataFrame([{"role": "primary", "threshold_policy": "scientific", "mean_weekly_flagged_samples": 12}])
+    costs = pd.DataFrame(
+        [
+            {
+                "cost_ratio": 1,
+                "primary_scientific": 0.19,
+                "primary_operational": 0.10,
+                "all_pass_baseline": 0.10,
+                "all_flag_baseline": 0.90,
+            }
+        ]
+    )
+    later = pd.DataFrame([{"TP": 8, "FN": 2, "FP": 17, "TN": 73}])
+    report_figures.write_workload_cost_figure(manager, costs, workspace_tmp_dir / "cost.png", temporal_lockbox=later)
+    axes, ylabel, title, note = rendered[0]
+    assert "calibration week" in axes[0]
+    assert "retrospective later-block sample" in ylabel and "calibration sample" not in ylabel
+    assert "N=100" in title
+    assert "Workload: held-out calibration" in note and "Costs: frozen rules on the retrospective later block" in note
+    assert "hypothetical" in note and "future capacity" in note
+    assert len({style for style, _, _ in plotted}) == 4
+    assert len({marker for _, marker, _ in plotted}) == 4
+    assert [values for _, _, values in plotted] == [[0.19], [0.10], [0.10], [0.90]]

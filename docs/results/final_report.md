@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This SECOM study asks whether recorded manufacturing measurements distinguish a failed test from a passed test. When failures are rare, predicting pass for everyone can look accurate while catching no failures. The useful comparison gives failures and passes equal weight, then examines the tradeoff between catching failures and raising false alerts.
+This SECOM study asks whether recorded semiconductor manufacturing measurements distinguish a failed test from a passed test. When failures are rare, predicting pass for everyone can look accurate while catching no failures. The useful comparison gives failures and passes equal weight, then examines the tradeoff between catching failures and raising false alerts.
 
 - **Benchmark:** mean balanced error 31.43% → 30.86%; failures caught 70 → 66; false alerts 445 → 371. Rates average held-out folds; counts pool their predictions.
 - **Chronological stress:** kernel ridge averages 47.47% balanced error and flags 88.5% of 750 later samples. This separate procedure tests transfer; the final later block is retrospective.
@@ -16,6 +16,8 @@ A reproducible Python study that compares a literature-inspired reference benchm
 ## Dataset and Study Scope
 
 The files contain **1,567 samples, 590 anonymous measurement columns, 104 failures and 1,463 passes**. Predicting pass for everyone would give 93.36% accuracy and catch zero failures. 4.54% of measurement cells are missing.
+
+The observations span **July 19, 2008–October 17, 2008**. Chronological transfer here covers weeks within this historical dataset, not an independent later manufacturing campaign.
 
 **Failure recall** is the fraction of failures caught. **Pass specificity** is the fraction of passes correctly left unflagged. **Balanced error** is the average of the missed-failure rate and the false-alert rate on passes: ½ × [(1 − recall) + (1 − specificity)]. Lower is better; an always-pass rule has 50% balanced error.
 
@@ -43,7 +45,7 @@ Rates below are fold means. Counts sum the once-held-out predictions. Standard d
 
 ## Tuned Benchmark Design
 
-The paired benchmark protocol keeps test samples, folds and seeds fixed while comparing declared input budgets and model settings. The reference allows up to 40 selected inputs; tuning compares budgets of 10, 20 and 40 inputs. Full grids and candidate counts are in the technical appendix. For dimension-relative kernel-ridge candidates, kernel width scales with the actual selected input count. Stronger regularization wins exact balanced-error ties after fewer features.
+The paired benchmark protocol keeps test samples, folds and seeds fixed while comparing declared input budgets and model settings. The reference allows up to 40 selected inputs; tuning compares budgets of 10, 20 and 40 inputs. Full grids and candidate counts are in the technical appendix. For dimension-relative kernel-ridge candidates, RBF gamma equals a declared multiplier divided by the actual selected input count. Stronger regularization wins exact balanced-error ties after fewer features.
 
 This is bounded parameter coverage, not global optimization. Model settings, input mode and threshold remain selected entirely inside training data. Separately predefined measurements-only and measurements-plus-missing-flags procedures provide contrasts; their test results do not replace the complete selected procedure as the headline.
 
@@ -84,17 +86,25 @@ The chart shows how often anonymous inputs were selected across overlapping trai
 
 Feature outputs are model-prioritization evidence from resampled benchmark artifacts, not causal proof or validated process-driver identification. Stability across resamples matters more than a single full-fit ranking, and missing-indicator features are kept distinct from raw value features.
 
-For example, missing flags for columns 109, 110, 111, 244, 245, 246, 382, 383, 384, 516, 517, 518 have identical missingness patterns. Their full-sample missing rate by month is 2008-07: 100.0%; 2008-08: 100.0%; 2008-09: 57.3%; 2008-10: 17.3%. These descriptive associations do not identify root causes or prove independent sensor effects.
+The reference panel displays 10 missing flags. The tuned panel displays 10 measurement values. For example, columns 112, 247, 385, 519 share an identical missingness mask represented in the chart. Their full-sample missing rate by month is 2008-07: 31.7%; 2008-08: 17.5%; 2008-09: 46.9%; 2008-10: 89.4%. These descriptive associations do not identify root causes or prove independent sensor effects.
 
 ![Anonymous-input selection frequency](figures/feature_stability.png)
 
-Exploratory family stability and scaled-coefficient heuristics. Bars use selection frequency only; fitted coefficients remain in the technical appendix.
+Bars show selection frequency for exploratory families, not causal importance.
 
 ## Temporal Robustness Stress Test
 
 The shuffled benchmark asks about other samples from this dataset. The chronological stress test asks whether earlier measurements and labels transfer to later calendar periods. It is secondary evidence and does not replace the benchmark result.
 
 Fixed nonoverlapping calendar test blocks follow expanding earlier training regions. Model selection uses deterministic chronological splits inside the earlier fitting portion. A held-out portion of each training region supplies calibration scores for a retained model; the model is never refitted after its threshold is frozen. Ranking AUC is a supporting measure of how well scores order failures above passes; 0.5 is chance ordering, and AUC does not set the alert threshold.
+
+The disjoint test samples cover these observed timestamp ranges; periods can share a boundary date. The source does not specify a timezone.
+
+| Test period | First observation | Last observation |
+|---|---|---|
+| 1 | 2008-08-30 11:57 | 2008-09-13 11:42 |
+| 2 | 2008-09-13 11:56 | 2008-09-27 11:54 |
+| 3 | 2008-09-27 12:26 | 2008-10-05 19:45 |
 
 ### Later-period logistic-regression results
 
@@ -155,7 +165,7 @@ The final 15% of samples was already exposed in full-dataset benchmarking and ea
 | Comparison model: balanced-error threshold | 2 | 7 | 17 | 209 |
 | Comparison model: workload-limited threshold | 2 | 7 | 18 | 208 |
 
-The later block contains 9 failures and 226 passes. Exact intervals in the appendix are conditional on a fixed model and independent Bernoulli trials; they exclude temporal dependence and model-selection uncertainty. Retrospective thresholds chosen from evaluation labels to reach 90% pass specificity remain a separate ranking diagnostic, not frozen operating performance.
+The later block contains 9 failures and 226 passes. The 95% exact conditional binomial intervals in the appendix assume a fixed model and independent Bernoulli trials; they exclude temporal dependence and model-selection uncertainty. Retrospective thresholds chosen from evaluation labels to reach 90% pass specificity remain a separate ranking diagnostic, not frozen operating performance.
 
 ![Later-block frozen alerts](figures/lockbox_vs_mspc.png)
 
@@ -167,7 +177,7 @@ Raw-measurement distribution comparisons use the earlier model-fitting samples a
 
 ![Later measurement and score shifts](figures/temporal_drift.png)
 
-Primary logistic-regression model: raw-feature stability index versus earlier fitting measurements; score-distribution test versus held-out calibration. Secondary descriptive evidence.
+Failure prevalence compares the full earlier development region with the retrospective later block. The population stability index (PSI) summarizes selected measurement-distribution changes versus earlier fitting samples; larger values indicate more change. Score tests use held-out calibration. These are descriptive diagnostics.
 
 ### Hypothetical workload and cost
 
@@ -175,7 +185,7 @@ The workload-limited threshold constrains the unweighted mean weekly flagged fra
 
 ![Calibration workload and hypothetical costs](figures/workload_cost_framing.png)
 
-Calibration-only summaries used to choose operating thresholds. The mean-weekly policy is not an individual-week hard cap; hypothetical costs do not validate deployment value.
+Left: held-out calibration workload used to choose the workload-limited threshold. Right: hypothetical costs of frozen rules on the retrospective later block. The later block contains 9 failures and 226 passes. The mean-weekly policy is not an individual-week hard cap; hypothetical costs do not validate deployment value.
 
 ## Industrialization Gaps
 
@@ -205,6 +215,8 @@ Detailed tables preserve the recorded values with readable display labels. They 
 
 Artifact vocabulary: `strict` means measurements only; `with_missing_indicators` means measurements plus missing flags; `held_out_DEV_calibration` means held-out calibration. BER is balanced error; TPR/True+ is failure recall; TNR/True- is pass specificity. LOFO means recalibration after leaving out one failed calibration example. The saved CSVs retain their original field names and categorical identifiers.
 
+Kernel ridge uses an [RBF kernel](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.pairwise.rbf_kernel.html): similarity = exp(−gamma × squared distance). Larger gamma narrows the similarity range. The reference's automatic setting means gamma = 1 / actual selected input count; it is a valid candidate, not a missing result. Tuned candidates use gamma = multiplier / actual selected input count. Gamma is inapplicable to logistic regression.
+
 <details>
 <summary>Original Replication Design</summary>
 
@@ -212,7 +224,7 @@ Artifact vocabulary: `strict` means measurements only; `with_missing_indicators`
 
 Recorded outer fold counts: reference 10; tuned 10. The protocol uses shuffled stratified outer folds and stratified inner cross-validation. Recorded inner folds: 3. Recorded seed: 42. Imputation, scaling, and selection are fitted within each inner training split. Pooled inner out-of-fold scores jointly select parameters and a BER threshold; ties use deterministic simplicity/order. The threshold is frozen before the chosen pipeline is refitted on outer training data and evaluated once on outer test data. The inner-OOF to outer-refit score-distribution difference remains a calibration limitation; no third nesting is claimed.
 
-Recorded feature budgets: 40. Recorded ReliefF neighbor counts: 10. Recorded KRR regularization strengths: 0.1/1.0/10.0; kernel-width settings: automatic/0.01/0.1/1.0. Declared KRR configurations per selector budget: 12. Recorded logistic-regression regularization settings: 0.01/0.1/1.0/10.0. BER is the primary inner objective; AUC is supporting. Exact ties prefer fewer features, then stronger regularization (larger KRR alpha, smaller logistic C), followed by deterministic remaining order.
+Recorded feature budgets: 40. Recorded ReliefF neighbor counts: 10. Recorded KRR regularization strengths: 0.1/1.0/10.0; RBF gamma settings: automatic/0.01/0.1/1.0. Declared KRR configurations per selector budget: 12. Recorded logistic-regression regularization settings: 0.01/0.1/1.0/10.0. BER is the primary inner objective; AUC is supporting. Exact ties prefer fewer features, then stronger regularization (larger KRR alpha, smaller logistic C), followed by deterministic remaining order.
 
 
 </details>
@@ -224,38 +236,40 @@ Recorded feature budgets: 40. Recorded ReliefF neighbor counts: 10. Recorded KRR
 
 #### Original Search Space
 
+Counts describe distinct declared settings per selector/model/input family; repeated outer-fold evaluations count once. RBF gamma counts include the automatic setting where declared. Dimension-relative kernel-ridge configurations use gamma multipliers, even when effective gamma differs across folds.
+
 **Table panel 1 of 2 — shared row numbers identify the same record.**
 
-| Row | Selection method | Model | Inputs | Candidates checked | Feature-budget count | C values | Alpha values | Gamma values |
+| Row | Selection method | Model | Inputs | Distinct configurations | Feature-budget count | C values | Alpha values | RBF gamma settings |
 |---|---|---|---|---|---|---|---|---|
-| 1 | S2N | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 1 | S2N | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 4 |
 | 2 | S2N | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
-| 3 | S2N | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 3 | S2N | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 4 |
 | 4 | S2N | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
-| 5 | Ttest | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 5 | Ttest | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 4 |
 | 6 | Ttest | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
-| 7 | Ttest | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 7 | Ttest | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 4 |
 | 8 | Ttest | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
-| 9 | F-test | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 9 | F-test | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 4 |
 | 10 | F-test | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
-| 11 | F-test | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 11 | F-test | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 4 |
 | 12 | F-test | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
-| 13 | ReliefF | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 13 | ReliefF | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 4 |
 | 14 | ReliefF | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
-| 15 | ReliefF | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 15 | ReliefF | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 4 |
 | 16 | ReliefF | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
-| 17 | Gram-Schmidt | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 17 | Gram-Schmidt | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 4 |
 | 18 | Gram-Schmidt | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
-| 19 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 19 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 4 |
 | 20 | Gram-Schmidt | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
-| 21 | Pearson | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 3 |
+| 21 | Pearson | Kernel ridge | Measurements only | 12 | 1 | 0 | 3 | 4 |
 | 22 | Pearson | Logistic regression | Measurements only | 4 | 1 | 4 | 0 | 0 |
-| 23 | Pearson | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 3 |
+| 23 | Pearson | Kernel ridge | Measurements + missing flags | 12 | 1 | 0 | 3 | 4 |
 | 24 | Pearson | Logistic regression | Measurements + missing flags | 4 | 1 | 4 | 0 | 0 |
 
 **Table panel 2 of 2 — shared row numbers identify the same record.**
 
-| Row | Selection method | Model | Gamma multiplier values | N neighbors values |
+| Row | Selection method | Model | Gamma multiplier settings | N neighbors values |
 |---|---|---|---|---|
 | 1 | S2N | Kernel ridge | 0 | 0 |
 | 2 | S2N | Logistic regression | 0 | 0 |
@@ -289,17 +303,17 @@ Modal configurations describe inner selections across folds and full-data interp
 
 **Table panel 1 of 2 — shared row numbers identify the same record.**
 
-| Row | selector | classifier | mode | k | C | alpha | gamma | gamma_multiplier |
+| Row | selector | classifier | mode | k | C | alpha | RBF gamma | Gamma multiplier |
 |---|---|---|---|---|---|---|---|---|
 | 1 | ReliefF | Kernel ridge | Measurements only | 40 | n/a | 1.000 | 0.010 | n/a |
 | 2 | F-test | Kernel ridge | Measurements only | 40 | n/a | 10.000 | 0.100 | n/a |
 | 3 | Pearson | Kernel ridge | Measurements only | 40 | n/a | 10.000 | 0.100 | n/a |
 | 4 | Ttest | Kernel ridge | Measurements only | 40 | n/a | 10.000 | 0.100 | n/a |
-| 5 | F-test | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
-| 6 | Pearson | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
-| 7 | Ttest | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 5 | F-test | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | Automatic (1 / selected input count) | n/a |
+| 6 | Pearson | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | Automatic (1 / selected input count) | n/a |
+| 7 | Ttest | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | Automatic (1 / selected input count) | n/a |
 | 8 | ReliefF | Logistic regression | Measurements + missing flags | 40 | 0.100 | n/a | n/a | n/a |
-| 9 | ReliefF | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 9 | ReliefF | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | Automatic (1 / selected input count) | n/a |
 | 10 | ReliefF | Logistic regression | Measurements only | 40 | 0.100 | n/a | n/a | n/a |
 | 11 | F-test | Logistic regression | Measurements only | 40 | 0.010 | n/a | n/a | n/a |
 | 12 | Pearson | Logistic regression | Measurements only | 40 | 0.010 | n/a | n/a | n/a |
@@ -309,12 +323,12 @@ Modal configurations describe inner selections across folds and full-data interp
 | 16 | Ttest | Logistic regression | Measurements + missing flags | 40 | 0.010 | n/a | n/a | n/a |
 | 17 | F-test | Logistic regression | Measurements + missing flags | 40 | 0.010 | n/a | n/a | n/a |
 | 18 | Pearson | Logistic regression | Measurements + missing flags | 40 | 0.010 | n/a | n/a | n/a |
-| 19 | S2N | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 19 | S2N | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | Automatic (1 / selected input count) | n/a |
 | 20 | Gram-Schmidt | Logistic regression | Measurements + missing flags | 40 | 0.100 | n/a | n/a | n/a |
 | 21 | Gram-Schmidt | Kernel ridge | Measurements only | 40 | n/a | 10.000 | 0.010 | n/a |
-| 22 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | n/a | n/a |
+| 22 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 40 | n/a | 10.000 | Automatic (1 / selected input count) | n/a |
 | 23 | S2N | Logistic regression | Measurements only | 40 | 0.010 | n/a | n/a | n/a |
-| 24 | S2N | Kernel ridge | Measurements only | 40 | n/a | 10.000 | n/a | n/a |
+| 24 | S2N | Kernel ridge | Measurements only | 40 | n/a | 10.000 | Automatic (1 / selected input count) | n/a |
 
 **Table panel 2 of 2 — shared row numbers identify the same record.**
 
@@ -481,7 +495,7 @@ Interpretation note: the local Ttest row uses a pooled two-sample t statistic to
 
 Recorded outer fold counts: reference 10; tuned 10. The protocol uses shuffled stratified outer folds and stratified inner cross-validation. Recorded inner folds: 3. Recorded seed: 42. Imputation, scaling, and selection are fitted within each inner training split. Pooled inner out-of-fold scores jointly select parameters and a BER threshold; ties use deterministic simplicity/order. The threshold is frozen before the chosen pipeline is refitted on outer training data and evaluated once on outer test data. The inner-OOF to outer-refit score-distribution difference remains a calibration limitation; no third nesting is claimed.
 
-Recorded feature budgets: 10/20/40. Recorded ReliefF neighbor counts: 5/10/20. Recorded KRR regularization strengths: 0.1/1.0/10.0/100.0; dimension-relative kernel-width multipliers: 0.1/0.2/1.0/2.0. Declared KRR configurations per selector budget: 16. Recorded logistic-regression regularization settings: 0.01/0.1/1.0/10.0. BER is the primary inner objective; AUC is supporting. Exact ties prefer fewer features, then stronger regularization (larger KRR alpha, smaller logistic C), followed by deterministic remaining order.
+Recorded feature budgets: 10/20/40. Recorded ReliefF neighbor counts: 5/10/20. Recorded KRR regularization strengths: 0.1/1.0/10.0/100.0; dimension-relative gamma multipliers: 0.1/0.2/1.0/2.0. Declared KRR configurations per selector budget: 16. Recorded logistic-regression regularization settings: 0.01/0.1/1.0/10.0. BER is the primary inner objective; AUC is supporting. Exact ties prefer fewer features, then stronger regularization (larger KRR alpha, smaller logistic C), followed by deterministic remaining order.
 
 
 </details>
@@ -493,38 +507,40 @@ Recorded feature budgets: 10/20/40. Recorded ReliefF neighbor counts: 5/10/20. R
 
 #### Tuned Search Space
 
+Counts describe distinct declared settings per selector/model/input family; repeated outer-fold evaluations count once. RBF gamma counts include the automatic setting where declared. Dimension-relative kernel-ridge configurations use gamma multipliers, even when effective gamma differs across folds.
+
 **Table panel 1 of 2 — shared row numbers identify the same record.**
 
-| Row | Selection method | Model | Inputs | Candidates checked | Feature-budget count | C values | Alpha values | Gamma values |
+| Row | Selection method | Model | Inputs | Distinct configurations | Feature-budget count | C values | Alpha values | RBF gamma settings |
 |---|---|---|---|---|---|---|---|---|
-| 1 | S2N | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
-| 2 | S2N | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
-| 3 | S2N | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
-| 4 | S2N | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
-| 5 | Ttest | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
-| 6 | Ttest | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
-| 7 | Ttest | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
-| 8 | Ttest | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
-| 9 | F-test | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
-| 10 | F-test | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
-| 11 | F-test | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
-| 12 | F-test | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
-| 13 | ReliefF | Kernel ridge | Measurements only | 1440 | 3 | 0 | 4 | 8 |
-| 14 | ReliefF | Logistic regression | Measurements only | 360 | 3 | 4 | 0 | 0 |
-| 15 | ReliefF | Kernel ridge | Measurements + missing flags | 1440 | 3 | 0 | 4 | 8 |
-| 16 | ReliefF | Logistic regression | Measurements + missing flags | 360 | 3 | 4 | 0 | 0 |
-| 17 | Gram-Schmidt | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
-| 18 | Gram-Schmidt | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
-| 19 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
-| 20 | Gram-Schmidt | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
-| 21 | Pearson | Kernel ridge | Measurements only | 480 | 3 | 0 | 4 | 8 |
-| 22 | Pearson | Logistic regression | Measurements only | 120 | 3 | 4 | 0 | 0 |
-| 23 | Pearson | Kernel ridge | Measurements + missing flags | 480 | 3 | 0 | 4 | 8 |
-| 24 | Pearson | Logistic regression | Measurements + missing flags | 120 | 3 | 4 | 0 | 0 |
+| 1 | S2N | Kernel ridge | Measurements only | 48 | 3 | 0 | 4 | 8 |
+| 2 | S2N | Logistic regression | Measurements only | 12 | 3 | 4 | 0 | 0 |
+| 3 | S2N | Kernel ridge | Measurements + missing flags | 48 | 3 | 0 | 4 | 8 |
+| 4 | S2N | Logistic regression | Measurements + missing flags | 12 | 3 | 4 | 0 | 0 |
+| 5 | Ttest | Kernel ridge | Measurements only | 48 | 3 | 0 | 4 | 8 |
+| 6 | Ttest | Logistic regression | Measurements only | 12 | 3 | 4 | 0 | 0 |
+| 7 | Ttest | Kernel ridge | Measurements + missing flags | 48 | 3 | 0 | 4 | 8 |
+| 8 | Ttest | Logistic regression | Measurements + missing flags | 12 | 3 | 4 | 0 | 0 |
+| 9 | F-test | Kernel ridge | Measurements only | 48 | 3 | 0 | 4 | 8 |
+| 10 | F-test | Logistic regression | Measurements only | 12 | 3 | 4 | 0 | 0 |
+| 11 | F-test | Kernel ridge | Measurements + missing flags | 48 | 3 | 0 | 4 | 8 |
+| 12 | F-test | Logistic regression | Measurements + missing flags | 12 | 3 | 4 | 0 | 0 |
+| 13 | ReliefF | Kernel ridge | Measurements only | 144 | 3 | 0 | 4 | 8 |
+| 14 | ReliefF | Logistic regression | Measurements only | 36 | 3 | 4 | 0 | 0 |
+| 15 | ReliefF | Kernel ridge | Measurements + missing flags | 144 | 3 | 0 | 4 | 8 |
+| 16 | ReliefF | Logistic regression | Measurements + missing flags | 36 | 3 | 4 | 0 | 0 |
+| 17 | Gram-Schmidt | Kernel ridge | Measurements only | 48 | 3 | 0 | 4 | 8 |
+| 18 | Gram-Schmidt | Logistic regression | Measurements only | 12 | 3 | 4 | 0 | 0 |
+| 19 | Gram-Schmidt | Kernel ridge | Measurements + missing flags | 48 | 3 | 0 | 4 | 8 |
+| 20 | Gram-Schmidt | Logistic regression | Measurements + missing flags | 12 | 3 | 4 | 0 | 0 |
+| 21 | Pearson | Kernel ridge | Measurements only | 48 | 3 | 0 | 4 | 8 |
+| 22 | Pearson | Logistic regression | Measurements only | 12 | 3 | 4 | 0 | 0 |
+| 23 | Pearson | Kernel ridge | Measurements + missing flags | 48 | 3 | 0 | 4 | 8 |
+| 24 | Pearson | Logistic regression | Measurements + missing flags | 12 | 3 | 4 | 0 | 0 |
 
 **Table panel 2 of 2 — shared row numbers identify the same record.**
 
-| Row | Selection method | Model | Gamma multiplier values | N neighbors values |
+| Row | Selection method | Model | Gamma multiplier settings | N neighbors values |
 |---|---|---|---|---|
 | 1 | S2N | Kernel ridge | 4 | 0 |
 | 2 | S2N | Logistic regression | 0 | 0 |
@@ -558,7 +574,7 @@ Modal configurations describe inner selections across folds and full-data interp
 
 **Table panel 1 of 2 — shared row numbers identify the same record.**
 
-| Row | selector | classifier | mode | k | C | alpha | gamma | gamma_multiplier |
+| Row | selector | classifier | mode | k | C | alpha | RBF gamma | Gamma multiplier |
 |---|---|---|---|---|---|---|---|---|
 | 1 | F-test | Kernel ridge | Measurements + missing flags | 10 | n/a | 100.000 | 0.200 | 2.000 |
 | 2 | Pearson | Kernel ridge | Measurements + missing flags | 10 | n/a | 100.000 | 0.200 | 2.000 |
@@ -989,7 +1005,7 @@ Roles are chosen from chronological inner selection on the final fit prefix. Out
 
 #### Lockbox Metrics
 
-Frozen-threshold confusion counts accompany rates and exact binomial TPR/TNR intervals where available. When a class is absent, guarded numerical rate placeholders are marked unavailable; they are not evidence of that class recall. Intervals are conditional on a fixed model and independent Bernoulli trials; temporal dependence and model-selection uncertainty are excluded. TNR90 thresholds selected from evaluation labels remain retrospective ROC diagnostics.
+Frozen-threshold confusion counts accompany rates and 95% exact conditional binomial TPR/TNR intervals where available. When a class is absent, guarded numerical rate placeholders are marked unavailable; they are not evidence of that class recall. Intervals are conditional on a fixed model and independent Bernoulli trials; temporal dependence and model-selection uncertainty are excluded. TNR90 thresholds selected from evaluation labels remain retrospective ROC diagnostics.
 
 **Table panel 1 of 5 — shared row numbers identify the same record.**
 
@@ -1045,16 +1061,47 @@ KS compares held-out calibration scores from the same retained model with future
 
 | Row | Model scope | Dev fail rate | Lockbox fail rate | Absolute prevalence shift | Score distribution p-value | Maximum measurement PSI | Median measurement PSI | Psi feature count |
 |---|---|---|---|---|---|---|---|---|
-| 1 | primary | 0.071 | 0.038 | 0.033 | 0.000425 | 4.052 | 2.447 | 6 |
-| 2 | challenger | 0.071 | 0.038 | 0.033 | 1.21e-09 | 4.224 | 1.350 | 10 |
+| 1 | Primary model | 0.071 | 0.038 | 0.033 | 0.000425 | 4.052 | 2.447 | 6 |
+| 2 | Comparison model | 0.071 | 0.038 | 0.033 | 1.21e-09 | 4.224 | 1.350 | 10 |
 
 **Table panel 2 of 2 — shared row numbers identify the same record.**
 
-| Row | Model scope | Dev fail rate | Drift gate status | Confirmatory claims allowed | Score reference | Selected indicator missingness rates | Missingness reference | Max missingness rate shift |
-|---|---|---|---|---|---|---|---|---|
-| 1 | primary | 0.071 | HIGH_SHIFT | False | held_out_calibration_same_retained_model | [{"feature": "M72", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M73", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M345", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M346", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}] | FIT_original_column_masks | 0.338 |
-| 2 | challenger | 0.071 | HIGH_SHIFT | False | held_out_calibration_same_retained_model | [{"feature": "M72", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M73", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M345", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M346", "fit_missing_rate": 0.43661971830985913, "later_missing_rate": 0.774468085106383}, {"feature": "M112", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M247", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M385", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M519", "fit_missing_rate": 0.2892018779342723, "later_missing_rate": 0.948936170212766}, {"feature": "M562", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M563", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M564", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M565", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M566", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M567", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M568", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M569", "fit_missing_rate": 0.25258215962441316, "later_missing_rate": 0.00425531914893617}, {"feature": "M578", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}, {"feature": "M579", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}, {"feature": "M580", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}, {"feature": "M581", "fit_missing_rate": 0.6366197183098592, "later_missing_rate": 0.4425531914893617}] | FIT_original_column_masks | 0.660 |
+| Row | Model scope | Dev fail rate | Drift gate status | Confirmatory claims allowed | Score reference | Missingness reference | Max missingness rate shift |
+|---|---|---|---|---|---|---|---|
+| 1 | Primary model | 0.071 | Large descriptive shift | False | Held-out calibration scores from the same retained model | Original-column missingness masks in earlier fitting samples | 0.338 |
+| 2 | Comparison model | 0.071 | Large descriptive shift | False | Held-out calibration scores from the same retained model | Original-column missingness masks in earlier fitting samples | 0.660 |
 
+
+##### Selected Missing-Flag Rates
+
+References are original-column missingness masks in earlier fitting samples. Positive changes mean more missing measurements in the retrospective later block. Exact recorded fractions remain in the local drift CSV.
+
+| Model | Missing flag | Earlier fitting missing rate | Later-block missing rate | Change (percentage points) |
+|---|---|---|---|---|
+| Primary model | M72 | 43.66% | 77.45% | +33.78 |
+| Primary model | M73 | 43.66% | 77.45% | +33.78 |
+| Primary model | M345 | 43.66% | 77.45% | +33.78 |
+| Primary model | M346 | 43.66% | 77.45% | +33.78 |
+| Comparison model | M72 | 43.66% | 77.45% | +33.78 |
+| Comparison model | M73 | 43.66% | 77.45% | +33.78 |
+| Comparison model | M345 | 43.66% | 77.45% | +33.78 |
+| Comparison model | M346 | 43.66% | 77.45% | +33.78 |
+| Comparison model | M112 | 28.92% | 94.89% | +65.97 |
+| Comparison model | M247 | 28.92% | 94.89% | +65.97 |
+| Comparison model | M385 | 28.92% | 94.89% | +65.97 |
+| Comparison model | M519 | 28.92% | 94.89% | +65.97 |
+| Comparison model | M562 | 25.26% | 0.43% | -24.83 |
+| Comparison model | M563 | 25.26% | 0.43% | -24.83 |
+| Comparison model | M564 | 25.26% | 0.43% | -24.83 |
+| Comparison model | M565 | 25.26% | 0.43% | -24.83 |
+| Comparison model | M566 | 25.26% | 0.43% | -24.83 |
+| Comparison model | M567 | 25.26% | 0.43% | -24.83 |
+| Comparison model | M568 | 25.26% | 0.43% | -24.83 |
+| Comparison model | M569 | 25.26% | 0.43% | -24.83 |
+| Comparison model | M578 | 63.66% | 44.26% | -19.41 |
+| Comparison model | M579 | 63.66% | 44.26% | -19.41 |
+| Comparison model | M580 | 63.66% | 44.26% | -19.41 |
+| Comparison model | M581 | 63.66% | 44.26% | -19.41 |
 - retrospective_later_block_not_fresh_confirmatory_lockbox
 - no_production_readiness_or_superiority_claim
 - primary_high_shift_blocks_lockbox_superiority_claim
@@ -1075,7 +1122,7 @@ MSPC fits PCA on pass-only fit samples. Calibration freezes T2/Q source and thre
 
 **Table panel 2 of 4 — shared row numbers identify the same record.**
 
-| Row | Evaluation samples | Test period | Calibration selected MSPC TPR at TNR90 | Calibration selected MSPC source | Frozen threshold | T2 frozen threshold | Q frozen threshold | Frozen BER |
+| Row | Evaluation samples | Test period | Evaluation recall at 90% specificity (calibration-selected MSPC score) | Calibration selected MSPC source | Frozen threshold | T2 frozen threshold | Q frozen threshold | Frozen BER |
 |---|---|---|---|---|---|---|---|---|
 | 1 | Chronological test period | 1 | 0.429 | T2 | 54.475 | 54.475 | 4413.270 | 0.431 |
 | 2 | Chronological test period | 2 | 0.000 | T2 | 25.144 | 25.144 | 66058.636 | 0.507 |
@@ -1125,6 +1172,8 @@ Workload comes from held-out DEV calibration predictions. The operational policy
 
 
 ##### Cost Curves
+
+Frozen rules are evaluated on the retrospective later block, not calibration data. Each cost is (false alerts + cost ratio × missed failures) / later-block sample count. The ratios are hypothetical, not observed economics; no threshold is selected from these curves.
 
 | Cost ratio | Primary: balanced error | Primary: workload limited | Comparison: balanced error | Comparison: workload limited | Always predict pass | Flag every sample |
 |---|---|---|---|---|---|---|

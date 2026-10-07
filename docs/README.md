@@ -6,6 +6,7 @@ Start with the project overview, follow the charts, then inspect the technical e
 | --- | --- |
 | What problem does this solve, and what happened? | [Project overview](../README.md) |
 | How should I read the results? | [Visual case study](results/README.md) |
+| Can I read an organized report offline? | [HTML report](results/index.html) — open locally in a browser |
 | What exactly was measured? | [Full technical report](results/final_report.md) |
 | Where is the code, and how do I verify changes? | [Development guide](development.md) |
 | What scientific requirements must hold? | [Study specifications](spec/README.md) |

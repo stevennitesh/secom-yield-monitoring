@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from secom.report_language import (
     table_value,
 )
 from secom.report_figures import (
+    feature_stability_plot_rows,
     write_benchmark_comparison_figure,
     write_feature_stability_figure,
     write_lockbox_vs_mspc_figure,
@@ -61,6 +63,16 @@ def _format_percent(value: object) -> str:
         return str(value)
 
 
+def _automatic_gamma_mask(frame: pd.DataFrame) -> pd.Series:
+    """Distinguish the declared automatic KRR setting from inapplicable or missing gamma."""
+    if not {"classifier", "gamma"} <= set(frame):
+        return pd.Series(False, index=frame.index)
+    automatic = frame.classifier.eq("krr") & frame.gamma.isna()
+    if "gamma_multiplier" in frame:
+        automatic &= frame.gamma_multiplier.isna()
+    return automatic
+
+
 def _markdown_table(
     frame: pd.DataFrame,
     columns: list[str],
@@ -69,9 +81,11 @@ def _markdown_table(
     max_rows: int | None = None,
 ) -> list[str]:
     """Render reader labels and split wide tables without losing recorded cells."""
-    table = frame.loc[:, columns].copy()
-    if max_rows is not None:
-        table = table.head(max_rows)
+    context = frame if max_rows is None else frame.head(max_rows)
+    table = context.loc[:, columns].copy()
+    if "gamma" in table and (automatic := _automatic_gamma_mask(context)).any():
+        table["gamma"] = table.gamma.astype(object)
+        table.loc[automatic, "gamma"] = "Automatic (1 / selected input count)"
     header_row = headers if headers is not None else [table_header(column) for column in columns]
     display = [
         [_format_cell(table_value(column, value)) for column, value in zip(columns, row, strict=True)]
@@ -285,11 +299,12 @@ def _search_space_count(frame: pd.DataFrame, column: str) -> int:
     if column == "n_neighbors":
         values = frame[column].dropna().to_numpy(dtype=float) if column in frame.columns else np.array([], dtype=float)
         return int(pd.unique(values).size) if values.size else 0
-    return int(frame[column].dropna().nunique()) if column in frame.columns else 0
+    count = int(frame[column].dropna().nunique()) if column in frame.columns else 0
+    return count + int(_automatic_gamma_mask(frame).any()) if column == "gamma" else count
 
 
 def _search_space_table(frame: pd.DataFrame, *, evaluated_columns: list[str]) -> list[str]:
-    """Summarize evaluated hyperparameter breadth by selector/classifier/mode."""
+    """Count distinct declared configurations, excluding repeated fold evaluations."""
     summary_rows = []
     for (selector, classifier, mode), group in frame.groupby(
         ["selector", "classifier", "replication_mode"], sort=False
@@ -308,7 +323,12 @@ def _search_space_table(frame: pd.DataFrame, *, evaluated_columns: list[str]) ->
                 "n_neighbors_values": _search_space_count(group, "n_neighbors"),
             }
         )
-    return _markdown_table(
+    return [
+        "Counts describe distinct declared settings per selector/model/input family; repeated outer-fold evaluations "
+        "count once. RBF gamma counts include the automatic setting where declared. Dimension-relative kernel-ridge "
+        "configurations use gamma multipliers, even when effective gamma differs across folds.",
+        "",
+    ] + _markdown_table(
         pd.DataFrame(summary_rows),
         [
             "selector",
@@ -342,7 +362,7 @@ def _original_best_config_table(benchmark_best: pd.DataFrame) -> list[str]:
         "k": "k",
         "C": "C",
         "alpha": "alpha",
-        "gamma": "gamma",
+        "gamma": "RBF gamma",
         "n_neighbors": "n_neighbors",
         "mean_BER": "mean_BER",
     }
@@ -357,7 +377,7 @@ def _tuned_search_space_table(benchmark_tuned_search: pd.DataFrame) -> list[str]
     """Summarize tuned benchmark nested-search breadth by selector/classifier/mode."""
     return _search_space_table(
         benchmark_tuned_search,
-        evaluated_columns=["fold", "k", "alpha", "gamma_multiplier", "C", "n_neighbors"],
+        evaluated_columns=["k", "alpha", "gamma_multiplier", "C", "n_neighbors"],
     )
 
 
@@ -410,8 +430,8 @@ def _tuned_best_config_table(benchmark_tuned_best: pd.DataFrame) -> list[str]:
             "k",
             "C",
             "alpha",
-            "gamma",
-            "gamma_multiplier",
+            "RBF gamma",
+            "Gamma multiplier",
             "n_neighbors",
             "selected_count",
             "mean_inner_ROC_AUC",
@@ -720,6 +740,7 @@ def _write_final_report_figures(ctx: ReportContext, reports_destination: Path | 
         ctx.temporal_manager,
         ctx.temporal_cost,
         figures_dir / "workload_cost_framing.png",
+        temporal_lockbox=ctx.temporal_lockbox,
     )
 
 
@@ -862,7 +883,8 @@ def _benchmark_search_description(ctx: ReportContext, *, tuned: bool) -> str:
             return value if isinstance(value, list) else [value]
         if search is None or search.empty or column not in search:
             return None
-        return sorted(search[column].dropna().unique().tolist())
+        recorded = sorted(search[column].dropna().unique().tolist())
+        return [None, *recorded] if column == "gamma" and _automatic_gamma_mask(search).any() else recorded
 
     def describe(items):
         return "/".join("automatic" if item is None else str(item) for item in items) if items else "unavailable"
@@ -878,7 +900,7 @@ def _benchmark_search_description(ctx: ReportContext, *, tuned: bool) -> str:
             "gamma_multiplier" if tuned else "gamma",
         )
         parts.append(
-            f"Recorded KRR regularization strengths: {describe(alpha)}; {'dimension-relative kernel-width multipliers' if tuned else 'kernel-width settings'}: {describe(gamma)}."
+            f"Recorded KRR regularization strengths: {describe(alpha)}; {'dimension-relative gamma multipliers' if tuned else 'RBF gamma settings'}: {describe(gamma)}."
         )
         if (
             f"{prefix}_krr_alpha_grid" in settings
@@ -953,6 +975,11 @@ def _render_technical_details(ctx: ReportContext) -> list[str]:
         "`held_out_DEV_calibration` means held-out calibration. BER is balanced error; TPR/True+ is failure recall; "
         "TNR/True- is pass specificity. LOFO means recalibration after leaving out one failed calibration example. "
         "The saved CSVs retain their original field names and categorical identifiers.",
+        "",
+        "Kernel ridge uses an [RBF kernel](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.pairwise.rbf_kernel.html): "
+        "similarity = exp(−gamma × squared distance). Larger gamma narrows the similarity range. The reference's automatic "
+        "setting means gamma = 1 / actual selected input count; it is a valid candidate, not a missing result. Tuned candidates "
+        "use gamma = multiplier / actual selected input count. Gamma is inapplicable to logistic regression.",
         "",
     ]
     procedure_frames = []
@@ -1215,7 +1242,7 @@ def _render_technical_details(ctx: ReportContext) -> list[str]:
                 "",
                 "### Lockbox Metrics",
                 "",
-                "Frozen-threshold confusion counts accompany rates and exact binomial TPR/TNR intervals where available. "
+                "Frozen-threshold confusion counts accompany rates and 95% exact conditional binomial TPR/TNR intervals where available. "
                 "When a class is absent, guarded numerical rate placeholders are marked unavailable; they are not evidence of that class recall. Intervals are conditional on a fixed model and independent Bernoulli trials; temporal dependence and model-selection uncertainty are excluded. "
                 "TNR90 thresholds selected from evaluation labels remain retrospective ROC diagnostics.",
                 "",
@@ -1232,7 +1259,7 @@ def _render_technical_details(ctx: ReportContext) -> list[str]:
                 "",
             ]
         )
-        lines.extend(_markdown_table(ctx.temporal_drift, list(ctx.temporal_drift.columns)))
+        lines.extend(_drift_table_lines(ctx.temporal_drift))
         _append_bullet_list(lines, list(ctx.manifest.get("temporal_claim_restrictions", [])))
         lines.extend(
             [
@@ -1256,7 +1283,17 @@ def _render_technical_details(ctx: ReportContext) -> list[str]:
             ]
         )
         lines.extend(_markdown_table(ctx.temporal_manager, list(ctx.temporal_manager.columns)))
-        lines.extend(["", "#### Cost Curves", ""])
+        lines.extend(
+            [
+                "",
+                "#### Cost Curves",
+                "",
+                "Frozen rules are evaluated on the retrospective later block, not calibration data. "
+                "Each cost is (false alerts + cost ratio × missed failures) / later-block sample count. "
+                "The ratios are hypothetical, not observed economics; no threshold is selected from these curves.",
+                "",
+            ]
+        )
         lines.extend(_markdown_table(ctx.temporal_cost, list(ctx.temporal_cost.columns)))
     else:
         lines.append("Temporal model selection artifact missing or empty.")
@@ -1281,6 +1318,106 @@ def _render_technical_details(ctx: ReportContext) -> list[str]:
     if opened:
         grouped.extend(["", "</details>", ""])
     return grouped
+
+
+def _drift_table_lines(frame: pd.DataFrame) -> list[str]:
+    """Separate per-indicator records from model-level drift summaries."""
+    nested = "selected_indicator_missingness_rates"
+    lines = _markdown_table(frame, [column for column in frame if column != nested])
+    records = []
+    if nested in frame:
+        for _, row in frame.iterrows():
+            if not isinstance(row[nested], str) or not row[nested].strip():
+                continue
+            for indicator in json.loads(row[nested]):
+                fit, later = indicator["fit_missing_rate"], indicator["later_missing_rate"]
+                records.append(
+                    {
+                        "Model": table_value("model_scope", row.model_scope),
+                        "Missing flag": indicator["feature"],
+                        "Earlier fitting missing rate": f"{fit:.2%}",
+                        "Later-block missing rate": f"{later:.2%}",
+                        "Change (percentage points)": f"{100 * (later - fit):+.2f}",
+                    }
+                )
+    if records:
+        lines += [
+            "",
+            "#### Selected Missing-Flag Rates",
+            "",
+            "References are original-column missingness masks in earlier fitting samples. "
+            "Positive changes mean more missing measurements in the retrospective later block. "
+            "Exact recorded fractions remain in the local drift CSV.",
+            "",
+        ]
+        display = pd.DataFrame(records)
+        lines += _markdown_table(display, list(display.columns))
+    return lines
+
+
+def _temporal_period_lines(reports_dir: Path) -> list[str]:
+    """Date the actual evaluation observations without inferring calendar boundaries."""
+    predictions = read_csv_if_exists(reports_dir / ArtifactName.TEMPORAL_PREDICTIONS)
+    if predictions is None or not {"fold", "timestamp"} <= set(predictions):
+        return []
+    periods = pd.DataFrame(
+        {
+            "period": pd.to_numeric(predictions.fold, errors="coerce"),
+            "timestamp": pd.to_datetime(predictions.timestamp, errors="coerce"),
+        }
+    ).dropna()
+    rows = [
+        {
+            "Test period": int(period),
+            "First observation": group.timestamp.min().strftime("%Y-%m-%d %H:%M"),
+            "Last observation": group.timestamp.max().strftime("%Y-%m-%d %H:%M"),
+        }
+        for period, group in periods.groupby("period", sort=True)
+    ]
+    if not rows:
+        return []
+    display = pd.DataFrame(rows)
+    return [
+        "The disjoint test samples cover these observed timestamp ranges; periods can share a boundary date. "
+        "The source does not specify a timezone.",
+        "",
+        *_markdown_table(display, list(display.columns)),
+        "",
+    ]
+
+
+def _feature_stability_context_lines(ctx: ReportContext) -> list[str]:
+    """Explain the plotted inputs and choose a shared mask represented in the chart."""
+    lines, plotted = [], set()
+    for label, report, summary in (
+        ("reference", ctx.feature_report, ctx.benchmark_summary),
+        ("tuned", ctx.benchmark_tuned_feature_report, ctx.benchmark_tuned_summary),
+    ):
+        if any(frame is None or frame.empty for frame in (report, summary)):
+            continue
+        rows = feature_stability_plot_rows(report, summary)
+        plotted.update(rows.feature_name_or_source_col.astype(str))
+        flags = int(rows.feature_type.eq("missing_indicator").sum())
+        values = len(rows) - flags
+        parts = []
+        if flags:
+            parts.append(f"{flags} missing flags")
+        if values:
+            parts.append(f"{values} measurement values")
+        if parts:
+            lines.append(f"The {label} panel displays {' and '.join(parts)}.")
+    groups = ctx.manifest.get("dataset", {}).get("shared_missingness_patterns", [])
+    matching = [group for group in groups if plotted.intersection(group["features"])]
+    if matching:
+        group = max(matching, key=lambda group: len(plotted.intersection(group["features"])))
+        names = ", ".join(name.removeprefix("M") for name in group["features"])
+        monthly = "; ".join(f"{month}: {rate:.1%}" for month, rate in group["monthly_missing_rates"].items())
+        lines.append(
+            f"For example, columns {names} share an identical missingness mask represented in the chart. "
+            f"Their full-sample missing rate by month is {monthly}. These descriptive associations do not identify "
+            "root causes or prove independent sensor effects."
+        )
+    return [" ".join(lines), ""] if lines else []
 
 
 def _reader_metric_table(frame: pd.DataFrame, *, benchmark: bool = False) -> list[str]:
@@ -1387,7 +1524,7 @@ def _render_study(ctx: ReportContext) -> list[str]:
         "",
         "## Executive Summary",
         "",
-        "This SECOM study asks whether recorded manufacturing measurements distinguish a failed test from a passed test. "
+        "This SECOM study asks whether recorded semiconductor manufacturing measurements distinguish a failed test from a passed test. "
         "When failures are rare, predicting pass for everyone can look accurate while catching no failures. "
         "The useful comparison gives failures and passes equal weight, then examines the tradeoff between catching failures and raising false alerts.",
         "",
@@ -1416,6 +1553,15 @@ def _render_study(ctx: ReportContext) -> list[str]:
             f"{dataset['missing_fraction']:.2%} of measurement cells are missing.",
             "",
         ]
+        if dataset.get("timestamp_min") and dataset.get("timestamp_max"):
+            start, end = (
+                pd.Timestamp(dataset[key]).strftime("%B %d, %Y") for key in ("timestamp_min", "timestamp_max")
+            )
+            lines += [
+                f"The observations span **{start}–{end}**. Chronological transfer here covers weeks within this "
+                "historical dataset, not an independent later manufacturing campaign.",
+                "",
+            ]
     lines += [
         "**Failure recall** is the fraction of failures caught. **Pass specificity** is the fraction of passes correctly left unflagged. "
         "**Balanced error** is the average of the missed-failure rate and the false-alert rate on passes: "
@@ -1460,8 +1606,8 @@ def _render_study(ctx: ReportContext) -> list[str]:
         "",
         "The paired benchmark protocol keeps test samples, folds and seeds fixed while comparing declared input budgets and model settings. "
         + budget_scope
-        + "Full grids and candidate counts are in the technical appendix. For dimension-relative kernel-ridge candidates, kernel width scales "
-        "with the actual selected input count. Stronger regularization wins exact balanced-error ties after fewer features.",
+        + "Full grids and candidate counts are in the technical appendix. For dimension-relative kernel-ridge candidates, RBF gamma equals "
+        "a declared multiplier divided by the actual selected input count. Stronger regularization wins exact balanced-error ties after fewer features.",
         "",
         "This is bounded parameter coverage, not global optimization. Model settings, input mode and threshold remain selected entirely "
         "inside training data. Separately predefined measurements-only and measurements-plus-missing-flags procedures provide contrasts; "
@@ -1541,22 +1687,12 @@ def _render_study(ctx: ReportContext) -> list[str]:
         _feature_interpretation_claim_note(),
         "",
     ]
-    groups = dataset.get("shared_missingness_patterns", [])
-    if groups:
-        group = groups[0]
-        names = ", ".join(name.removeprefix("M") for name in group["features"][:12])
-        monthly = "; ".join(f"{month}: {rate:.1%}" for month, rate in group["monthly_missing_rates"].items())
-        lines += [
-            f"For example, missing flags for columns {names} have identical missingness patterns. "
-            f"Their full-sample missing rate by month is {monthly}. These descriptive associations do not identify root causes "
-            "or prove independent sensor effects.",
-            "",
-        ]
+    lines += _feature_stability_context_lines(ctx)
     _append_figure(
         lines,
         "Anonymous-input selection frequency",
         "figures/feature_stability.png",
-        "Exploratory family stability and scaled-coefficient heuristics. Bars use selection frequency only; fitted coefficients remain in the technical appendix.",
+        "Bars show selection frequency for exploratory families, not causal importance.",
     )
     lines += [
         "## Temporal Robustness Stress Test",
@@ -1574,6 +1710,7 @@ def _render_study(ctx: ReportContext) -> list[str]:
     if ctx.temporal_selection is not None:
         lr = read_csv_if_exists(ctx.reports_dir / ArtifactName.TEMPORAL_PROCEDURE_METRICS)
         krr = read_csv_if_exists(ctx.reports_dir / ArtifactName.TEMPORAL_KRR_METRICS)
+        lines += _temporal_period_lines(ctx.reports_dir)
         lines += ["### Later-period logistic-regression results", ""]
         if lr is not None and not lr.empty:
             human = lr.copy()
@@ -1672,7 +1809,7 @@ def _render_study(ctx: ReportContext) -> list[str]:
         lines += [
             "",
             later_sample_scope(ctx.temporal_lockbox)
-            + " Exact intervals in the appendix are conditional on a fixed model and "
+            + " The 95% exact conditional binomial intervals in the appendix assume a fixed model and "
             "independent Bernoulli trials; they exclude temporal dependence and model-selection uncertainty. Retrospective thresholds "
             "chosen from evaluation labels to reach 90% pass specificity remain a separate ranking diagnostic, not frozen operating performance.",
             "",
@@ -1696,7 +1833,9 @@ def _render_study(ctx: ReportContext) -> list[str]:
             lines,
             "Later measurement and score shifts",
             "figures/temporal_drift.png",
-            "Primary logistic-regression model: raw-feature stability index versus earlier fitting measurements; score-distribution test versus held-out calibration. Secondary descriptive evidence.",
+            "Failure prevalence compares the full earlier development region with the retrospective later block. "
+            "The population stability index (PSI) summarizes selected measurement-distribution changes versus earlier "
+            "fitting samples; larger values indicate more change. Score tests use held-out calibration. These are descriptive diagnostics.",
         )
         lines += [
             "### Hypothetical workload and cost",
@@ -1710,7 +1849,10 @@ def _render_study(ctx: ReportContext) -> list[str]:
             lines,
             "Calibration workload and hypothetical costs",
             "figures/workload_cost_framing.png",
-            "Calibration-only summaries used to choose operating thresholds. The mean-weekly policy is not an individual-week hard cap; hypothetical costs do not validate deployment value.",
+            "Left: held-out calibration workload used to choose the workload-limited threshold. Right: hypothetical "
+            "costs of frozen rules on the retrospective later block. "
+            + later_sample_scope(ctx.temporal_lockbox)
+            + " The mean-weekly policy is not an individual-week hard cap; hypothetical costs do not validate deployment value.",
         )
     else:
         lines += [

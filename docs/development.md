@@ -14,7 +14,7 @@ Paths below are relative to `src/secom/` and `tests/`.
 | Shared original/tuned grids and bounded score reuse | `workflows/benchmark_*.py` | `test_benchmark_replication.py`, `test_model_score_cache.py`, `test_study_preparation_reuse.py` |
 | Chronology, KRR comparison and calibration | `cv.py`, `selection/tuning.py`, `workflows/temporal_*.py`, `workflows/calibration.py` | `test_temporal_robustness.py`, `test_tuning_temporal_extension.py` |
 | Artifact contracts and audit | `config.py`, `artifacts.py`, `workflows/audit.py` | `test_artifact_contracts.py`, `test_study_audit.py` |
-| Report language and figures | `reporting.py`, `report_language.py`, `report_figures.py` | `test_final_report.py`, `test_report_figures.py`, `test_report_skeleton.py` |
+| Report language, figures and offline HTML | `reporting.py`, `report_language.py`, `report_figures.py`, `html_report.py` | `test_final_report.py`, `test_report_figures.py`, `test_report_skeleton.py`, `test_html_report.py` |
 | Full workflow, metadata and export | `workflows/full_study.py`, `common/meta.py`, `evidence.py` | `test_cli_entrypoints.py`, `test_end_to_end_study.py`, `test_metadata.py`, `test_provenance_and_export.py` |
 
 Thin entrypoints live in `scripts/`. Use configuration and the auditor for active artifact schemas, rather than inferring them from historical CSVs.
@@ -49,7 +49,19 @@ Use the [README command table](../README.md#additional-commands).
 | Report regeneration | Fits no models but replaces generated report/figure bytes; use deliberately |
 | Public export | Deliberate requested snapshot replacement; requires audited artifacts and matching current source/spec identity |
 
-The full workflow rejects nonempty `reports/`. Preserve completed and interrupted runs. CSVs and the complete source/artifact ZIP stay under ignored `runs/`; raw data stay under ignored `data/`. Only the report, six figures, manifest and audit receipt are published. Manual public files are retained. Optional PDF export requires an external Pandoc/PDF environment.
+The full workflow rejects nonempty `reports/`. Preserve completed and interrupted runs. CSVs and the complete source/artifact ZIP stay under ignored `runs/`; raw data stay under ignored `data/`. The curated snapshot keeps the technical report, six figures, manifest and audit receipt, plus an offline HTML companion and its own rendering provenance. Manual public files are retained. The HTML supports browser printing; optional technical-report PDF export requires an external Pandoc/PDF environment.
+
+## Offline HTML Report
+
+Open `docs/results/index.html` in a browser. Styles, charts and the technical-report/manifest/audit downloads are embedded; no server or network is needed for the main report. The adjacent `html_provenance.json` records the verified input and renderer hashes separately from scientific execution.
+
+To rebuild from the curated evidence without fitting models, use a fresh destination:
+
+```bash
+python scripts/run_html_report.py --input-dir docs/results --output-dir runs/html_review
+```
+
+The builder rejects changed core hashes, failed audits, overlapping paths and reused destinations. Normal and editorial public exports rebuild HTML from their new staged evidence automatically. For an authorized HTML-only refresh, validate the fresh folder and copy only `index.html` and `html_provenance.json` into `docs/results/`; preserve all eight core files. This does not refresh the scientific run or its historical Markdown rendering identity.
 
 ## Documentation Changes and Historical Provenance
 

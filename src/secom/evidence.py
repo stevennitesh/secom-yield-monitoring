@@ -15,6 +15,7 @@ from secom.artifacts import read_manifest
 from secom.common.meta import source_tree_identity, strategy_sha256
 from secom.config import ArtifactName, StudyStatus
 from secom.provenance import sha256_file
+from secom.html_report import write_html_report
 from secom.reporting import write_final_report, write_report_skeleton
 from secom.workflows.audit import run_study_audit
 
@@ -25,9 +26,11 @@ PRESENTATION_SOURCE_PATHS = frozenset(
         "src/secom/reporting.py",
         "src/secom/report_figures.py",
         "src/secom/report_language.py",
+        "src/secom/html_report.py",
         "src/secom/evidence.py",
         "scripts/export_results.py",
         "scripts/run_final_report.py",
+        "scripts/run_html_report.py",
         "docs/spec/06-report-structure.md",
         "docs/spec/07-artifact-contracts.md",
         "docs/spec/08-audit-and-claim-semantics.md",
@@ -183,6 +186,7 @@ def refresh_presentation(
         receipt_text = json.dumps(receipt, sort_keys=True, indent=2) + "\n"
         (staging / "evidence/audit_receipt.json").write_text(receipt_text, encoding="utf-8")
         (evidence / "audit_receipt.json").write_text(receipt_text, encoding="utf-8")
+        write_html_report(staging)
         # Reader guide is authored deliberately outside generated publication bytes.
         if destination is not None:
             _publish_snapshot(staging, destination, set(manifest["artifact_sha256"]) | {"study_artifacts.zip"})
@@ -308,9 +312,10 @@ def export_public_snapshot(
         (evidence / "audit_receipt.json").write_text(
             json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
+        write_html_report(staging)
         readme = f"""# Results Snapshot
 
-Read [final_report.md](final_report.md) first. This small public snapshot was exported from `{output_dir}` after the complete artifact audit passed. Git tracks the report, its figures, the unchanged execution manifest and the audit receipt. Detailed CSVs and the full source/artifact ZIP remain in ignored run storage.
+Open [the offline HTML report](index.html) in a browser, or read [the canonical technical report](final_report.md). This small public snapshot was exported from `{output_dir}` after the complete artifact audit passed. Git tracks both report formats, six figures, the unchanged execution manifest, the scientific audit receipt and separate [HTML rendering provenance](html_provenance.json). Detailed CSVs and the full source/artifact ZIP remain in ignored run storage.
 
 The source execution records base Git commit `{manifest["git_commit"]}`, dirty status `{manifest["git_dirty"]}` and exact source content hash `{manifest["source_tree"]["sha256"]}`. A dirty run includes uncommitted source changes; it does not pretend the base commit contains them. The unchanged [run manifest](evidence/run_manifest.json) records input hashes, resolved dependencies, study settings, timing and artifact hashes. The publication revision is the repository commit that eventually contains this snapshot.
 

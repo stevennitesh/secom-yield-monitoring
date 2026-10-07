@@ -234,10 +234,22 @@ def write_temporal_drift_figure(temporal_drift, output_path: Path) -> None:
     axes[0].bar(["Failure prevalence"], [100 * float(row.get("abs_prevalence_shift", np.nan))], color=TEAL)
     axes[0].set_ylabel("Absolute change (percentage points)")
     axes[0].set_title("Label frequency")
+    if pd.notna(row.get("dev_fail_rate")) and pd.notna(row.get("lockbox_fail_rate")):
+        axes[0].text(
+            0.5,
+            0.93,
+            f"{row.dev_fail_rate:.2%} → {row.lockbox_fail_rate:.2%}\nFull development → later block",
+            transform=axes[0].transAxes,
+            ha="center",
+            va="top",
+            fontsize=10,
+        )
+        axes[0].set_ylim(0, max(1, 100 * float(row.abs_prevalence_shift)) * 1.35)
     psi = pd.Series({"Maximum": row.get("max_PSI", np.nan), "Median": row.get("median_PSI", np.nan)}).dropna()
     axes[1].bar(psi.index, psi.values, color=[ORANGE, BLUE])
     axes[1].set_ylabel("Population Stability Index (PSI)")
-    axes[1].set_title("Raw-measurement shift")
+    count = row.get("psi_feature_count")
+    axes[1].set_title("Raw-measurement shift" + (f"\n{int(count)} selected value features" if pd.notna(count) else ""))
     axes[2].axis("off")
     pvalue = float(row.get("ks_pvalue_scores", np.nan))
     axes[2].set_title("Model-score shift")
@@ -252,7 +264,7 @@ def write_temporal_drift_figure(temporal_drift, output_path: Path) -> None:
     _finish(
         fig,
         output_path,
-        "Raw-feature PSI reference: earlier model-fitting measurements. Score test: held-out calibration reference.\nDescriptive shift diagnostics; heuristic warnings do not establish causes, independence or operational superiority.",
+        "Prevalence: full development versus later block. PSI: selected value features versus earlier fitting samples; larger means more change.\nScore test: same-model held-out calibration reference. Descriptive diagnostics do not establish causes or operational superiority.",
     )
 
 
@@ -298,7 +310,7 @@ def write_lockbox_vs_mspc_figure(temporal_lockbox, temporal_mspc, output_path: P
     )
 
 
-def write_workload_cost_figure(temporal_manager, temporal_cost, output_path: Path) -> None:
+def write_workload_cost_figure(temporal_manager, temporal_cost, output_path: Path, *, temporal_lockbox=None) -> None:
     if any(f is None or f.empty for f in (temporal_manager, temporal_cost)):
         _save_placeholder_figure(
             output_path, "Hypothetical workload and cost", "Calibration workload or cost artifact is unavailable."
@@ -312,21 +324,37 @@ def write_workload_cost_figure(temporal_manager, temporal_cost, output_path: Pat
     axes[0].set_xlabel("Mean flagged samples per calibration week")
     axes[0].set_title("Calibration alert workload")
     labels = {
-        "primary_scientific": "LR: balanced-error threshold",
-        "primary_operational": "LR: workload-limited threshold",
+        "primary_scientific": "Primary LR: balanced-error threshold",
+        "primary_operational": "Primary LR: workload-limited threshold",
         "all_pass_baseline": "Always predict pass",
         "all_flag_baseline": "Flag every sample",
     }
-    for column, color in zip(labels, (BLUE, TEAL, GRAY, ORANGE), strict=True):
+    for column, color, linestyle, marker in zip(
+        labels, (BLUE, TEAL, GRAY, ORANGE), ("-", "--", ":", "-."), ("o", "s", "^", "D"), strict=True
+    ):
         if column in temporal_cost:
-            axes[1].plot(temporal_cost.cost_ratio, temporal_cost[column], marker="o", label=labels[column], color=color)
+            axes[1].plot(
+                temporal_cost.cost_ratio,
+                temporal_cost[column],
+                marker=marker,
+                linestyle=linestyle,
+                label=labels[column],
+                color=color,
+            )
     axes[1].set_xlabel("Missed-failure cost / false-alert cost")
-    axes[1].set_ylabel("Hypothetical cost per calibration sample\n(false-alert cost = 1)")
-    axes[1].set_title("Assumed costs, not realized savings")
+    axes[1].set_ylabel("Hypothetical cost per retrospective later-block sample\n(false-alert cost = 1)")
+    n = None
+    if (
+        temporal_lockbox is not None
+        and not temporal_lockbox.empty
+        and {"TP", "FN", "FP", "TN"} <= set(temporal_lockbox)
+    ):
+        n = int(temporal_lockbox.iloc[0][["TP", "FN", "FP", "TN"]].sum())
+    axes[1].set_title("Retrospective costs" + (f" (N={n})" if n is not None else ""))
     axes[1].legend(fontsize=9)
     axes[1].grid(alpha=0.15)
     _finish(
         fig,
         output_path,
-        "Held-out calibration only; these observations helped choose thresholds and do not validate future capacity or cost.\nWorkload policy limits the unweighted mean weekly flagged fraction to 10%, not each week's hard cap.",
+        "Workload: held-out calibration used to choose thresholds. Costs: frozen rules on the retrospective later block; assumptions are hypothetical.\nThe 10% rule limits mean weekly flagged fraction, not each week's hard cap. Neither panel validates future capacity or realized savings.",
     )
