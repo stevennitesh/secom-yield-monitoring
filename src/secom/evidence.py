@@ -31,6 +31,7 @@ PRESENTATION_SOURCE_PATHS = frozenset(
         "scripts/export_results.py",
         "scripts/run_final_report.py",
         "scripts/run_html_report.py",
+        "scripts/stage_pages.py",
         "docs/spec/06-report-structure.md",
         "docs/spec/07-artifact-contracts.md",
         "docs/spec/08-audit-and-claim-semantics.md",

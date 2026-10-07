@@ -1,6 +1,6 @@
 # Development and Evidence Workflow
 
-[README](../README.md#run-locally) owns setup and commands; [AGENTS](../AGENTS.md) owns scope and guardrails; [specifications](spec/README.md) own scientific requirements.
+[README](../README.md#run-locally) owns setup and quick verification; this guide owns study and publication commands. [AGENTS](../AGENTS.md) owns scope and guardrails; [specifications](spec/README.md) own scientific requirements.
 
 ## Code Map
 
@@ -16,6 +16,7 @@ Paths below are relative to `src/secom/` and `tests/`.
 | Artifact contracts and audit | `config.py`, `artifacts.py`, `workflows/audit.py` | `test_artifact_contracts.py`, `test_study_audit.py` |
 | Report language, figures and offline HTML | `reporting.py`, `report_language.py`, `report_figures.py`, `html_report.py` | `test_final_report.py`, `test_report_figures.py`, `test_report_skeleton.py`, `test_html_report.py` |
 | Full workflow, metadata and export | `workflows/full_study.py`, `common/meta.py`, `evidence.py` | `test_cli_entrypoints.py`, `test_end_to_end_study.py`, `test_metadata.py`, `test_provenance_and_export.py` |
+| Verified static publication | `scripts/stage_pages.py`, `.github/workflows/pages.yml` (repository root) | `test_pages_staging.py` |
 
 Thin entrypoints live in `scripts/`. Use configuration and the auditor for active artifact schemas, rather than inferring them from historical CSVs.
 
@@ -40,7 +41,7 @@ Make is optional. [CI](../.github/workflows/ci.yml) runs explicit checks on Ubun
 
 ## Operations and Their Effects
 
-Use the [README command table](../README.md#additional-commands).
+Use the [study command table](#checks-and-study-commands).
 
 | Operation | Effect and boundary |
 | --- | --- |
@@ -50,6 +51,34 @@ Use the [README command table](../README.md#additional-commands).
 | Public export | Deliberate requested snapshot replacement; requires audited artifacts and matching current source/spec identity |
 
 The full workflow rejects nonempty `reports/`. Preserve completed and interrupted runs. CSVs and the complete source/artifact ZIP stay under ignored `runs/`; raw data stay under ignored `data/`. The curated snapshot keeps the technical report, six figures, manifest and audit receipt, plus an offline HTML companion and its own rendering provenance. Manual public files are retained. The HTML supports browser printing; optional technical-report PDF export requires an external Pandoc/PDF environment.
+
+## Reproduce the Study
+
+After the [local setup](../README.md#run-locally), fetch the verified dataset and use a fresh output directory:
+
+```bash
+python scripts/fetch_secom.py --output-dir data/raw
+python scripts/run_full_study.py --input-dir data/raw --output-dir runs/full_study --classifiers krr,logreg --progress --strict
+python scripts/run_audit.py --output-dir runs/full_study --strict
+```
+
+Read `runs/full_study/reports/final_report.md` when it finishes. The latest full run took about 24 minutes on one Windows machine; this is an observed budget, not a hardware-independent guarantee. Running the study does not publish its results.
+
+## Checks and Study Commands
+
+Commands assume the environment is active. Benchmark entrypoints default to kernel ridge; the full-study command above includes both models.
+
+| Task | Command |
+| --- | --- |
+| Full test suite | `python -m pytest -q` |
+| Lint | `python -m ruff check src tests scripts` |
+| Format check | `python -m ruff format --check src tests scripts` |
+| Reference benchmark | `python scripts/run_original_replication.py --input-dir data/raw --output-dir runs/original_replication --strict` |
+| Tuned benchmark | `python scripts/run_benchmark_tuned.py --input-dir data/raw --output-dir runs/benchmark_tuned --strict` |
+| Both benchmarks | `python scripts/run_benchmark_replication.py --input-dir data/raw --output-dir runs/benchmark_replication --strict` |
+| Chronological study | `python scripts/run_temporal_robustness.py --input-dir data/raw --output-dir runs/temporal_robustness --strict` |
+| Regenerate its report | `python scripts/run_final_report.py --output-dir runs/full_study` |
+| Deliberately replace the public snapshot | `python scripts/export_results.py --output-dir runs/full_study` |
 
 ## Offline HTML Report
 
@@ -62,6 +91,18 @@ python scripts/run_html_report.py --input-dir docs/results --output-dir runs/htm
 ```
 
 The builder rejects changed core hashes, failed audits, overlapping paths and reused destinations. Normal and editorial public exports rebuild HTML from their new staged evidence automatically. For an authorized HTML-only refresh, validate the fresh folder and copy only `index.html` and `html_provenance.json` into `docs/results/`; preserve all eight core files. This does not refresh the scientific run or its historical Markdown rendering identity.
+
+## Hosted Report
+
+The main reader report is [hosted on GitHub Pages](https://stevennitesh.github.io/secom-yield-monitoring/). Its source remains `docs/results/index.html`; the hosted and offline versions use identical bytes.
+
+The [Pages workflow](../.github/workflows/pages.yml) deploys from `main` when report or publication files change, or when manually dispatched on `main`. Pages uses the GitHub Actions publishing source. Before uploading, the standard-library staging command verifies the scientific receipt, all core input hashes and the HTML's separate input/output provenance:
+
+```bash
+python scripts/stage_pages.py --input-dir docs/results --output-dir .tmp/pages-review
+```
+
+Use a fresh destination. Only the HTML, its provenance, canonical Markdown, six figures, manifest and audit receipt are copied, plus an empty `.nojekyll` marker. The workflow fits no models, regenerates no evidence and uploads no raw data, local run archives or working notes. The repository's About website points to the same report.
 
 ## Documentation Changes and Historical Provenance
 
