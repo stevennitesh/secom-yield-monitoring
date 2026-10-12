@@ -25,7 +25,7 @@ REPOSITORY = "https://github.com/stevennitesh/secom-yield-monitoring"
 
 STYLE = """
 *{box-sizing:border-box}
-:root{color-scheme:light;--ink:#172e3a;--muted:#526675;--teal:#086e74;--line:#d8e3e7;--paper:#f3f6f7}
+:root{color-scheme:light;--ink:#172e3a;--muted:#526675;--teal:#086e74;--line:#d8e3e7;--paper:#f3f6f7;--reference:#365b78}
 html{scroll-behavior:smooth;scroll-padding-top:5rem}
 body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1120px;margin:auto;padding:2.5rem 2rem}
@@ -33,15 +33,16 @@ a{color:var(--teal);text-underline-offset:4px;overflow-wrap:anywhere}
 button{font:inherit;cursor:pointer}
 a:focus-visible,button:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:3px solid #da8d1d;outline-offset:4px}
 .skip{position:absolute;left:1rem;top:-5rem;background:white;padding:.5rem;z-index:9}.skip:focus{top:1rem}
-.hero{background:#153b49;color:white;border-radius:18px;padding:2.7rem 3rem}
+.hero{background:#153b49;color:white;border-radius:18px;padding:2.3rem 2.6rem}
 .eyebrow,.section-number{font-size:.76rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
 .hero .eyebrow{color:#99d9d1;margin:0 0 1.2rem}
-h1{font-size:clamp(2.2rem,5vw,3.6rem);line-height:1.12;letter-spacing:-.035em;max-width:780px;margin:0 0 1.4rem}
+h1{font-size:clamp(2.2rem,5vw,3.3rem);line-height:1.12;letter-spacing:-.035em;max-width:850px;margin:0 0 1.2rem}
 .hero-intro{max-width:780px;color:#d7e6eb;font-size:1.08rem}
 .hero-result{font-size:1.32rem;font-weight:700;margin-top:1.8rem}
 .hero-boundary{font-size:.9rem;color:#bfd4db;max-width:850px}
+.hero-actions{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.5rem}.hero-actions a{padding:.55rem .9rem;border:1px solid #789ca7;border-radius:6px;color:white;text-decoration:none;font-size:.87rem;font-weight:600}.hero-actions a:first-child{background:#d7f0eb;color:#153b49;border-color:#d7f0eb}.hero-actions a:hover{text-decoration:underline}
 p{margin:0 0 1rem;overflow-wrap:anywhere}p:last-child{margin-bottom:0}
-.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin-top:2rem}
+.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.4rem;margin-top:1.6rem;font-variant-numeric:tabular-nums}
 .metric{border-top:1px solid #62818c;padding-top:1rem}.metric strong{display:block;font-size:2rem;line-height:1.2;letter-spacing:-.025em}
 .metric span{display:block;font-size:.9rem;color:#d7e6eb;margin-top:.35rem}.metric small{display:block;color:#b7ccd4;font-size:.8rem}
 .contents{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:.3rem 1.1rem;padding:1rem 0;background:var(--paper);border-bottom:1px solid var(--line)}
@@ -59,6 +60,8 @@ section{min-width:0;background:white;padding:2.1rem 2.4rem;margin-top:1.5rem;bor
 .timeline{grid-template-columns:repeat(3,minmax(0,1fr))}.timeline strong{display:block}.timeline span{color:var(--muted);font-size:.85rem}
 .note{background:#edf4f5;padding:1rem 1.15rem;border-left:3px solid var(--teal);border-radius:0 8px 8px 0;margin:1.3rem 0;font-size:.94rem}
 .note.warm{background:#fff6e8;border-color:#b5761b}
+.evidence-map{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.9rem;margin:1.5rem 0 0}.evidence-map article{border-top:3px solid var(--reference);padding:1rem;background:#f6f9fa;border-radius:0 0 8px 8px}.evidence-map article:nth-child(2){border-color:var(--teal)}.evidence-map article:last-child{border-color:#b5761b}.evidence-map h3{margin:0 0 .4rem;font-size:1rem}.evidence-map p{font-size:.85rem;color:var(--muted)}.evidence-map a{font-size:.85rem;font-weight:600}
+.paired{background:#edf4f5;border-radius:8px;padding:1rem 1.2rem;margin:1.3rem 0}.paired p{font-size:.9rem;margin:0}.paired strong{color:var(--teal)}
 .table-card{margin:1.3rem 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .table-label{padding:.85rem;font-size:.88rem;font-weight:650;background:#edf4f5}
 .table-wrap{max-width:100%;overflow-x:auto}
@@ -66,7 +69,7 @@ section{min-width:0;background:white;padding:2.1rem 2.4rem;margin-top:1.5rem;bor
 .scroll-hint{display:none;font-size:.75rem;font-weight:400;color:var(--muted)}
 table{width:100%;border-collapse:collapse;font-size:.88rem;font-variant-numeric:tabular-nums}
 caption{text-align:left;padding:.85rem;font-weight:650;background:#edf4f5}th,td{padding:.8rem .9rem;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
-thead th{background:#f0f5f6;font-size:.8rem}tbody th{font-weight:600}tbody tr:last-child>*{border-bottom:0}tbody tr:nth-child(even){background:#fafcfc}
+thead th{background:#f0f5f6;font-size:.8rem}tbody th{font-weight:600}tbody tr:last-child>*{border-bottom:0}tbody tr:nth-child(even){background:#fafcfc}td.number{white-space:nowrap;text-align:right}
 .report-figure{margin:1.7rem 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f0f5f6}
 .figure-heading{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem 1.2rem}
 .figure-heading h3{margin:0;font-size:1.05rem}.figure-number{font-size:.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin:0 0 .2rem}
@@ -83,6 +86,8 @@ dialog{width:calc(100% - 2rem);max-width:1400px;max-height:95vh;border:1px solid
 dialog::backdrop{background:#102e3ecc}.viewer-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem}.viewer-heading h2{font-size:1.25rem;margin:0}.viewer-heading button,#zoom{padding:.4rem .7rem;border:1px solid #aec6cd;border-radius:5px;background:white;color:var(--teal)}
 .viewer-help{font-size:.85rem;color:var(--muted);margin:1rem 0}.viewer-content{overflow:auto;max-height:70vh;border:1px solid var(--line);margin-top:1rem}.viewer-content img{display:block;width:100%;height:auto}.viewer-content.native img{width:auto;max-width:none}
 @media(max-width:720px){main{padding:1rem}.hero{padding:1.4rem}.hero-result{font-size:1.1rem}.metrics{gap:.8rem}.metric strong{font-size:1.3rem}.metric span{font-size:.8rem}.metric small{font-size:.72rem}section{padding:1.3rem}.facts{grid-template-columns:repeat(2,minmax(0,1fr))}.pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}.timeline,.definitions{grid-template-columns:1fr}.contents{gap:.3rem .9rem;padding:.65rem 0}.contents a{font-size:.8rem}.contents .print{display:none}.figure-heading{flex-direction:column;align-items:flex-start}.chart-panel img{min-width:740px}.chart-panel{margin:0 .4rem .4rem}.boundary{font-size:.84rem}h2{font-size:1.45rem}th,td{padding:.6rem}.evidence-status{gap:.5rem}.evidence-status strong{font-size:1.3rem}.scroll-hint{display:block;margin-top:.3rem}}
+@media(max-width:720px){.evidence-map{grid-template-columns:1fr}.hero-actions a{font-size:.82rem}.paired{padding:.9rem}}
+@media(max-width:480px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric:first-child{grid-column:1/-1}.metric:first-child strong{font-size:1.7rem}.hero-boundary{font-size:.83rem}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 @media print{body{background:white;font-size:11pt}main{max-width:none;padding:0}.hero{background:white;color:var(--ink);border:1px solid var(--line)}.hero .eyebrow,.hero-intro,.hero-boundary,.metric span,.metric small{color:var(--muted)}.contents,.figure-tools,dialog,.skip{display:none}section{padding:1rem;border:0;border-top:1px solid var(--line)}.chart-panel img{min-width:0}.report-figure,.facts,.timeline{break-inside:avoid}a{color:inherit}}
 """
@@ -183,14 +188,16 @@ def _render_table(rows: list[dict[str, str]], columns: list[str], caption: str) 
     if not rows:
         return '<p class="boundary">This result was not recorded in the supplied snapshot.</p>'
     head = "".join(f'<th scope="col">{escape(column)}</th>' for column in columns)
+
+    def cell(value: str, index: int) -> str:
+        if index == 0:
+            return f'<th scope="row">{escape(value)}</th>'
+        numeric = bool(re.fullmatch(r"[-+\d.,% /–→]+(?: pp| percentage points)?", value))
+        style = ' class="number"' if numeric else ""
+        return f"<td{style}>{escape(value)}</td>"
+
     body = "".join(
-        "<tr>"
-        + "".join(
-            f'<th scope="row">{escape(row[column])}</th>' if index == 0 else f"<td>{escape(row[column])}</td>"
-            for index, column in enumerate(columns)
-        )
-        + "</tr>"
-        for row in rows
+        "<tr>" + "".join(cell(row[column], index) for index, column in enumerate(columns)) + "</tr>" for row in rows
     )
     hint = '<span class="scroll-hint">Swipe horizontally for all columns.</span>' if len(columns) > 3 else ""
     return f'<div class="table-card"><div class="table-label" aria-hidden="true">{escape(caption)}{hint}</div><div class="table-wrap" tabindex="0" role="region" aria-label="{escape(caption)}"><table><caption class="sr-only">{escape(caption)}</caption><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div></div>'
@@ -275,6 +282,20 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
     settings = manifest.get("execution", {}).get("settings", {})
     fold_match = re.search(r"Both benchmarks used (\d+) held-out test folds", report)
     folds = fold_match.group(1) if fold_match else "the recorded"
+    paired_match = re.search(
+        r"On the paired test folds, tuning lowers balanced error in (\d+), raises it in (\d+), and ties in (\d+)\.",
+        report,
+    )
+    paired = ""
+    if paired_match:
+        improved, worsened, tied = map(int, paired_match.groups())
+        if fold_match and improved + worsened + tied != int(folds):
+            raise ValueError("Paired benchmark fold counts differ from the recorded evaluation")
+        paired = (
+            '<div class="paired"><p><strong>'
+            f"{improved} folds improved · {worsened} worsened · {tied} tied"
+            "</strong><br>Matched test folds show an uneven tradeoff. This is descriptive, not a significance test.</p></div>"
+        )
     sample_count, fail_count, pass_count = (int(dataset[name]) for name in ("n_samples", "n_fails", "n_passes"))
     start, end = (
         datetime.fromisoformat(dataset[name]).strftime("%B %d, %Y").replace(" 0", " ")
@@ -298,22 +319,63 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
         ],
     )
     lr_summary = re.search(r"Mean per-period balanced error: ([\d.]+%)", report)
+    lr_periods = _table(
+        report,
+        "### Later-period logistic-regression results",
+        ["Later test period", "Test samples / failures", "Balanced error", "Ranking AUC"],
+    )
+    lr_alerts = _table(
+        report,
+        "### Later-period logistic-regression results",
+        ["Later test period", "False alerts on passes", "Samples flagged"],
+    )
+    krr_periods = _table(
+        report,
+        "### Kernel-ridge comparison and calibration-window sensitivity",
+        [
+            "Procedure",
+            "Period 1: error / AUC / flagged",
+            "Period 2: error / AUC / flagged",
+            "Period 3: error / AUC / flagged",
+        ],
+    )
+    period_results = []
+    krr_main = next(
+        (row for row in krr_periods if row["Procedure"] == "Complete selected procedure (20% calibration)"), None
+    )
+    alerts_by_period = {row["Later test period"]: row for row in lr_alerts}
+    for row in lr_periods:
+        period = row["Later test period"]
+        if period not in alerts_by_period:
+            raise ValueError("Chronological rate and alert tables reference different periods")
+        period_results.append(
+            {
+                "Period": period,
+                "Procedure": "Logistic regression",
+                "Samples / failures": row["Test samples / failures"],
+                "Balanced error": row["Balanced error"],
+                "Ranking AUC": row["Ranking AUC"],
+                "Samples flagged": alerts_by_period[period]["Samples flagged"],
+            }
+        )
+        if krr_main:
+            values = krr_main[f"Period {period}: error / AUC / flagged"].split(" / ")
+            if len(values) != 3:
+                raise ValueError("Kernel-ridge period metrics require error, AUC and flagged fraction")
+            period_results.append(
+                {
+                    "Period": period,
+                    "Procedure": "Kernel ridge (20% calibration)",
+                    "Samples / failures": row["Test samples / failures"],
+                    **dict(zip(["Balanced error", "Ranking AUC", "Samples flagged"], values, strict=True)),
+                }
+            )
     krr_summary = re.search(
         r"The main kernel-ridge procedure flags ([\d.]+%) of the (\d+) later samples\. Its mean period balanced error is ([\d.]+%)",
         report,
     )
     temporal = []
     if lr_summary:
-        lr_periods = _table(
-            report,
-            "### Later-period logistic-regression results",
-            ["Later test period", "Test samples / failures", "Failures caught"],
-        )
-        lr_alerts = _table(
-            report,
-            "### Later-period logistic-regression results",
-            ["Later test period", "False alerts on passes"],
-        )
         alert_lookup = {row["Later test period"]: row for row in lr_alerts}
         lr_volume = "Not recorded"
         if lr_periods and set(alert_lookup) == {row["Later test period"] for row in lr_periods}:
@@ -394,9 +456,30 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
             "Flag every sample",
         ],
     )
-    feature_prose = _paragraphs(report, "## Feature Stability and Interpretation")
-    # Keep the source's detailed monthly-mask example in the canonical report.
-    feature_prose = feature_prose[:2]
+    feature_paragraphs = _paragraphs(report, "## Feature Stability and Interpretation")
+    feature_prose = feature_paragraphs[:2]
+    feature_context = [p for p in feature_paragraphs[2:] if "panel displays" in p]
+    feature_values = _table(report, "### Chart values: selected inputs", ["Study", "Input", "Selection frequency"])
+    drift_values = _table(
+        report, "#### Chart values: distribution checks", ["Measure", "Recorded value", "Reference population"]
+    )
+    cost_columns = [
+        "Cost ratio",
+        "Primary: balanced-error threshold",
+        "Primary: workload-limited threshold",
+        "Always predict pass",
+        "Flag every sample",
+    ]
+    costs = [
+        {
+            "Cost ratio": row["Cost ratio"],
+            "Primary: balanced-error threshold": row["Primary: balanced error"],
+            "Primary: workload-limited threshold": row["Primary: workload limited"],
+            "Always predict pass": row["Always predict pass"],
+            "Flag every sample": row["Flag every sample"],
+        }
+        for row in costs
+    ]
 
     def paragraphs(items):
         return "".join(f"<p>{escape(item)}</p>" for item in items)
@@ -434,7 +517,7 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
         fail_count
     }</strong><span>Failures caught</span><small>Reference: {escape(before["Failures caught"])} / {
         fail_count
-    }</small></div></div></header>
+    }</small></div></div><div class="hero-actions"><a href="#benchmark">Explore the results</a><a href="#evidence">Inspect the evidence</a></div></header>
 <nav class="contents" aria-label="Report contents"><a href="#overview">Overview</a><a href="#build">Build</a><a href="#benchmark">Benchmark</a><a href="#inputs">Inputs</a><a href="#transfer">Transfer</a><a href="#limits">Limits</a><a href="#evidence">Evidence</a><button class="print" data-print type="button">Print / save PDF</button></nav>
 <section id="overview"><p class="section-number">01 · The question</p><h2>Rare failures change how accuracy should be read</h2>
 <p class="lede">Most recorded tests pass. An always-pass rule reaches {
@@ -454,7 +537,14 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
         end
     }. A row represents a production entity with an undocumented physical unit; measurement availability before the outcome is unknown. The raw file contains {
         dataset["n_features"]
-    } measurement columns, while public metadata list 591 features.</p></section>
+    } measurement columns, while public metadata list 591 features.</p>
+<h3>Three questions, three evidence boundaries</h3>
+<div class="evidence-map"><article><h3>1. Benchmark</h3><p>{
+        sample_count:,} samples · shuffled folds.<br>Compare reference and tuned selection on the same held-out samples.</p><a href="#benchmark">Read the tradeoff →</a></article>
+<article><h3>2. Chronological transfer</h3><p>Disjoint later periods · earlier fitting and calibration.<br>Check whether patterns transfer through time within this dataset.</p><a href="#transfer">Read the stress tests →</a></article>
+<article><h3>3. Final retrospective block</h3><p>{
+        escape(later_scope)
+    }<br>This subset was already exposed. It supplies no fresh confirmation.</p><a href="#later-block">Read the frozen rules →</a></article></div></section>
 <section id="build"><p class="section-number">02 · Engineering</p><h2>A reproducible study with explicit evaluation boundaries</h2>
 <p>I built the Python orchestration, feature-selection comparisons, calibration rules, vectorized ReliefF accelerator, artifact audits and reporting. Model estimators come from scikit-learn; ReliefF builds on skrebate.</p>
 <ol class="pipeline" aria-label="Implemented study workflow"><li>Validate inputs and record their hashes</li><li>Select inputs and tune within training samples</li><li>Evaluate saved held-out predictions</li><li>Audit artifacts and render the evidence</li></ol>
@@ -475,16 +565,46 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
 <p class="lede">{
         escape(error_change)
     }. The result is a comparison of complete training-selected procedures, rather than a model chosen after inspecting test performance.</p>
-{_render_table(comparison, benchmark_columns, "Shared held-out samples · rates average folds, counts pool predictions")}
-<p class="boundary">Failure recall is the share of failures caught; pass specificity is the share of passes left unflagged. Fold SD and chart whiskers describe observed variation, not algorithm-performance confidence intervals. {
-        escape(tradeoff)
-    } This comparison does not establish a globally optimal model or an exact reproduction of the published study.</p>
+{
+        _render_table(
+            comparison,
+            ["Procedure", "Balanced error", "Failure recall", "Pass specificity"],
+            "Class-balanced performance · each rate averages the same held-out folds",
+        )
+    }
+<p class="boundary">Failure recall is the share of failures caught; pass specificity is the share of passes left unflagged. The search is bounded; these results do not establish a globally optimal model or an exact reproduction of the published study.</p>
+{paired}
 {_figure(inputs, report, FIGURES[0], "Reference and tuned procedures on the same test folds", 1)}
+<details id="benchmark-counts"><summary>Exact counts and observed fold variation</summary>
+{
+        _render_table(
+            comparison,
+            ["Procedure", "Failures caught", "False alerts on passes"],
+            f"Once-held-out predictions · {fail_count:,} failures and {pass_count:,} passes",
+        )
+    }
+{
+        _render_table(
+            comparison,
+            ["Procedure", "Fold spread (SD)"],
+            "Balanced-error spread · descriptive standard deviation in percentage points",
+        )
+    }
+<p class="boundary">Rates average test folds; counts pool predictions. Chart whiskers show observed minimum and maximum fold error. SD and ranges are descriptive, not algorithm-performance confidence intervals.</p></details>
 <details id="input-contrasts"><summary>Supporting comparison: predefined input modes</summary><p>Measurements-only and measurements-plus-missing-flags procedures provide contrasts. Their test results do not replace the complete selected procedure as the headline. Positive chart values mean lower error after tuning.</p>
 {_figure(inputs, report, FIGURES[1], "Balanced-error changes by predefined input mode", 2)}</details></section>
 <section id="inputs"><p class="section-number">04 · Feature selection</p><h2>Repeatedly selected inputs are investigation clues</h2>
 {paragraphs(feature_prose)}
 {_figure(inputs, report, FIGURES[2], "Selection frequency for anonymous measurements and missing flags", 3)}
+{paragraphs(feature_context)}
+<details id="feature-values"><summary>Read the selected inputs as a table</summary>
+{
+        _render_table(
+            feature_values,
+            ["Study", "Input", "Selection frequency"],
+            "Same plotted inputs · exploratory families · overlapping training folds",
+        )
+    }</details>
 <div class="note">A process engineer could use stable associations to prioritize measurements for follow-up. Named sensors, verified collection timing and intervention records are needed before drawing process or causal conclusions.</div></section>
 <section id="transfer"><p class="section-number">05 · Secondary stress tests</p><h2>Later samples expose weak transfer and fragile thresholds</h2>
 <p>The shuffled benchmark tests other samples from the same dataset. The chronological study asks whether earlier patterns transfer to later calendar periods. It covers weeks in the historical dataset.</p>
@@ -496,7 +616,16 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
             "Disjoint chronological test periods · separate from the primary benchmark",
         )
     }
-<p class="boundary">Calibration uses the last 20% of each earlier training region, not 20% of the whole dataset. Model grids and preprocessing differ, so this is not an isolated algorithm comparison. Per-period error and AUC, plus an independently tuned 30% calibration sensitivity, remain in the technical report. Alert volume matters alongside failure recall.</p>
+<p class="boundary">Calibration uses the last 20% of each earlier training region, not 20% of the whole dataset. Model grids and preprocessing differ, so this is not an isolated algorithm comparison. The technical report also retains every input-mode comparison and an independently tuned 30% calibration sensitivity. Alert volume matters alongside failure recall.</p>
+<h3>Alert volume changes sharply between periods</h3>
+{
+        _render_table(
+            period_results,
+            ["Period", "Procedure", "Samples / failures", "Balanced error", "Ranking AUC", "Samples flagged"],
+            "Main procedures on identical later samples · each period is evaluated once",
+        )
+    }
+<p class="boundary">An always-pass rule has 50% balanced error. Ranking AUC measures score ordering: 0.5 is chance ordering. It does not set an alert threshold. These separate procedures do not reproduce the shuffled benchmark's performance.</p>
 <details id="chronological-detail"><summary>Calendar periods and calibration sensitivity</summary>
 {
         _render_table(
@@ -518,7 +647,7 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
             "Fixed-score calibration sensitivity · ranges are not confidence intervals",
         )
     }
-</details><h3>Final retrospective block: frozen rules, a separate population</h3>
+</details><h3 id="later-block">Final retrospective block: frozen rules, a separate population</h3>
 <p>{
         escape(later_scope)
     } This last block was already exposed through benchmarking and prior reports. It provides retrospective evidence rather than fresh confirmation. Only logistic regression and multivariate statistical process control (MSPC) are compared here.</p>
@@ -528,18 +657,20 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
 <details id="drift-and-cost"><summary>Supporting evidence: distribution shifts, workload and hypothetical costs</summary>
 <p>Measurement distributions use earlier fitting samples as reference. Score distributions use held-out calibration scores from the same retained model. Population stability index (PSI) describes distribution change; larger values indicate more change. These checks identify change without establishing its cause.</p>
 {_figure(inputs, report, FIGURES[4], "Measurement and score distribution shifts", 5)}
+<details id="drift-values"><summary>Read the distribution checks as a table</summary>
+{
+        _render_table(
+            drift_values,
+            ["Measure", "Recorded value", "Reference population"],
+            "Separate reference populations · primary logistic-regression model",
+        )
+    }</details>
 <p>The 10% workload rule limits the unweighted mean weekly flagged fraction on calibration samples. It does not guarantee every week’s workload or future capacity. Costs of frozen rules use retrospective later-block counts and hypothetical assumptions.</p>
 {_figure(inputs, report, FIGURES[5], "Calibration workload and retrospective hypothetical costs", 6)}
 {
         _render_table(
             costs,
-            [
-                "Cost ratio",
-                "Primary: balanced error",
-                "Primary: workload limited",
-                "Always predict pass",
-                "Flag every sample",
-            ],
+            cost_columns,
             "Hypothetical cost per later-block sample · false-alert cost = 1",
         )
     }

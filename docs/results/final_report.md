@@ -92,6 +92,36 @@ The reference panel displays 10 missing flags. The tuned panel displays 10 measu
 
 Bars show selection frequency for exploratory families, not causal importance.
 
+<details>
+<summary>Selected inputs and frequencies</summary>
+
+### Chart values: selected inputs
+
+| Study | Input | Selection frequency |
+|---|---|---|
+| Reference | Column 112: missing flag | 100% |
+| Reference | Column 247: missing flag | 100% |
+| Reference | Column 345: missing flag | 100% |
+| Reference | Column 346: missing flag | 100% |
+| Reference | Column 385: missing flag | 100% |
+| Reference | Column 519: missing flag | 100% |
+| Reference | Column 578: missing flag | 100% |
+| Reference | Column 579: missing flag | 100% |
+| Reference | Column 580: missing flag | 100% |
+| Reference | Column 581: missing flag | 100% |
+| Tuned | Column 103: measurement value | 100% |
+| Tuned | Column 21: measurement value | 100% |
+| Tuned | Column 348: measurement value | 100% |
+| Tuned | Column 434: measurement value | 100% |
+| Tuned | Column 510: measurement value | 100% |
+| Tuned | Column 59: measurement value | 100% |
+| Tuned | Column 129: measurement value | 90% |
+| Tuned | Column 430: measurement value | 90% |
+| Tuned | Column 431: measurement value | 90% |
+| Tuned | Column 435: measurement value | 90% |
+
+</details>
+
 ## Temporal Robustness Stress Test
 
 The shuffled benchmark asks about other samples from this dataset. The chronological stress test asks whether earlier measurements and labels transfer to later calendar periods. It is secondary evidence and does not replace the benchmark result.
@@ -178,6 +208,21 @@ Raw-measurement distribution comparisons use the earlier model-fitting samples a
 ![Later measurement and score shifts](figures/temporal_drift.png)
 
 Failure prevalence compares the full earlier development region with the retrospective later block. The population stability index (PSI) summarizes selected measurement-distribution changes versus earlier fitting samples; larger values indicate more change. Score tests use held-out calibration. These are descriptive diagnostics.
+
+<details>
+<summary>Distribution-check values and reference populations</summary>
+
+#### Chart values: distribution checks
+
+| Measure | Recorded value | Reference population |
+|---|---|---|
+| Failure prevalence | 7.13% → 3.83% | Full earlier development region → retrospective later block |
+| Absolute prevalence change | 3.30 percentage points | Full earlier development region versus retrospective later block |
+| Maximum measurement PSI | 4.05 | Selected raw measurements: earlier fitting samples versus later block |
+| Median measurement PSI | 2.45 | Same selected raw measurements and fitting reference |
+| Score distribution p-value (KS) | 0.000425 | Held-out calibration versus later block; same retained model |
+
+</details>
 
 ### Hypothetical workload and cost
 

@@ -4,7 +4,7 @@ Start with the [hosted study report](https://stevennitesh.github.io/secom-yield-
 
 | Reader's question | Document |
 | --- | --- |
-| What was investigated, built and found? | [Study report](https://stevennitesh.github.io/secom-yield-monitoring/) |
+| What was investigated, built and found? | [Study report](https://stevennitesh.github.io/secom-yield-monitoring/) — charts, period results and their limits |
 | Can I read the same report offline? | [HTML file](results/index.html) — open locally in a browser |
 | What exactly was measured? | [Full technical report](results/final_report.md) |
 | Where are the execution and rendering records? | [Evidence index](results/README.md#evidence) |

@@ -88,6 +88,37 @@ def test_decimal_formatted_counts_preserve_the_retrospective_population():
             _count(value)
 
 
+def test_paired_and_period_summaries_follow_supplied_evidence():
+    manifest, receipt, inputs = verified_snapshot(SOURCE)
+    text = inputs["final_report.md"].decode("utf-8").replace("\r\n", "\n")
+    text = text.replace(
+        "lowers balanced error in 5, raises it in 4, and ties in 1",
+        "lowers balanced error in 2, raises it in 6, and ties in 2",
+    )
+    text = text.replace("42.83% / 0.727 / 86.1%", "40.00% / 0.600 / 81.1%")
+    page = render_html(manifest, receipt, {**inputs, "final_report.md": text.encode("utf-8")})
+    assert "2 folds improved · 6 worsened · 2 tied" in page
+    assert '<td class="number">81.1%</td>' in page and '<td class="number">0.600</td>' in page
+    assert "Kernel ridge (20% calibration)" in page and "244 / 7" in page
+    with pytest.raises(ValueError, match="Paired benchmark fold counts"):
+        render_html(
+            manifest, receipt, {**inputs, "final_report.md": text.replace("ties in 2", "ties in 3").encode("utf-8")}
+        )
+
+
+def test_numeric_chart_alternatives_preserve_values_and_population_labels():
+    manifest, receipt, inputs = verified_snapshot(SOURCE)
+    text = inputs["final_report.md"].decode("utf-8").replace("\r\n", "\n")
+    # Replace any saved chart-value section with deliberately different display evidence.
+    text = text.replace("### Chart values: selected inputs", "### Saved feature values")
+    text = text.replace("#### Chart values: distribution checks", "#### Saved drift values")
+    text += "\n### Chart values: selected inputs\n\n| Study | Input | Selection frequency |\n|---|---|---|\n| Tuned | Column 99: missing flag | 70% |\n"
+    text += "\n#### Chart values: distribution checks\n\n| Measure | Recorded value | Reference population |\n|---|---|---|\n| Median measurement PSI | 1.23 | Earlier fitting samples versus later block |\n"
+    page = render_html(manifest, receipt, {**inputs, "final_report.md": text.encode("utf-8")})
+    assert "Column 99: missing flag" in page and '<td class="number">70%</td>' in page
+    assert '<td class="number">1.23</td>' in page and "Earlier fitting samples versus later block" in page
+
+
 @pytest.mark.parametrize("failure", ["hash", "failed_audit", "extra_path", "identity"])
 def test_html_rejects_invalid_evidence_before_creating_output(workspace_tmp_dir, failure):
     snapshot = workspace_tmp_dir / "snapshot"

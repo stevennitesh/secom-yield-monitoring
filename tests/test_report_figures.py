@@ -13,15 +13,23 @@ from tests.assertions import assert_renderable_png
 
 def test_temporal_drift_figure_uses_primary_not_first_row(workspace_tmp_dir: Path, monkeypatch) -> None:
     from matplotlib.axes import Axes
+    from secom import report_figures
 
     heights = []
+    labels = []
     original_bar = Axes.bar
+    original_finish = report_figures._finish
 
     def capture(self, x, height, *args, **kwargs):
         heights.append(list(height))
         return original_bar(self, x, height, *args, **kwargs)
 
+    def capture_labels(fig, output_path, note):
+        labels.extend(text.get_text() for ax in fig.axes for text in ax.texts)
+        original_finish(fig, output_path, note)
+
     monkeypatch.setattr(Axes, "bar", capture)
+    monkeypatch.setattr(report_figures, "_finish", capture_labels)
     drift = pd.DataFrame(
         [
             {"model_scope": "challenger", "abs_prevalence_shift": 0.7, "max_PSI": 9.0, "median_PSI": 4.0},
@@ -30,6 +38,7 @@ def test_temporal_drift_figure_uses_primary_not_first_row(workspace_tmp_dir: Pat
     )
     write_temporal_drift_figure(drift, workspace_tmp_dir / "drift.png")
     assert heights == [[2.0], [0.4, 0.2]]
+    assert {"2.00 pp", "0.40", "0.20"} <= set(labels)
 
 
 def test_temporal_drift_missing_artifact_writes_placeholder_png(workspace_tmp_dir: Path) -> None:
@@ -113,15 +122,23 @@ def test_primary_benchmark_chart_excludes_hindsight_family_minima(workspace_tmp_
     """A secondary zero-error row cannot dominate the complete-procedure headline."""
     from matplotlib.axes import Axes
     from secom.report_figures import write_benchmark_comparison_figure
+    from secom import report_figures
 
     widths = []
+    rendered = []
     original_barh = Axes.barh
+    original_finish = report_figures._finish
 
     def capture(self, y, width, *args, **kwargs):
         widths.append(list(width))
         return original_barh(self, y, width, *args, **kwargs)
 
+    def capture_denominators(fig, output_path, note):
+        rendered.extend((ax.get_xlim(), [text.get_text() for text in ax.texts]) for ax in fig.axes)
+        original_finish(fig, output_path, note)
+
     monkeypatch.setattr(Axes, "barh", capture)
+    monkeypatch.setattr(report_figures, "_finish", capture_denominators)
 
     def summary(error, caught, alerts):
         return pd.DataFrame(
@@ -152,6 +169,8 @@ def test_primary_benchmark_chart_excludes_hindsight_family_minima(workspace_tmp_
     output = workspace_tmp_dir / "benchmark.png"
     write_benchmark_comparison_figure(summary(0.32, 70, 445), summary(0.30, 66, 371), output)
     assert widths == [[32, 30], [70, 66], [445, 371]]
+    assert rendered[1] == ((0.0, 104.0), ["70 / 104", "66 / 104"])
+    assert rendered[2] == ((0.0, 1463.0), ["445 / 1,463", "371 / 1,463"])
     assert_renderable_png(output)
 
 
@@ -254,9 +273,25 @@ def test_workload_cost_chart_separates_calibration_and_later_population(workspac
 
     rendered = []
     plotted = []
+    original_finish = report_figures._finish
 
     def capture(fig, output_path, note):
-        rendered.append(([ax.get_xlabel() for ax in fig.axes], fig.axes[1].get_ylabel(), fig.axes[1].get_title(), note))
+        original_finish(fig, output_path, note)
+        fig.canvas.draw()
+        legend = fig.axes[1].get_legend()
+        highest_cost = max(max(line.get_ydata()) for line in fig.axes[1].lines)
+        highest_curve_y = fig.axes[1].transData.transform((0, highest_cost))[1]
+        rendered.append(
+            (
+                [ax.get_xlabel() for ax in fig.axes],
+                fig.axes[1].get_ylabel(),
+                fig.axes[1].get_title(loc="left"),
+                note,
+                [text.get_text() for text in fig.axes[0].texts],
+                [text.get_text() for text in legend.get_texts()],
+                legend.get_window_extent(fig.canvas.get_renderer()).y0 > highest_curve_y,
+            )
+        )
         plotted.extend(
             (line.get_linestyle(), line.get_marker(), line.get_ydata().tolist()) for line in fig.axes[1].lines
         )
@@ -277,12 +312,15 @@ def test_workload_cost_chart_separates_calibration_and_later_population(workspac
     )
     later = pd.DataFrame([{"TP": 8, "FN": 2, "FP": 17, "TN": 73}])
     report_figures.write_workload_cost_figure(manager, costs, workspace_tmp_dir / "cost.png", temporal_lockbox=later)
-    axes, ylabel, title, note = rendered[0]
+    axes, ylabel, title, note, workload_labels, cost_labels, legend_above_curves = rendered[0]
     assert "calibration week" in axes[0]
     assert "retrospective later-block sample" in ylabel and "calibration sample" not in ylabel
     assert "N=100" in title
     assert "Workload: held-out calibration" in note and "Costs: frozen rules on the retrospective later block" in note
     assert "hypothetical" in note and "future capacity" in note
+    assert workload_labels == ["12.0"]
+    assert cost_labels[:2] == ["Primary: balanced-error threshold", "Primary: workload-limited threshold"]
+    assert legend_above_curves
     assert len({style for style, _, _ in plotted}) == 4
     assert len({marker for _, marker, _ in plotted}) == 4
     assert [values for _, _, values in plotted] == [[0.19], [0.10], [0.10], [0.90]]

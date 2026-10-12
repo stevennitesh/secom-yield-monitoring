@@ -1420,6 +1420,96 @@ def _feature_stability_context_lines(ctx: ReportContext) -> list[str]:
     return [" ".join(lines), ""] if lines else []
 
 
+def _feature_chart_table_lines(ctx: ReportContext) -> list[str]:
+    """Expose exactly the plotted exploratory inputs without coefficient-based reordering."""
+    records = []
+    for study, frame, summary in (
+        ("Reference", ctx.feature_report, ctx.benchmark_summary),
+        ("Tuned", ctx.benchmark_tuned_feature_report, ctx.benchmark_tuned_summary),
+    ):
+        if any(item is None or item.empty for item in (frame, summary)):
+            continue
+        for row in feature_stability_plot_rows(frame, summary).itertuples():
+            name = str(row.feature_name_or_source_col)
+            column = name[1:] if name.startswith(("X", "V", "M")) else name
+            kind = "missing flag" if row.feature_type == "missing_indicator" else "measurement value"
+            records.append(
+                {
+                    "Study": study,
+                    "Input": f"Column {column}: {kind}",
+                    "Selection frequency": f"{row.selection_frequency:.0%}",
+                }
+            )
+    if not records:
+        return []
+    table = pd.DataFrame(records)
+    return [
+        "<details>",
+        "<summary>Selected inputs and frequencies</summary>",
+        "",
+        "### Chart values: selected inputs",
+        "",
+        *_markdown_table(table, list(table.columns)),
+        "",
+        "</details>",
+        "",
+    ]
+
+
+def _drift_chart_table_lines(frame: pd.DataFrame | None) -> list[str]:
+    """Keep the plotted prevalence, feature and score references separate in text."""
+    if frame is None or frame.empty or "model_scope" not in frame:
+        return []
+    primary = frame[frame.model_scope.eq("primary")]
+    if primary.empty:
+        return []
+    row = primary.iloc[0]
+
+    def value(key, fmt):
+        number = row.get(key)
+        return fmt.format(float(number)) if pd.notna(number) else "Not recorded"
+
+    records = [
+        {
+            "Measure": "Failure prevalence",
+            "Recorded value": value("dev_fail_rate", "{:.2%}") + " → " + value("lockbox_fail_rate", "{:.2%}"),
+            "Reference population": "Full earlier development region → retrospective later block",
+        },
+        {
+            "Measure": "Absolute prevalence change",
+            "Recorded value": value("abs_prevalence_shift", "{:.2%}").replace("%", " percentage points"),
+            "Reference population": "Full earlier development region versus retrospective later block",
+        },
+        {
+            "Measure": "Maximum measurement PSI",
+            "Recorded value": value("max_PSI", "{:.2f}"),
+            "Reference population": "Selected raw measurements: earlier fitting samples versus later block",
+        },
+        {
+            "Measure": "Median measurement PSI",
+            "Recorded value": value("median_PSI", "{:.2f}"),
+            "Reference population": "Same selected raw measurements and fitting reference",
+        },
+        {
+            "Measure": "Score distribution p-value (KS)",
+            "Recorded value": value("ks_pvalue_scores", "{:.3g}"),
+            "Reference population": "Held-out calibration versus later block; same retained model",
+        },
+    ]
+    table = pd.DataFrame(records)
+    return [
+        "<details>",
+        "<summary>Distribution-check values and reference populations</summary>",
+        "",
+        "#### Chart values: distribution checks",
+        "",
+        *_markdown_table(table, list(table.columns)),
+        "",
+        "</details>",
+        "",
+    ]
+
+
 def _reader_metric_table(frame: pd.DataFrame, *, benchmark: bool = False) -> list[str]:
     """Show existing rates and counts with external names and explicit percentage units."""
     display = pd.DataFrame()
@@ -1694,6 +1784,7 @@ def _render_study(ctx: ReportContext) -> list[str]:
         "figures/feature_stability.png",
         "Bars show selection frequency for exploratory families, not causal importance.",
     )
+    lines += _feature_chart_table_lines(ctx)
     lines += [
         "## Temporal Robustness Stress Test",
         "",
@@ -1837,6 +1928,7 @@ def _render_study(ctx: ReportContext) -> list[str]:
             "The population stability index (PSI) summarizes selected measurement-distribution changes versus earlier "
             "fitting samples; larger values indicate more change. Score tests use held-out calibration. These are descriptive diagnostics.",
         )
+        lines += _drift_chart_table_lines(ctx.temporal_drift)
         lines += [
             "### Hypothetical workload and cost",
             "",

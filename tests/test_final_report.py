@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import pandas as pd
@@ -13,6 +14,71 @@ import pandas as pd
 from secom.config import ArtifactName, StudyStatus
 from secom.reporting import write_final_report
 from tests.assertions import assert_renderable_png, assert_text_contains_all, assert_text_excludes_all
+
+
+def test_chart_text_alternatives_keep_input_types_units_and_reference_populations():
+    from secom.reporting import _drift_chart_table_lines, _feature_chart_table_lines
+
+    summary = pd.DataFrame(
+        [{"selector": "Ftest", "classifier": "logreg", "replication_mode": "values", "mean_BER": 0.3}]
+    )
+    features = pd.DataFrame(
+        [
+            {
+                "selector": "Ftest",
+                "classifier": "logreg",
+                "replication_mode": "values",
+                "feature_name_or_source_col": "X8",
+                "feature_type": "value",
+                "selection_frequency": 0.7,
+            },
+            {
+                "selector": "Ftest",
+                "classifier": "logreg",
+                "replication_mode": "values",
+                "feature_name_or_source_col": "M9",
+                "feature_type": "missing_indicator",
+                "selection_frequency": 1.0,
+            },
+        ]
+    )
+    ctx = SimpleNamespace(
+        feature_report=features,
+        benchmark_summary=summary,
+        benchmark_tuned_feature_report=None,
+        benchmark_tuned_summary=None,
+    )
+    text = "\n".join(_feature_chart_table_lines(ctx))
+    assert "| Reference | Column 9: missing flag | 100% |" in text
+    assert "| Reference | Column 8: measurement value | 70% |" in text
+    frame = pd.DataFrame(
+        [
+            {
+                "model_scope": "challenger",
+                "dev_fail_rate": 0.9,
+                "lockbox_fail_rate": 0.1,
+                "abs_prevalence_shift": 0.8,
+                "max_PSI": 9,
+                "median_PSI": 8,
+                "ks_pvalue_scores": 0.001,
+            },
+            {
+                "model_scope": "primary",
+                "dev_fail_rate": 0.1,
+                "lockbox_fail_rate": 0.05,
+                "abs_prevalence_shift": 0.05,
+                "max_PSI": 2.34,
+                "median_PSI": 1.23,
+                "ks_pvalue_scores": 0.0123,
+            },
+        ]
+    )
+    drift = "\n".join(_drift_chart_table_lines(frame))
+    assert "10.00% → 5.00%" in drift and "5.00 percentage points" in drift
+    assert "| Median measurement PSI | 1.23 |" in drift and "0.0123" in drift
+    assert "Full earlier development region" in drift and "earlier fitting samples" in drift
+    assert "Held-out calibration versus later block; same retained model" in drift
+    assert "90.00%" not in drift
 
 
 def test_wide_report_panels_preserve_values_and_distinguish_duplicate_context() -> None:
@@ -386,7 +452,12 @@ def test_reader_main_text_defines_metrics_and_keeps_machine_identifiers_in_appen
             "True+",
             "True-",
             "claim_restriction",
-            "Recorded ",
+            "Recorded outer fold counts",
+            "Recorded inner folds",
+            "Recorded seed",
+            "Recorded feature budgets",
+            "Recorded KRR regularization",
+            "Recorded logistic-regression regularization",
             "Configured ",
         ],
     )

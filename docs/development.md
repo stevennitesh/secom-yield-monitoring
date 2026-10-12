@@ -82,7 +82,7 @@ Commands assume the environment is active. Benchmark entrypoints default to kern
 
 ## Offline HTML Report
 
-Open `docs/results/index.html` in a browser. Styles, charts and the technical-report/manifest/audit downloads are embedded; no server or network is needed for the main report. The adjacent `html_provenance.json` records the verified input and renderer hashes separately from scientific execution.
+Open `docs/results/index.html` in a browser. Styles, charts and the technical-report/manifest/audit downloads are embedded; no server or network is needed for the main report. Numerical tables accompany the charts, and period-level results remain distinct from the retrospective final block. The adjacent `html_provenance.json` records the verified input and renderer hashes separately from scientific execution.
 
 To rebuild from the curated evidence without fitting models, use a fresh destination:
 

@@ -2,7 +2,9 @@
 
 **[Read the SECOM study report →](https://stevennitesh.github.io/secom-yield-monitoring/)**
 
-The HTML report is the main reading path for the question, implementation, findings and limits. Download [index.html](index.html) to read the same report offline in a browser; keep [html_provenance.json](html_provenance.json) beside it to inspect its rendering record.
+The HTML report is the main reading path for the question, implementation, findings and limits. It separates the shuffled benchmark, chronological tests and retrospective final block. Tables show the period results and provide numerical alternatives to the charts.
+
+Download [index.html](index.html) to read the same report offline in a browser; keep [html_provenance.json](html_provenance.json) beside it to inspect its rendering record.
 
 ## Evidence
 

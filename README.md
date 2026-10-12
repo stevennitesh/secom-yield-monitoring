@@ -18,7 +18,7 @@ Across 104 failures and 1,463 passes, the tuned procedure produced **74 fewer fa
 
 ![Complete reference and tuned procedures: balanced error, failures caught and false alerts](docs/results/figures/benchmark_comparison.png)
 
-Rates average test folds; counts pool predictions. Whiskers show observed fold ranges, not confidence intervals.
+Rates average test folds; counts pool predictions. Tuning lowered error in five folds, raised it in four and tied in one. Whiskers show observed fold ranges, not confidence intervals.
 
 Chronological tests showed weak transfer and fragile calibration. The final later block is retrospective. Anonymous measurements with unknown collection timing do not establish early warning or production readiness.
 
