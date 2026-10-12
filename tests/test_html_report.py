@@ -6,12 +6,13 @@ import base64
 import hashlib
 import json
 import shutil
+from xml.etree import ElementTree
 from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
 
-from secom.html_report import CORE_FILES, _count, build_html_report, render_html, verified_snapshot
+from secom.html_report import CORE_FILES, _count, _portrait_chart, build_html_report, render_html, verified_snapshot
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "docs/results"
@@ -24,6 +25,7 @@ class ReportMarkup(HTMLParser):
         self.ids = []
         self.links = []
         self.external_resources = []
+        self.portraits = []
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -31,6 +33,8 @@ class ReportMarkup(HTMLParser):
             self.ids.append(attrs["id"])
         if tag == "img":
             self.images.append(attrs)
+        if tag == "source":
+            self.portraits.append(attrs)
         if tag == "a":
             self.links.append(attrs)
         if (tag == "script" and "src" in attrs) or (tag == "link" and attrs.get("rel") == "stylesheet"):
@@ -45,6 +49,12 @@ def test_html_is_offline_and_preserves_curated_evidence(workspace_tmp_dir):
     markup.feed(page.read_text(encoding="utf-8"))
     assert len(markup.images) == 6
     assert all(image["alt"] for image in markup.images)
+    assert len(markup.portraits) == 3
+    for portrait in markup.portraits:
+        assert portrait["media"] == "(max-width:720px)"
+        graphic = ElementTree.fromstring(base64.b64decode(portrait["srcset"].split(",", 1)[1]))
+        assert graphic.find("{http://www.w3.org/2000/svg}title").text
+        assert graphic.find("{http://www.w3.org/2000/svg}desc").text
     assert not markup.external_resources
     assert "31.5% of 750 samples" in page.read_text(encoding="utf-8")
     assert len(markup.ids) == len(set(markup.ids))
@@ -59,6 +69,19 @@ def test_html_is_offline_and_preserves_curated_evidence(workspace_tmp_dir):
     provenance = json.loads((output / "html_provenance.json").read_text())
     assert provenance["outputs_sha256"]["index.html"] == hashlib.sha256(page.read_bytes()).hexdigest()
     assert provenance["models_fitted"] == 0
+    performance = SOURCE.parents[1] / "docs/performance/runtime_comparison.json"
+    assert provenance["presentation_inputs_sha256"] == {
+        "docs/performance/runtime_comparison.json": hashlib.sha256(performance.read_bytes()).hexdigest()
+    }
+    assert "76.10 to 20.95 minutes" in page.read_text(encoding="utf-8")
+    assert 'property="og:image"' in page.read_text(encoding="utf-8")
+    assert (output / "images/featured.jpg").read_bytes() == (
+        SOURCE.parents[1] / "docs/images/featured.jpg"
+    ).read_bytes()
+    assert (
+        provenance["outputs_sha256"]["images/featured.jpg"]
+        == hashlib.sha256((output / "images/featured.jpg").read_bytes()).hexdigest()
+    )
     for name, digest in source_hashes.items():
         assert hashlib.sha256((SOURCE / name).read_bytes()).hexdigest() == digest
         assert (SOURCE / name).read_bytes() == (output / name).read_bytes()
@@ -74,6 +97,18 @@ def test_report_story_uses_supplied_values_and_handles_windows_newlines():
     assert "50 fewer false alerts. 5 fewer failures caught." in page
     assert "74 fewer false alerts. 4 fewer failures caught." not in page
     assert "<strong>400</strong>" in page and "<strong>65 / 104</strong>" in page
+    markup = ReportMarkup()
+    markup.feed(page)
+    graphic = ElementTree.fromstring(base64.b64decode(markup.portraits[0]["srcset"].split(",", 1)[1]))
+    bars = [node for node in graphic.iter() if "data-value" in node.attrib]
+    assert [float(node.attrib["data-value"]) for node in bars] == [31.43, 30.86, 70, 65, 450, 400]
+    assert [float(node.attrib["data-axis-max"]) for node in bars] == [60, 60, 104, 104, 1463, 1463]
+    ranges = [
+        (float(node.attrib["data-low"]), float(node.attrib["data-high"]))
+        for node in graphic.iter()
+        if "data-low" in node.attrib
+    ]
+    assert ranges == [(15.2, 42.81), (22.82, 41.64)]
 
 
 def test_decimal_formatted_counts_preserve_the_retrospective_population():
@@ -117,6 +152,32 @@ def test_numeric_chart_alternatives_preserve_values_and_population_labels():
     page = render_html(manifest, receipt, {**inputs, "final_report.md": text.encode("utf-8")})
     assert "Column 99: missing flag" in page and '<td class="number">70%</td>' in page
     assert '<td class="number">1.23</td>' in page and "Earlier fitting samples versus later block" in page
+
+
+def test_portrait_frozen_rules_retain_counts_and_percentage_axes():
+    manifest, receipt, inputs = verified_snapshot(SOURCE)
+    markup = ReportMarkup()
+    markup.feed(render_html(manifest, receipt, inputs))
+    graphic = ElementTree.fromstring(base64.b64decode(markup.portraits[2]["srcset"].split(",", 1)[1]))
+    bars = [node for node in graphic.iter() if "data-value" in node.attrib]
+    assert [float(node.attrib["data-value"]) for node in bars] == pytest.approx(
+        [100 * 7 / 9, 100 * 1 / 9, 0, 100 * 168 / 226, 100 * 9 / 226, 100 * 3 / 226]
+    )
+    assert {node.attrib["data-axis-max"] for node in bars} == {"100.0"}
+    description = graphic.find("{http://www.w3.org/2000/svg}desc").text
+    assert "7 / 9 failures" in description and "168 / 226 passes" in description
+
+
+def test_portrait_chart_rejects_a_range_that_would_hide_the_displayed_value():
+    panel = {
+        "title": "Fold error",
+        "scope": "Recorded fold range",
+        "maximum": 60,
+        "ticks": [0, 60],
+        "rows": [{"label": "Example", "value": 30, "display": "30%", "color": "#087f78", "range": (35, 40)}],
+    }
+    with pytest.raises(ValueError, match="range is outside"):
+        _portrait_chart("Example", [panel])
 
 
 @pytest.mark.parametrize("failure", ["hash", "failed_audit", "extra_path", "identity"])

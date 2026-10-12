@@ -59,7 +59,12 @@ def stage_pages(snapshot: Path, destination: Path) -> Path:
     hashes["evidence/audit_receipt.json"] = digest(receipt_bytes)
     if provenance.get("inputs_sha256") != hashes:
         raise ValueError("HTML provenance does not match the verified scientific snapshot")
-    if provenance.get("outputs_sha256") != {"index.html": digest(html)}:
+    presentation = {"index.html": html}
+    # This one optional, named image belongs to presentation, never scientific evidence.
+    # Verify it against the renderer receipt instead of accepting arbitrary output paths.
+    if "images/featured.jpg" in provenance.get("outputs_sha256", {}):
+        presentation["images/featured.jpg"] = (source / "images/featured.jpg").read_bytes()
+    if provenance.get("outputs_sha256") != {name: digest(content) for name, content in presentation.items()}:
         raise ValueError("HTML output hash differs from its rendering provenance")
     if provenance.get("scientific_source_tree_sha256") != manifest["source_tree"]["sha256"]:
         raise ValueError("HTML provenance references a different scientific execution")
@@ -67,7 +72,7 @@ def stage_pages(snapshot: Path, destination: Path) -> Path:
         raise ValueError("Pages requires a presentation-only report with no model fitting")
 
     # Publish only named, verified bytes; manual guides and unrelated files stay out.
-    files.update({"index.html": html, "html_provenance.json": provenance_bytes, ".nojekyll": b""})
+    files.update({**presentation, "html_provenance.json": provenance_bytes, ".nojekyll": b""})
     target.mkdir(parents=True)
     for name, content in files.items():
         path = target / name

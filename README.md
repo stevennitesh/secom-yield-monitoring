@@ -1,6 +1,10 @@
-# SECOM Yield Monitoring
+# Semiconductor Failure Classification
 
 [![CI](https://github.com/stevennitesh/secom-yield-monitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/stevennitesh/secom-yield-monitoring/actions/workflows/ci.yml)
+
+**Steven Bangdiwala · Applied machine learning with UCI SECOM**
+
+[![Semiconductor Failure Classification · study overview](docs/images/featured.jpg)](https://stevennitesh.github.io/secom-yield-monitoring/)
 
 **Can manufacturing measurements identify failures, and do those patterns hold in later samples?**
 
@@ -8,7 +12,7 @@ A reproducible Python study of 1,567 semiconductor production records, 590 anony
 
 **[Read the study report →](https://stevennitesh.github.io/secom-yield-monitoring/)**
 
-The report brings together the methods, six charts, findings, limitations and downloadable technical evidence.
+I built the Python study pipeline, nested evaluation, feature selection, threshold calibration, runtime acceleration and analytical report. The report shows the results, engineering decisions and downloadable evidence, with readable mobile versions of the main figures.
 
 ## Main Finding
 
@@ -31,7 +35,9 @@ Chronological tests showed weak transfer and fragile calibration. The final late
 
 **Stack:** Python · NumPy/pandas · SciPy · scikit-learn/skrebate · Matplotlib · pytest/Ruff.
 
-The custom work covers study orchestration, selection, calibration, acceleration and evidence checks. Model estimators come from scikit-learn; ReliefF builds on skrebate.
+In one controlled comparison on the same Windows machine on October 3, 2026, modeling time fell from **76.10 to 20.95 minutes**, with all **26 scientific CSVs byte-identical**. This excludes audit/report time and predates the expanded public study; [the engineering receipt](docs/performance.md) gives the scope and settings.
+
+Model estimators come from scikit-learn; ReliefF builds on skrebate. My work covers study orchestration, selection, calibration, acceleration and evidence checks.
 
 ## Run Locally
 

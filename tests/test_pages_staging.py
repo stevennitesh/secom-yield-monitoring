@@ -49,6 +49,7 @@ def test_pages_publishes_only_verified_saved_files(workspace_tmp_dir):
         "index.html",
         "html_provenance.json",
         ".nojekyll",
+        "images/featured.jpg",
     }
     for name in published - {".nojekyll"}:
         assert (output / name).read_bytes() == (snapshot / name).read_bytes()
@@ -56,7 +57,8 @@ def test_pages_publishes_only_verified_saved_files(workspace_tmp_dir):
 
 
 @pytest.mark.parametrize(
-    "failure", ["core", "html", "inputs", "execution", "model_fit", "audit", "inventory", "receipt_identity"]
+    "failure",
+    ["core", "html", "featured", "inputs", "execution", "model_fit", "audit", "inventory", "receipt_identity"],
 )
 def test_pages_rejects_invalid_publication_before_creating_output(workspace_tmp_dir, failure):
     snapshot = workspace_tmp_dir / "snapshot"
@@ -67,6 +69,8 @@ def test_pages_rejects_invalid_publication_before_creating_output(workspace_tmp_
         (snapshot / "final_report.md").write_text("changed evidence")
     elif failure == "html":
         (snapshot / "index.html").write_text("stale or modified HTML")
+    elif failure == "featured":
+        (snapshot / "images/featured.jpg").write_bytes(b"changed image")
     elif failure == "inputs":
         provenance["inputs_sha256"].pop("final_report.md")
     elif failure == "execution":

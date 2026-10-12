@@ -10,6 +10,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from html import escape
 from pathlib import Path
+from textwrap import wrap
 
 
 FIGURES = (
@@ -22,6 +23,8 @@ FIGURES = (
 )
 CORE_FILES = frozenset({"final_report.md", "evidence/run_manifest.json", *(f"figures/{name}" for name in FIGURES)})
 REPOSITORY = "https://github.com/stevennitesh/secom-yield-monitoring"
+REPORT_URL = "https://stevennitesh.github.io/secom-yield-monitoring/"
+FEATURED_IMAGE = "images/featured.jpg"
 
 STYLE = """
 *{box-sizing:border-box}
@@ -36,6 +39,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 .hero{background:#153b49;color:white;border-radius:18px;padding:2.3rem 2.6rem}
 .eyebrow,.section-number{font-size:.76rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
 .hero .eyebrow{color:#99d9d1;margin:0 0 1.2rem}
+.byline{font-size:.94rem;color:#bfe4df;margin:0 0 1.1rem}.hero-contribution{max-width:780px;color:#d7e6eb;font-size:.94rem}
 h1{font-size:clamp(2.2rem,5vw,3.3rem);line-height:1.12;letter-spacing:-.035em;max-width:850px;margin:0 0 1.2rem}
 .hero-intro{max-width:780px;color:#d7e6eb;font-size:1.08rem}
 .hero-result{font-size:1.32rem;font-weight:700;margin-top:1.8rem}
@@ -73,10 +77,10 @@ thead th{background:#f0f5f6;font-size:.8rem}tbody th{font-weight:600}tbody tr:la
 .report-figure{margin:1.7rem 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#f0f5f6}
 .figure-heading{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem 1.2rem}
 .figure-heading h3{margin:0;font-size:1.05rem}.figure-number{font-size:.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin:0 0 .2rem}
-.figure-tools{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;flex-shrink:0}.figure-tools a{font-size:.8rem}
-.enlarge{display:none;background:white;color:var(--teal);border:1px solid #9bb8bf;border-radius:5px;padding:.35rem .6rem;font-size:.8rem}.interactive .enlarge{display:inline-block}
+.figure-tools{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;flex-shrink:0}.figure-tools a{font-size:.875rem}
+.enlarge{display:none;background:white;color:var(--teal);border:1px solid #9bb8bf;border-radius:5px;padding:.35rem .6rem;font-size:.875rem}.interactive .enlarge{display:inline-block}
 .chart-panel{background:white;margin:0 .7rem .7rem;border-radius:6px;overflow:auto}.chart-panel img{display:block;width:100%;height:auto}
-figcaption{padding:1rem 1.2rem;border-top:1px solid var(--line);font-size:.87rem;color:var(--muted)}
+figcaption{padding:1rem 1.2rem;border-top:1px solid var(--line);font-size:.875rem;color:var(--muted)}
 details{margin-top:1.4rem;border-top:1px solid var(--line);padding-top:1rem}summary{color:var(--teal);cursor:pointer;font-size:.95rem;font-weight:650}details[open]>summary{margin-bottom:1rem}
 .definitions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.3rem 1.8rem;margin:0}.definitions dt{font-weight:700;margin-bottom:.35rem}.definitions dd{margin:0;font-size:.9rem;color:var(--muted)}
 .downloads{display:flex;flex-wrap:wrap;gap:.6rem;margin:1.2rem 0}.downloads a{padding:.5rem .8rem;border:1px solid #aec6cd;border-radius:6px;background:#f0f5f6;text-decoration:none;font-size:.86rem}
@@ -85,14 +89,14 @@ footer{padding:1.5rem .5rem;color:var(--muted);font-size:.82rem}.hash{font-size:
 dialog{width:calc(100% - 2rem);max-width:1400px;max-height:95vh;border:1px solid #aec6cd;border-radius:12px;padding:1rem;color:var(--ink)}
 dialog::backdrop{background:#102e3ecc}.viewer-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem}.viewer-heading h2{font-size:1.25rem;margin:0}.viewer-heading button,#zoom{padding:.4rem .7rem;border:1px solid #aec6cd;border-radius:5px;background:white;color:var(--teal)}
 .viewer-help{font-size:.85rem;color:var(--muted);margin:1rem 0}.viewer-content{overflow:auto;max-height:70vh;border:1px solid var(--line);margin-top:1rem}.viewer-content img{display:block;width:100%;height:auto}.viewer-content.native img{width:auto;max-width:none}
-@media(max-width:720px){main{padding:1rem}.hero{padding:1.4rem}.hero-result{font-size:1.1rem}.metrics{gap:.8rem}.metric strong{font-size:1.3rem}.metric span{font-size:.8rem}.metric small{font-size:.72rem}section{padding:1.3rem}.facts{grid-template-columns:repeat(2,minmax(0,1fr))}.pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}.timeline,.definitions{grid-template-columns:1fr}.contents{gap:.3rem .9rem;padding:.65rem 0}.contents a{font-size:.8rem}.contents .print{display:none}.figure-heading{flex-direction:column;align-items:flex-start}.chart-panel img{min-width:740px}.chart-panel{margin:0 .4rem .4rem}.boundary{font-size:.84rem}h2{font-size:1.45rem}th,td{padding:.6rem}.evidence-status{gap:.5rem}.evidence-status strong{font-size:1.3rem}.scroll-hint{display:block;margin-top:.3rem}}
+@media(max-width:720px){body{font-size:16px}main{padding:1rem}.hero{padding:1.4rem}.hero-result{font-size:1.1rem}.metrics{gap:.8rem}.metric strong{font-size:1.3rem}.metric span,.metric small{font-size:.875rem}section{padding:1.3rem}.facts{grid-template-columns:repeat(2,minmax(0,1fr))}.pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}.timeline,.definitions{grid-template-columns:1fr}.contents{gap:.3rem .9rem;padding:.65rem 0}.contents a{font-size:.875rem}.contents .print{display:none}.figure-heading{flex-direction:column;align-items:flex-start}.chart-panel img{min-width:0}.chart-panel{margin:0 .4rem .4rem}.boundary{font-size:.875rem}h2{font-size:1.45rem}th,td{padding:.6rem}.evidence-status{gap:.5rem}.evidence-status strong{font-size:1.3rem}.scroll-hint{display:block;margin-top:.3rem}.report-figure[data-portrait] .scroll-hint{display:none}.fact span,.figure-number,.hash,footer{font-size:.875rem}}
 @media(max-width:720px){.evidence-map{grid-template-columns:1fr}.hero-actions a{font-size:.82rem}.paired{padding:.9rem}}
-@media(max-width:480px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric:first-child{grid-column:1/-1}.metric:first-child strong{font-size:1.7rem}.hero-boundary{font-size:.83rem}}
+@media(max-width:480px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric:first-child{grid-column:1/-1}.metric:first-child strong{font-size:1.7rem}.hero-boundary{font-size:.875rem}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 @media print{body{background:white;font-size:11pt}main{max-width:none;padding:0}.hero{background:white;color:var(--ink);border:1px solid var(--line)}.hero .eyebrow,.hero-intro,.hero-boundary,.metric span,.metric small{color:var(--muted)}.contents,.figure-tools,dialog,.skip{display:none}section{padding:1rem;border:0;border-top:1px solid var(--line)}.chart-panel img{min-width:0}.report-figure,.facts,.timeline{break-inside:avoid}a{color:inherit}}
 """
 
-SCRIPT = """
+SCRIPT = r"""
 document.documentElement.classList.add('interactive');
 const viewer = document.getElementById('chart-viewer');
 const content = viewer.querySelector('.viewer-content');
@@ -101,7 +105,9 @@ document.querySelector('[data-print]').addEventListener('click', () => window.pr
 document.querySelectorAll('[data-enlarge]').forEach(button => button.addEventListener('click', () => {
   const figure = button.closest('figure');
   document.getElementById('viewer-title').textContent = figure.querySelector('h3').textContent;
-  content.replaceChildren(figure.querySelector('img').cloneNode(true));
+  const image = figure.querySelector('img').cloneNode(true);
+  image.src = figure.querySelector('img').currentSrc || image.src;
+  content.replaceChildren(image);
   content.classList.remove('native'); zoom.setAttribute('aria-pressed','false'); zoom.textContent = 'Show native size';
   content.scrollLeft = 0; content.scrollTop = 0; viewer.showModal();
 }));
@@ -111,7 +117,15 @@ zoom.addEventListener('click', () => {
   content.scrollLeft = 0; content.scrollTop = 0;
 });
 viewer.addEventListener('click', event => { if (event.target === viewer) viewer.close(); });
-document.querySelectorAll('[data-download]').forEach(link => { link.href = link.closest('figure').querySelector('img').src; });
+function updateDownloads() {
+  document.querySelectorAll('[data-download]').forEach(link => {
+    const image = link.closest('figure').querySelector('img');
+    link.href = image.currentSrc || image.src;
+    link.download = link.dataset.filename.replace(/\.png$/, link.href.startsWith('data:image/svg+xml') ? '-portrait.svg' : '.png');
+  });
+}
+document.querySelectorAll('.chart-panel img').forEach(image => image.addEventListener('load', updateDownloads));
+window.addEventListener('resize', updateDownloads); updateDownloads();
 function revealHash() {
   const target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
   if (!target) return;
@@ -217,7 +231,192 @@ def _paragraphs(text: str, heading: str) -> list[str]:
     ]
 
 
-def _figure(inputs: dict[str, bytes], report: str, name: str, title: str, number: int) -> str:
+def _portrait_chart(title: str, panels: list[dict]) -> bytes:
+    """Stack saved chart values with readable labels; preserve each declared axis."""
+    elements = []
+    y = 40
+
+    def text(x, baseline, value, *, size=30, weight=400, anchor="start", color="#183246"):
+        elements.append(
+            f'<text x="{x}" y="{baseline}" font-size="{size}" font-weight="{weight}" '
+            f'text-anchor="{anchor}" fill="{color}">{escape(str(value))}</text>'
+        )
+
+    for panel in panels:
+        for line in wrap(panel["title"], 28):
+            text(24, y, line, size=34, weight=650)
+            y += 40
+        for line in wrap(panel["scope"], 34):
+            text(24, y, line, size=30, color="#526575")
+            y += 36
+        y += 20
+        maximum = float(panel["maximum"])
+        if maximum <= 0:
+            raise ValueError("Portrait chart requires a positive axis maximum")
+        for row in panel["rows"]:
+            value = float(row["value"])
+            if not 0 <= value <= maximum:
+                raise ValueError("Portrait chart value is outside its declared axis")
+            for line in wrap(row["label"], 34):
+                text(24, y, line, weight=600)
+                y += 36
+            text(24, y, row["display"], size=30, color="#526575")
+            y += 16
+            elements.append(f'<rect x="24" y="{y}" width="532" height="30" rx="3" fill="#edf3f5"/>')
+            elements.append(
+                f'<rect x="24" y="{y}" width="{532 * value / maximum:.4f}" height="30" rx="3" '
+                f'fill="{row["color"]}" data-value="{value}" data-axis-max="{maximum}"/>'
+            )
+            if "range" in row:
+                low, high = row["range"]
+                if not 0 <= low <= value <= high <= maximum:
+                    raise ValueError("Portrait chart range is outside its declared axis")
+                left, right = (24 + 532 * bound / maximum for bound in (low, high))
+                mid = y + 15
+                elements.append(
+                    f'<path d="M {left:.4f} {mid} H {right:.4f} M {left:.4f} {mid - 8} V {mid + 8} '
+                    f'M {right:.4f} {mid - 8} V {mid + 8}" stroke="#183246" stroke-width="3" fill="none" '
+                    f'data-low="{low}" data-high="{high}"/>'
+                )
+            y += 68
+        for tick in panel["ticks"]:
+            x = 24 + 532 * tick / maximum
+            text(
+                x,
+                y,
+                f"{tick:g}{panel.get('suffix', '')}",
+                size=30,
+                anchor="start" if tick == 0 else "end" if tick == maximum else "middle",
+                color="#526575",
+            )
+        y += 24
+        elements.append(f'<path d="M 24 {y} H 556" stroke="#c4cfd7" stroke-width="1"/>')
+        y += 54
+    description = "; ".join(
+        panel["title"] + ": " + "; ".join(row["label"] + ", " + row["display"] for row in panel["rows"])
+        for panel in panels
+    )
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="580" height="{y}" viewBox="0 0 580 {y}" '
+        'role="img" aria-labelledby="title desc" style="font-family:system-ui,-apple-system,Segoe UI,sans-serif">'
+        f'<title id="title">{escape(title)}</title><desc id="desc">{escape(description)}</desc>'
+        f'<rect width="580" height="{y}" fill="white"/>{"".join(elements)}</svg>'
+    ).encode("utf-8")
+
+
+def _benchmark_portrait(before: dict, after: dict, failures: int, passes: int) -> bytes:
+    rows = [("Reference", before, "#61788e"), ("Tuned", after, "#087f78")]
+    ranges = [[float(v.rstrip("%")) for v in row["Fold range"].split("–")] for _, row, _ in rows]
+    maximum = max(60, max(bounds[1] for bounds in ranges) + 12)
+    panels = [
+        {
+            "title": "Balanced error · lower is better",
+            "scope": "Fold means; whiskers show observed fold ranges, not confidence intervals.",
+            "maximum": maximum,
+            "ticks": [0, 20, 40, maximum],
+            "suffix": "%",
+            "rows": [
+                {
+                    "label": label,
+                    "value": float(row["Balanced error"].rstrip("%")),
+                    "display": f"{row['Balanced error']} · range {row['Fold range']}",
+                    "range": bounds,
+                    "color": color,
+                }
+                for (label, row, color), bounds in zip(rows, ranges, strict=True)
+            ],
+        }
+    ]
+    for field, total, title, class_name in (
+        ("Failures caught", failures, "Failures caught", "failures"),
+        ("False alerts on passes", passes, "False alerts on passes", "passes"),
+    ):
+        panels.append(
+            {
+                "title": title,
+                "scope": f"Pooled held-out counts · {total:,} {class_name} evaluated",
+                "maximum": total,
+                "ticks": [0, total // 2, total],
+                "rows": [
+                    {
+                        "label": label,
+                        "value": _count(row[field]),
+                        "display": f"{_count(row[field]):,} / {total:,}",
+                        "color": color,
+                    }
+                    for label, row, color in rows
+                ],
+            }
+        )
+    return _portrait_chart("Reference and tuned: the complete selected procedure", panels)
+
+
+def _frozen_portrait(rows: list[dict]) -> bytes:
+    panels = []
+    colors = ["#61788e", "#087f78", "#929ea8"]
+    for field, complement, title, class_name in (
+        ("Failures caught", "Failures missed", "Failures caught", "failures"),
+        ("False alerts on passes", "Passes left unflagged", "False alerts on passes", "passes"),
+    ):
+        values = []
+        for row, color in zip(rows, colors, strict=True):
+            n, total = _count(row[field]), _count(row[field]) + _count(row[complement])
+            if not total:
+                raise ValueError("Frozen-rule portrait requires nonempty classes")
+            rate = 100 * n / total
+            values.append(
+                {
+                    "label": row["Frozen rule"].replace("Primary model:", "Logistic regression:"),
+                    "value": rate,
+                    "display": f"{n:,} / {total:,} {class_name} · {rate:.1f}%",
+                    "color": color,
+                }
+            )
+        panels.append(
+            {
+                "title": title,
+                "scope": "Same retrospective later block; thresholds frozen on earlier calibration.",
+                "maximum": 100,
+                "ticks": [0, 25, 50, 75, 100],
+                "suffix": "%",
+                "rows": values,
+            }
+        )
+    return _portrait_chart("Frozen rules on the retrospective later block", panels)
+
+
+def _feature_portrait(rows: list[dict]) -> bytes | None:
+    if not rows:
+        return None
+    groups = dict.fromkeys(row["Study"] for row in rows)
+    return _portrait_chart(
+        "Selection frequency for the same plotted anonymous inputs",
+        [
+            {
+                "title": f"{study} · selection frequency",
+                "scope": "Exploratory family; overlapping training folds. Association is not causation.",
+                "maximum": 100,
+                "ticks": [0, 25, 50, 75, 100],
+                "suffix": "%",
+                "rows": [
+                    {
+                        "label": row["Input"],
+                        "value": float(row["Selection frequency"].rstrip("%")),
+                        "display": row["Selection frequency"],
+                        "color": "#61788e" if study == "Reference" else "#087f78",
+                    }
+                    for row in rows
+                    if row["Study"] == study
+                ],
+            }
+            for study in groups
+        ],
+    )
+
+
+def _figure(
+    inputs: dict[str, bytes], report: str, name: str, title: str, number: int, *, portrait: bytes | None = None
+) -> str:
     path = f"figures/{name}"
     match = re.search(rf"!\[([^\]]+)\]\({re.escape(path)}\)\s*\n\s*\n([^\n]+)", report)
     if match is None:
@@ -228,14 +427,23 @@ def _figure(inputs: dict[str, bytes], report: str, name: str, title: str, number
     else:
         alt, caption = match.groups()
     identifier = name.removesuffix(".png")
-    return f'''<figure class="report-figure" aria-labelledby="{identifier}-title" aria-describedby="{identifier}-caption">
+    source = f'<source media="(max-width:720px)" srcset="{_uri(portrait, "image/svg+xml")}">' if portrait else ""
+    portrait_attribute = " data-portrait" if portrait else ""
+    return f'''<figure class="report-figure"{portrait_attribute} aria-labelledby="{identifier}-title" aria-describedby="{identifier}-caption">
 <div class="figure-heading"><div><p class="figure-number">Figure {number}</p><h3 id="{identifier}-title">{escape(title)}</h3></div>
-<div class="figure-tools"><button class="enlarge" type="button" data-enlarge aria-haspopup="dialog" aria-controls="chart-viewer">Enlarge chart</button><a href="{path}" data-download download="{name}">Download PNG</a></div></div>
-<div class="chart-panel" tabindex="0" role="region" aria-label="{escape(title)}; scroll to inspect on a small screen"><img src="{_uri(inputs[path], "image/png")}" alt="{escape(alt)}"></div>
-<figcaption id="{identifier}-caption">{escape(caption)}<span class="scroll-hint">Swipe to inspect the chart, or enlarge it and choose native size.</span></figcaption></figure>'''
+<div class="figure-tools"><button class="enlarge" type="button" data-enlarge aria-haspopup="dialog" aria-controls="chart-viewer">Enlarge chart</button><a href="{path}" data-download data-filename="{name}" download="{name}">Download chart</a></div></div>
+<div class="chart-panel" tabindex="0" role="region" aria-label="{escape(title)}"><picture>{source}<img src="{_uri(inputs[path], "image/png")}" alt="{escape(alt)}"></picture></div>
+<figcaption id="{identifier}-caption">{escape(caption)}<span class="scroll-hint">Enlarge the chart and choose native size to inspect detailed labels.</span></figcaption></figure>'''
 
 
-def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
+def render_html(
+    manifest: dict,
+    receipt: dict,
+    inputs: dict[str, bytes],
+    *,
+    performance: dict | None = None,
+    featured_image: bool = False,
+) -> str:
     """Compose the reader story from displayed, audited values; fit no models."""
     report = inputs["final_report.md"].decode("utf-8").replace("\r\n", "\n")
     benchmark_columns = [
@@ -244,6 +452,7 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
         "Failure recall",
         "Pass specificity",
         "Fold spread (SD)",
+        "Fold range",
         "Failures caught",
         "False alerts on passes",
     ]
@@ -484,6 +693,22 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
     def paragraphs(items):
         return "".join(f"<p>{escape(item)}</p>" for item in items)
 
+    performance_callout = ""
+    if performance:
+        reference_minutes = float(performance["reference_duration_seconds"]["total_modeling"]) / 60
+        optimized_minutes = float(performance["optimized_duration_seconds"]["total_modeling"]) / 60
+        identical_count = int(performance["identical_scientific_csvs"])
+        if identical_count != len(performance["csv_sha256"]) or not reference_minutes > optimized_minutes > 0:
+            raise ValueError("Invalid historical runtime comparison receipt")
+        performance_callout = f'''<div class="note"><strong>Faster execution, unchanged scientific outputs.</strong>
+<p>In the October 3, 2026 controlled comparison, I reduced modeling time from {reference_minutes:.2f} to {
+            optimized_minutes:.2f} minutes on the same Windows machine. All {
+            identical_count
+        } scientific CSVs were byte-identical.</p>
+<p class="boundary">Vectorized ReliefF scoring and bounded reuse preserved the inputs, folds, seeds and search grids. This one-pair comparison excludes audit and report time. It predates the expanded study shown here. <a href="{
+            REPOSITORY
+        }/blob/main/docs/performance.md">Read the engineering comparison and receipt →</a></p></div>'''
+
     downloads = "".join(
         f'<a href="{_uri(inputs[name], mime)}" download="{Path(name).name}">{label}</a>'
         for name, mime, label in (
@@ -492,13 +717,29 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
             ("evidence/audit_receipt.json", "application/json", "Scientific snapshot audit · JSON"),
         )
     )
+    social_image = (
+        f'<meta property="og:image" content="{REPORT_URL}{FEATURED_IMAGE}">'
+        '<meta property="og:image:width" content="1200"><meta property="og:image:height" content="627">'
+        '<meta property="og:image:alt" content="Semiconductor Failure Classification · Steven Bangdiwala">'
+        '<meta name="twitter:card" content="summary_large_image">'
+        if featured_image
+        else ""
+    )
     return f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="A reproducible SECOM study: bounded tuning, the failure and false-alert tradeoff, and limits of transfer to later manufacturing samples.">
-<title>SECOM · Semiconductor yield monitoring</title><style>{STYLE}</style></head><body>
+<link rel="canonical" href="{REPORT_URL}"><meta property="og:type" content="article"><meta property="og:url" content="{
+        REPORT_URL
+    }">
+<meta property="og:title" content="Semiconductor Failure Classification · Steven Bangdiwala">
+<meta property="og:description" content="A Python study of semiconductor test outcomes: nested evaluation, chronological transfer and reproducible ML engineering.">{
+        social_image
+    }
+<title>Semiconductor Failure Classification · Steven Bangdiwala</title><style>{STYLE}</style></head><body>
 <a class="skip" href="#overview">Skip to report</a><main>
-<header class="hero"><p class="eyebrow">SECOM · Python · Reproducible machine learning</p><h1>Semiconductor yield monitoring</h1>
+<header class="hero"><p class="eyebrow">SECOM · Python · Applied machine learning</p><p class="byline">Steven Bangdiwala · Independent study</p><h1>Semiconductor Failure Classification</h1>
 <p class="hero-intro">Can anonymous manufacturing measurements identify failures, and do those patterns hold in later samples? This study compares a reference benchmark, bounded tuning and chronological transfer.</p>
+<p class="hero-contribution"><strong>What I built:</strong> a Python pipeline for nested model evaluation, feature selection, threshold calibration, runtime acceleration and reproducible analytical reporting.</p>
 <p class="hero-result">{escape(tradeoff)}</p><p class="hero-boundary">The complete training-selected procedures share {
         folds
     } held-out folds. Rates average folds; counts pool {fail_count:,} failures and {
@@ -517,8 +758,10 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
         fail_count
     }</strong><span>Failures caught</span><small>Reference: {escape(before["Failures caught"])} / {
         fail_count
-    }</small></div></div><div class="hero-actions"><a href="#benchmark">Explore the results</a><a href="#evidence">Inspect the evidence</a></div></header>
-<nav class="contents" aria-label="Report contents"><a href="#overview">Overview</a><a href="#build">Build</a><a href="#benchmark">Benchmark</a><a href="#inputs">Inputs</a><a href="#transfer">Transfer</a><a href="#limits">Limits</a><a href="#evidence">Evidence</a><button class="print" data-print type="button">Print / save PDF</button></nav>
+    }</small></div></div><div class="hero-actions"><a href="#benchmark">Explore the results</a><a href="{
+        REPOSITORY
+    }">View the repository</a><a href="#evidence">Inspect the evidence</a></div></header>
+<nav class="contents" aria-label="Report contents"><a href="#overview">Overview</a><a href="#build">What I built</a><a href="#benchmark">Results</a><a href="#inputs">Selected inputs</a><a href="#transfer">Changing conditions</a><a href="#evidence">Methods &amp; evidence</a><button class="print" data-print type="button">Print / save PDF</button></nav>
 <section id="overview"><p class="section-number">01 · The question</p><h2>Rare failures change how accuracy should be read</h2>
 <p class="lede">Most recorded tests pass. An always-pass rule reaches {
         100
@@ -547,6 +790,7 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
     }<br>This subset was already exposed. It supplies no fresh confirmation.</p><a href="#later-block">Read the frozen rules →</a></article></div></section>
 <section id="build"><p class="section-number">02 · Engineering</p><h2>A reproducible study with explicit evaluation boundaries</h2>
 <p>I built the Python orchestration, feature-selection comparisons, calibration rules, vectorized ReliefF accelerator, artifact audits and reporting. Model estimators come from scikit-learn; ReliefF builds on skrebate.</p>
+{performance_callout}
 <ol class="pipeline" aria-label="Implemented study workflow"><li>Validate inputs and record their hashes</li><li>Select inputs and tune within training samples</li><li>Evaluate saved held-out predictions</li><li>Audit artifacts and render the evidence</li></ol>
 <p>Imputation, scaling and feature selection use training data only. Inner folds choose the selection method, model, input mode, settings and threshold. Outer folds evaluate the complete procedure once on untouched samples.</p>
 <details id="methods"><summary>How the benchmark comparison is controlled</summary>
@@ -574,7 +818,16 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
     }
 <p class="boundary">Failure recall is the share of failures caught; pass specificity is the share of passes left unflagged. The search is bounded; these results do not establish a globally optimal model or an exact reproduction of the published study.</p>
 {paired}
-{_figure(inputs, report, FIGURES[0], "Reference and tuned procedures on the same test folds", 1)}
+{
+        _figure(
+            inputs,
+            report,
+            FIGURES[0],
+            "Reference and tuned procedures on the same test folds",
+            1,
+            portrait=_benchmark_portrait(before, after, fail_count, pass_count),
+        )
+    }
 <details id="benchmark-counts"><summary>Exact counts and observed fold variation</summary>
 {
         _render_table(
@@ -595,7 +848,16 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
 {_figure(inputs, report, FIGURES[1], "Balanced-error changes by predefined input mode", 2)}</details></section>
 <section id="inputs"><p class="section-number">04 · Feature selection</p><h2>Repeatedly selected inputs are investigation clues</h2>
 {paragraphs(feature_prose)}
-{_figure(inputs, report, FIGURES[2], "Selection frequency for anonymous measurements and missing flags", 3)}
+{
+        _figure(
+            inputs,
+            report,
+            FIGURES[2],
+            "Selection frequency for anonymous measurements and missing flags",
+            3,
+            portrait=_feature_portrait(feature_values),
+        )
+    }
 {paragraphs(feature_context)}
 <details id="feature-values"><summary>Read the selected inputs as a table</summary>
 {
@@ -653,7 +915,16 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
     } This last block was already exposed through benchmarking and prior reports. It provides retrospective evidence rather than fresh confirmation. Only logistic regression and multivariate statistical process control (MSPC) are compared here.</p>
 {_render_table(frozen, frozen_columns, "Frozen rules on the same retrospective later block")}
 <p class="boundary">MSPC uses principal components fitted on earlier passing samples, with its score and thresholds selected on calibration data. The full report retains 95% exact conditional binomial intervals and separate diagnostics that choose thresholds from evaluation labels. Sparse classes and temporal dependence limit inference; no superiority claim follows.</p>
-{_figure(inputs, report, FIGURES[3], "Failures caught and false alerts with frozen rules", 4)}
+{
+        _figure(
+            inputs,
+            report,
+            FIGURES[3],
+            "Failures caught and false alerts with frozen rules",
+            4,
+            portrait=_frozen_portrait(frozen) if len(frozen) == 3 else None,
+        )
+    }
 <details id="drift-and-cost"><summary>Supporting evidence: distribution shifts, workload and hypothetical costs</summary>
 <p>Measurement distributions use earlier fitting samples as reference. Score distributions use held-out calibration scores from the same retained model. Population stability index (PSI) describes distribution change; larger values indicate more change. These checks identify change without establishing its cause.</p>
 {_figure(inputs, report, FIGURES[4], "Measurement and score distribution shifts", 5)}
@@ -707,15 +978,7 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
 <div><dt>Failure recall</dt><dd>Failures caught divided by all failures. Higher means more recorded failures detected.</dd></div><div><dt>Pass specificity</dt><dd>Passes left unflagged divided by all passes. Higher means fewer false alerts.</dd></div><div><dt>Samples flagged</dt><dd>Fraction of samples that trigger an alert, including correct failure detections and false alerts.</dd></div>
 <div><dt>Fold spread</dt><dd>Observed variation across test folds. SD means standard deviation; this spread is descriptive.</dd></div><div><dt>Calibration</dt><dd>Choosing an alert threshold from held-out scores. It does not guarantee a calibrated probability or future workload.</dd></div></dl></section>
 <section id="evidence"><p class="section-number">08 · Evidence trail</p><h2>Inspect the methods and reproduce the study</h2>
-<p>This HTML is a presentation of the verified curated snapshot. It fits no models and supplies no new scientific run. The canonical technical report contains the full search tables, ablations, per-period results, intervals and claim restrictions.</p>
-<div class="evidence-status"><div><strong>{
-        len(receipt["errors"])
-    }</strong><span>Artifact audit errors</span></div><div><strong>{
-        len(receipt["warnings"])
-    }</strong><span>Temporal warnings</span></div><div><strong>{
-        len(receipt["claim_restrictions"])
-    }</strong><span>Claim restrictions</span></div></div>
-<p class="boundary">A passing artifact audit checks consistency. It does not establish industrial validation or independent reproduction.</p>
+<p>The technical report contains the full search tables, input-mode comparisons, per-period results and intervals. The execution manifest and audit receipt bind the saved study to its inputs and scientific source.</p>
 <div class="downloads">{downloads}<a href="html_provenance.json" download>HTML provenance · adjacent JSON</a></div>
 <p>Charts, styles, text and the three embedded evidence downloads work offline in this single HTML. The adjacent HTML-provenance file separately binds this page to its verified inputs and renderer. Detailed CSVs and ZIP archives remain in local run storage.</p>
 <p><a href="{REPOSITORY}">Repository and setup</a> · <a href="{
@@ -723,12 +986,19 @@ def render_html(manifest: dict, receipt: dict, inputs: dict[str, bytes]) -> str:
     }/blob/main/docs/development.md">Evidence and regeneration procedure</a> · <a href="{
         REPOSITORY
     }/tree/main/docs/spec">Scientific specifications</a>. These source links require a network connection.</p>
-<details id="identities"><summary>Executed source identity and claim restrictions</summary><p class="hash"><strong>Scientific execution source SHA-256:</strong> {
-        escape(manifest["source_tree"]["sha256"])
-    }</p>
+<details id="identities"><summary>Technical verification, source identity and claim restrictions</summary>
+<div class="evidence-status"><div><strong>{
+        len(receipt["errors"])
+    }</strong><span>Artifact audit errors</span></div><div><strong>{
+        len(receipt["warnings"])
+    }</strong><span>Temporal warnings</span></div><div><strong>{
+        len(receipt["claim_restrictions"])
+    }</strong><span>Claim restrictions</span></div></div>
+<p>A passing artifact audit checks consistency; it does not establish industrial validation or independent reproduction. This presentation fits no models and retains the historical scientific execution.</p>
+<p class="hash"><strong>Scientific execution source SHA-256:</strong> {escape(manifest["source_tree"]["sha256"])}</p>
 <ul>{"".join("<li>" + escape(str(item)) + "</li>" for item in receipt["claim_restrictions"])}</ul>
 <p>The scientific execution manifest and snapshot receipt are preserved. HTML generation has a separate rendering identity; later documentation or presentation changes do not refresh historical model results.</p></details></section>
-<footer>SECOM research report · Dataset: McCann and Johnston (2008), UCI, DOI 10.24432/C54305, CC BY 4.0. Software: MIT. Main results are benchmark estimates; temporal findings are secondary and the final block is retrospective.</footer></main>
+<footer>Steven Bangdiwala · SECOM research report · Dataset: McCann and Johnston (2008), UCI, DOI 10.24432/C54305, CC BY 4.0. Software: MIT. Main results are benchmark estimates; temporal findings are secondary and the final block is retrospective.</footer></main>
 <dialog id="chart-viewer" aria-labelledby="viewer-title" aria-describedby="viewer-help"><div class="viewer-heading"><h2 id="viewer-title">Chart</h2><form method="dialog"><button>Close chart</button></form></div><p class="viewer-help" id="viewer-help">Choose native size for detailed labels, then scroll as needed. Press Escape or Close chart to return.</p><button id="zoom" type="button" aria-pressed="false">Show native size</button><div class="viewer-content" tabindex="0" role="region" aria-label="Enlarged chart"></div></dialog>
 <script>{SCRIPT}</script></body></html>
 '''
@@ -739,9 +1009,19 @@ def write_html_report(snapshot: Path) -> Path:
     manifest, receipt, inputs = verified_snapshot(snapshot)
     if (snapshot / "index.html").exists() or (snapshot / "html_provenance.json").exists():
         raise ValueError("HTML report requires fresh output files")
-    document = render_html(manifest, receipt, inputs).encode("utf-8")
     renderer = Path(__file__)
     project = renderer.parents[2]
+    performance_path = project / "docs/performance/runtime_comparison.json"
+    performance_content = performance_path.read_bytes()
+    performance = json.loads(performance_content)
+    featured_path = project / "docs/images/featured.jpg"
+    featured = featured_path.read_bytes() if featured_path.is_file() else None
+    document = render_html(
+        manifest, receipt, inputs, performance=performance, featured_image=featured is not None
+    ).encode("utf-8")
+    outputs = {"index.html": document}
+    if featured is not None:
+        outputs[FEATURED_IMAGE] = featured
     source_files = [renderer, project / "scripts/run_html_report.py"]
     provenance = {
         "presentation_only": True,
@@ -751,10 +1031,14 @@ def write_html_report(snapshot: Path) -> Path:
         "renderer_sha256": {
             p.relative_to(project).as_posix(): _sha(p.read_bytes().replace(b"\r\n", b"\n")) for p in source_files
         },
-        "outputs_sha256": {"index.html": _sha(document)},
+        "presentation_inputs_sha256": {"docs/performance/runtime_comparison.json": _sha(performance_content)},
+        "outputs_sha256": {name: _sha(content) for name, content in outputs.items()},
         "scientific_receipt": "evidence/audit_receipt.json",
     }
-    (snapshot / "index.html").write_bytes(document)
+    for name, content in outputs.items():
+        path = snapshot / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
     (snapshot / "html_provenance.json").write_text(
         json.dumps(provenance, sort_keys=True, indent=2) + "\n", encoding="utf-8"
     )

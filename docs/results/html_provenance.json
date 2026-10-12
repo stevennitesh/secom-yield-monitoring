@@ -12,12 +12,16 @@
   },
   "models_fitted": 0,
   "outputs_sha256": {
-    "index.html": "deecde9cae32e0ac2222647155cad19d18492daab1a825337e638e19c7290cf6"
+    "images/featured.jpg": "ffaf338ebf17e95495bd02e1b47446406e58d66848a44d4682f152b511a4972c",
+    "index.html": "7156ffea1f9c470301cdb9535db42f9ced59eb0b59d577c0d8c91cef9359d2f4"
+  },
+  "presentation_inputs_sha256": {
+    "docs/performance/runtime_comparison.json": "aecf55a4d862ae9e34e8948ca9e67513f8667370981d80aef868bcbbee834c1d"
   },
   "presentation_only": true,
   "renderer_sha256": {
     "scripts/run_html_report.py": "74309b0dc7a292bcd7de2c2101cd977023b72a7abd65c536be193d320813a410",
-    "src/secom/html_report.py": "3ca07a5220b62dcc6998844d6eee99775fdffc15e0433e7beb94c309916feac9"
+    "src/secom/html_report.py": "6956ef6123188c2ec4c754c670c8e45c64d8781405e81fc3aae4ae3ccce223fd"
   },
   "scientific_receipt": "evidence/audit_receipt.json",
   "scientific_source_tree_sha256": "faf5b9e1f35bee43daba8cf0b5a7bb863cb4df55f7f9fa2fc159fcfe914bd40e"

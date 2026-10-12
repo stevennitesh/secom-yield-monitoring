@@ -82,7 +82,7 @@ Commands assume the environment is active. Benchmark entrypoints default to kern
 
 ## Offline HTML Report
 
-Open `docs/results/index.html` in a browser. Styles, charts and the technical-report/manifest/audit downloads are embedded; no server or network is needed for the main report. Numerical tables accompany the charts, and period-level results remain distinct from the retrospective final block. The adjacent `html_provenance.json` records the verified input and renderer hashes separately from scientific execution.
+Open `docs/results/index.html` in a browser. Styles, charts and the technical-report/manifest/audit downloads are embedded; no server or network is needed for the main report. Numerical tables accompany the charts, and period-level results remain distinct from the retrospective final block. Main figures include portrait SVG layouts generated from the audited canonical report tables; their class totals, axes and observed fold ranges retain the same meaning. The six scientific PNGs remain unchanged. The adjacent `html_provenance.json` records the verified input and renderer hashes separately from scientific execution. `presentation_inputs_sha256` records the historical runtime-comparison receipt used for the engineering summary separately from study results.
 
 To rebuild from the curated evidence without fitting models, use a fresh destination:
 
@@ -90,7 +90,7 @@ To rebuild from the curated evidence without fitting models, use a fresh destina
 python scripts/run_html_report.py --input-dir docs/results --output-dir runs/html_review
 ```
 
-The builder rejects changed core hashes, failed audits, overlapping paths and reused destinations. Normal and editorial public exports rebuild HTML from their new staged evidence automatically. For an authorized HTML-only refresh, validate the fresh folder and copy only `index.html` and `html_provenance.json` into `docs/results/`; preserve all eight core files. This does not refresh the scientific run or its historical Markdown rendering identity.
+The builder rejects changed core hashes, failed audits, overlapping paths and reused destinations. Normal and editorial public exports rebuild HTML from their new staged evidence automatically. For an authorized HTML-only refresh, validate the fresh folder and copy `index.html`, `html_provenance.json` and the separately hashed `images/featured.jpg` into `docs/results/`; preserve all eight core files. The image source is `docs/images/featured.jpg`, shared with the GitHub front page. This does not refresh the scientific run or its historical Markdown rendering identity.
 
 ## Hosted Report
 
@@ -102,7 +102,7 @@ The [Pages workflow](../.github/workflows/pages.yml) deploys from `main` when re
 python scripts/stage_pages.py --input-dir docs/results --output-dir .tmp/pages-review
 ```
 
-Use a fresh destination. Only the HTML, its provenance, canonical Markdown, six figures, manifest and audit receipt are copied, plus an empty `.nojekyll` marker. The workflow fits no models, regenerates no evidence and uploads no raw data, local run archives or working notes. The repository's About website points to the same report.
+Use a fresh destination. Only the HTML, its provenance, canonical Markdown, six figures, manifest and audit receipt are copied, plus the separately verified Featured image when present and an empty `.nojekyll` marker. The workflow fits no models, regenerates no evidence and uploads no raw data, local run archives or working notes. The repository's About website points to the same report.
 
 ## Documentation Changes and Historical Provenance
 
